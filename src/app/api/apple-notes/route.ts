@@ -1,9 +1,18 @@
-import { prisma } from "@/lib/db";
-import { fetchAppleNotes, fetchAppleNoteFolders } from "@/lib/apple-notes";
 import { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
+const isMacOS = process.platform === "darwin";
+
 export async function GET() {
+  if (!isMacOS) {
+    return Response.json(
+      { error: "Apple Notes機能はmacOS環境でのみ利用可能です", folders: [] },
+      { status: 200 }
+    );
+  }
   try {
+    const { fetchAppleNoteFolders } = await import("@/lib/apple-notes");
     const folders = fetchAppleNoteFolders();
     return Response.json({ folders });
   } catch (error) {
@@ -14,9 +23,18 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isMacOS) {
+    return Response.json(
+      { error: "Apple Notes機能はmacOS環境でのみ利用可能です" },
+      { status: 400 }
+    );
+  }
+
   const { folder } = await request.json();
 
   try {
+    const { fetchAppleNotes } = await import("@/lib/apple-notes");
+    const { prisma } = await import("@/lib/db");
     const notes = fetchAppleNotes(folder || undefined);
     let imported = 0;
     let updated = 0;
