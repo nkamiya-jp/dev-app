@@ -1,25 +1,23 @@
 import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 function createPrismaClient(): PrismaClient {
-  // Turso (production / Vercel)
+  // Always use Turso in production / Vercel
   if (process.env.TURSO_DATABASE_URL) {
-    // Dynamic import workaround for conditional adapters
-    const { PrismaLibSQL } = require("@prisma/adapter-libsql");
-    const { createClient } = require("@libsql/client");
-    const client = createClient({
-      url: process.env.TURSO_DATABASE_URL,
-      authToken: process.env.TURSO_AUTH_TOKEN,
+    return new PrismaClient({
+      adapter: new PrismaLibSql({
+        url: process.env.TURSO_DATABASE_URL,
+        authToken: process.env.TURSO_AUTH_TOKEN,
+      }),
     });
-    return new PrismaClient({ adapter: new PrismaLibSQL(client) });
   }
 
-  // Local SQLite (development)
-  const { PrismaBetterSqlite3 } = require("@prisma/adapter-better-sqlite3");
-  const path = require("path");
-  const dbPath = path.join(process.cwd(), "dev.db");
-  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbPath }) });
+  // Local SQLite (development only) - should never reach here on Vercel
+  throw new Error(
+    "TURSO_DATABASE_URL is not set. Set it for production or use local dev setup."
+  );
 }
 
 export const prisma = globalForPrisma.prisma || createPrismaClient();
