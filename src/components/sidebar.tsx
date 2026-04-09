@@ -13,6 +13,7 @@ import {
   Briefcase,
   UserCircle,
   GanttChart,
+  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const navItems = [
+  { href: "/prospects", label: "開拓", icon: Target },
   { href: "/deals", label: "案件", icon: KanbanSquare },
   { href: "/contacts", label: "顧客", icon: Users },
   { href: "/tasks", label: "タスク", icon: CheckSquare },
