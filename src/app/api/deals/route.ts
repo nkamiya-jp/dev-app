@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const deals = await prisma.deal.findMany({
     include: {

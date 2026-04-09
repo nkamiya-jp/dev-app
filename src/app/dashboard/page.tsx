@@ -64,7 +64,7 @@ export default async function Dashboard() {
       <h2 className="text-2xl font-bold">ダッシュボード</h2>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
+        <Card className="border-l-4 border-l-blue-500 bg-white shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">顧客</CardTitle>
           </CardHeader>
@@ -72,7 +72,7 @@ export default async function Dashboard() {
             <p className="text-3xl font-bold">{contactCount}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-orange-500 bg-white shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">進行中の案件</CardTitle>
           </CardHeader>
@@ -80,7 +80,7 @@ export default async function Dashboard() {
             <p className="text-3xl font-bold">{activeDeals}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-purple-500 bg-white shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">案件合計</CardTitle>
           </CardHeader>
@@ -88,9 +88,9 @@ export default async function Dashboard() {
             <p className="text-3xl font-bold">{totalAmount.toLocaleString()}円</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-green-500 bg-white shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500">決定</CardTitle>
+            <CardTitle className="text-sm text-gray-500">確定</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold text-green-600">{wonAmount.toLocaleString()}円</p>
@@ -101,7 +101,7 @@ export default async function Dashboard() {
       <DashboardCharts pipelineData={pipelineData} taskStatusData={taskStatusData} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
+        <Card className="bg-white shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg">案件進捗</CardTitle>
           </CardHeader>
@@ -130,7 +130,7 @@ export default async function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-white shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg">直近のタスク</CardTitle>
           </CardHeader>
@@ -164,7 +164,7 @@ export default async function Dashboard() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="bg-white shadow-sm">
         <CardHeader>
           <CardTitle className="text-lg">最近の顧客</CardTitle>
         </CardHeader>

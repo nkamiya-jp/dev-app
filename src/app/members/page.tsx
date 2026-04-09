@@ -210,7 +210,7 @@ export default function MembersPage() {
             {members.map((member) => {
               const memberTasks = activeTasks.filter((t) => t.assignee === member.name);
               return (
-                <Card key={member.id}>
+                <Card key={member.id} className="bg-white shadow-sm">
                   <CardHeader className="pb-2">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: member.color }} />
@@ -254,7 +254,7 @@ export default function MembersPage() {
             })}
 
             {unassigned.length > 0 && (
-              <Card>
+              <Card className="bg-white shadow-sm">
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-gray-300" />
@@ -301,7 +301,7 @@ export default function MembersPage() {
               <Button variant="outline" size="sm" onClick={nextMonth}>→</Button>
             </div>
 
-            <div className="grid grid-cols-7 gap-px bg-gray-200 border rounded overflow-hidden">
+            <div className="grid grid-cols-7 gap-px bg-gray-200 border rounded overflow-hidden shadow-sm">
               {["月", "火", "水", "木", "金", "土", "日"].map((d) => (
                 <div key={d} className="bg-gray-50 text-center text-xs font-medium text-gray-500 py-2">
                   {d}

@@ -58,6 +58,7 @@ export default function ContactsPage() {
         className="max-w-md"
       />
 
+      <div className="bg-white shadow-sm border rounded-lg overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>
@@ -109,6 +110,7 @@ export default function ContactsPage() {
           )}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

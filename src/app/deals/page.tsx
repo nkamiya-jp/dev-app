@@ -16,6 +16,16 @@ import { STAGES, getStageColor, getStageLabel } from "@/lib/stages";
 import Link from "next/link";
 import { Search, LayoutGrid, List, ArrowUpDown, Eye } from "lucide-react";
 
+const STAGE_BG: Record<string, string> = {
+  inquiry: "bg-gray-100/70",
+  hearing: "bg-blue-50",
+  prototype: "bg-orange-50",
+  estimate: "bg-yellow-50",
+  decided: "bg-green-50",
+  manufacturing: "bg-emerald-50",
+  lost: "bg-red-50",
+};
+
 interface Deal {
   id: string;
   title: string;
@@ -220,7 +230,7 @@ export default function DealsPage() {
               return (
                 <div
                   key={stage.id}
-                  className="min-w-[260px] flex-shrink-0"
+                  className={`min-w-[260px] flex-shrink-0 rounded-xl p-3 ${STAGE_BG[stage.id] || "bg-gray-50"}`}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => handleDrop(stage.id)}
                 >
@@ -239,7 +249,7 @@ export default function DealsPage() {
                         key={deal.id}
                         draggable
                         onDragStart={() => setDraggedDealId(deal.id)}
-                        className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+                        className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-white shadow-sm"
                       >
                         <CardContent className="p-3">
                           <Link href={`/deals/${deal.id}`} className="font-medium text-sm text-blue-700 hover:underline">
@@ -330,7 +340,7 @@ export default function DealsPage() {
               )}
             </div>
           </div>
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>

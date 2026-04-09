@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getStageLabel, getStageColor } from "@/lib/stages";
 import Link from "next/link";
+import { ContactEditButton } from "./contact-edit";
 
 export const dynamic = "force-dynamic";
 
@@ -26,10 +27,20 @@ export default async function ContactDetailPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between">
         <Link href="/contacts" className="text-gray-500 hover:text-gray-700">
           ← 顧客一覧
         </Link>
+        <ContactEditButton contact={{
+          id: contact.id,
+          name: contact.name,
+          company: contact.company,
+          department: contact.department,
+          title: contact.title,
+          email: contact.email,
+          phone: contact.phone,
+          address: contact.address,
+        }} />
       </div>
 
       <div className="grid grid-cols-3 gap-6">

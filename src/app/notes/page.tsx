@@ -312,14 +312,14 @@ export default function NotesPage() {
 
       <div className="space-y-3">
         {sortedNotes.length === 0 ? (
-          <Card>
+          <Card className="bg-white shadow-sm">
             <CardContent className="py-8 text-center text-gray-500">
               メモがありません。「+ メモを作成」またはAppleメモからインポートしてください。
             </CardContent>
           </Card>
         ) : (
           sortedNotes.map((note) => (
-            <Card key={note.id}>
+            <Card key={note.id} className="bg-white shadow-sm">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">

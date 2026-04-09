@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { fetchBizCards, bizCardToContact } from "@/lib/sansan";
 import { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   const { apiKey } = await request.json();
   const key = apiKey || process.env.SANSAN_API_KEY;

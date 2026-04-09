@@ -181,14 +181,14 @@ export default function TasksPage() {
 
       <div className="space-y-2">
         {filteredTasks.length === 0 ? (
-          <Card>
+          <Card className="bg-white shadow-sm">
             <CardContent className="py-8 text-center text-gray-500">
               タスクなし
             </CardContent>
           </Card>
         ) : (
           filteredTasks.map((task) => (
-            <Card key={task.id} className={task.status === "done" ? "opacity-60" : ""}>
+            <Card key={task.id} className={`bg-white shadow-sm ${task.status === "done" ? "opacity-60" : ""}`}>
               <CardContent className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <button

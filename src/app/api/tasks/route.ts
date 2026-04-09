@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { getNextStage } from "@/lib/stages";
 import { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const contactId = request.nextUrl.searchParams.get("contactId");
   const dealId = request.nextUrl.searchParams.get("dealId");

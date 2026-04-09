@@ -181,7 +181,7 @@ export default function GanttPage() {
         </div>
       </div>
 
-      <div className="border rounded-lg overflow-auto max-h-[calc(100vh-140px)]">
+      <div className="bg-white shadow-sm rounded-xl border overflow-auto max-h-[calc(100vh-140px)]">
         <div className="flex">
           {/* Left panel - row labels */}
           <div className="sticky left-0 z-10 bg-white border-r min-w-[240px] shrink-0">
@@ -210,6 +210,9 @@ export default function GanttPage() {
                     <Link href={`/deals/${deal.id}`} className="text-blue-700 hover:underline truncate" onClick={(e) => e.stopPropagation()}>
                       {deal.title}
                     </Link>
+                    {deal.contact.company && (
+                      <span className="text-xs text-gray-400 shrink-0 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50">{deal.contact.company}</span>
+                    )}
                     <Badge className={`ml-auto text-xs shrink-0 ${getStageColor(deal.stage)}`}>
                       {getStageLabel(deal.stage)}
                     </Badge>

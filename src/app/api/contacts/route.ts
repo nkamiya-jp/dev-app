@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams.get("search") || "";
   const contacts = await prisma.contact.findMany({
