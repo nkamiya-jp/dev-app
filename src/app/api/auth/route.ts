@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
   const response = Response.json({ success: true });
 
   // 7日間有効なCookieを設定
-  const cookie = `dev-auth=authenticated; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}; Secure`;
+  const isProduction = process.env.NODE_ENV === "production";
+  const cookie = `dev-auth=authenticated; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}${isProduction ? "; Secure" : ""}`;
 
   return new Response(JSON.stringify({ success: true }), {
     status: 200,

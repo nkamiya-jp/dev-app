@@ -45,5 +45,8 @@ export function bizCardToContact(card: SansanBizCard) {
     phone: card.mobile || null,
     address: card.address || null,
     sansanPersonId: card.personId,
+    leadStatus: "untouched",
+    leadSource: "sansan",
+    temperature: "low",
   };
 }

@@ -56,7 +56,7 @@ export default function ProspectsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [view, setView] = useState<"kanban" | "list">("kanban");
+  const [view, setView] = useState<"kanban" | "list">("list");
   const [sortKey, setSortKey] = useState<string>("updatedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 

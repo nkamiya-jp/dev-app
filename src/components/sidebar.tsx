@@ -14,6 +14,11 @@ import {
   UserCircle,
   GanttChart,
   Target,
+  Package,
+  ShoppingCart,
+  Hammer,
+  Truck,
+  Boxes,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,42 +29,71 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-const navItems = [
-  { href: "/prospects", label: "開拓", icon: Target },
-  { href: "/deals", label: "案件", icon: KanbanSquare },
-  { href: "/contacts", label: "顧客", icon: Users },
-  { href: "/tasks", label: "タスク", icon: CheckSquare },
-  { href: "/members", label: "担当者", icon: UserCircle },
-  { href: "/gantt", label: "ガントチャート", icon: GanttChart },
-  { href: "/dashboard", label: "ダッシュボード", icon: BarChart3 },
-  { href: "/notes", label: "メモ", icon: FileText },
+const navSections = [
+  {
+    label: "ホーム",
+    items: [
+      { href: "/dashboard", label: "ダッシュボード", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "営業 (DEV)",
+    items: [
+      { href: "/prospects", label: "開拓", icon: Target },
+      { href: "/deals", label: "案件", icon: KanbanSquare },
+      { href: "/tasks", label: "タスク", icon: CheckSquare },
+      { href: "/gantt", label: "ガントチャート", icon: GanttChart },
+      { href: "/notes", label: "メモ", icon: FileText },
+    ],
+  },
+  {
+    label: "製造・出荷 (MFG)",
+    items: [
+      { href: "/orders", label: "受注", icon: ShoppingCart },
+      { href: "/production", label: "製造", icon: Hammer },
+      { href: "/shipments", label: "出荷", icon: Truck },
+      { href: "/inventory", label: "在庫", icon: Boxes },
+    ],
+  },
+  {
+    label: "マスタ",
+    items: [
+      { href: "/products", label: "商品", icon: Package },
+      { href: "/contacts", label: "顧客", icon: Users },
+      { href: "/members", label: "スタッフ", icon: UserCircle },
+    ],
+  },
 ];
 
 function NavContent({ pathname }: { pathname: string }) {
   return (
-    <nav className="flex flex-col gap-1 px-3">
-      {navItems.map((item) => {
-        const isActive =
-          item.href === "/"
-            ? pathname === "/"
-            : pathname.startsWith(item.href);
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-              isActive
-                ? "bg-white/10 text-white"
-                : "text-zinc-400 hover:bg-white/5 hover:text-white"
-            )}
-          >
-            <Icon className="size-5 shrink-0" />
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
+    <nav className="flex flex-col gap-4 px-3">
+      {navSections.map((section) => (
+        <div key={section.label} className="flex flex-col gap-1">
+          <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            {section.label}
+          </p>
+          {section.items.map((item) => {
+            const isActive = pathname.startsWith(item.href);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-white/10 text-white"
+                    : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                )}
+              >
+                <Icon className="size-5 shrink-0" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }

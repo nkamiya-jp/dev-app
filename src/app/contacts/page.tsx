@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { ContactFormDialog } from "@/components/contact-form-dialog";
 import { SansanImportDialog } from "@/components/sansan-import-dialog";
+import { CONTACT_TYPES, getContactTypeLabel, getContactTypeColor } from "@/lib/contact-meta";
 
 interface Contact {
   id: string;
@@ -23,6 +24,7 @@ interface Contact {
   title: string | null;
   email: string | null;
   phone: string | null;
+  type: string | null;
   createdAt: string;
   _count: { deals: number; tasks: number };
 }
@@ -30,12 +32,17 @@ interface Contact {
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
 
   const loadContacts = useCallback(async () => {
     const params = search ? `?search=${encodeURIComponent(search)}` : "";
     const res = await fetch(`/api/contacts${params}`);
     setContacts(await res.json());
   }, [search]);
+
+  const filtered = typeFilter
+    ? contacts.filter((c) => c.type === typeFilter)
+    : contacts;
 
   useEffect(() => {
     loadContacts();
@@ -51,12 +58,24 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      <Input
-        placeholder="名前、会社名、メールで検索..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-md"
-      />
+      <div className="flex flex-wrap gap-2 items-center">
+        <Input
+          placeholder="名前、会社名、メールで検索..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="border rounded-md px-3 py-2 text-sm"
+        >
+          <option value="">全タイプ</option>
+          {CONTACT_TYPES.map((t) => (
+            <option key={t.id} value={t.id}>{t.label}</option>
+          ))}
+        </select>
+      </div>
 
       <div className="bg-white shadow-sm border rounded-lg overflow-hidden">
       <Table>
@@ -64,6 +83,7 @@ export default function ContactsPage() {
           <TableRow>
             <TableHead>名前</TableHead>
             <TableHead>会社</TableHead>
+            <TableHead>タイプ</TableHead>
             <TableHead>部署 / 役職</TableHead>
             <TableHead>メール</TableHead>
             <TableHead>電話</TableHead>
@@ -72,14 +92,14 @@ export default function ContactsPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {contacts.length === 0 ? (
+          {filtered.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+              <TableCell colSpan={8} className="text-center text-gray-500 py-8">
                 顧客がいません
               </TableCell>
             </TableRow>
           ) : (
-            contacts.map((c) => (
+            filtered.map((c) => (
               <TableRow key={c.id}>
                 <TableCell>
                   <Link
@@ -90,6 +110,13 @@ export default function ContactsPage() {
                   </Link>
                 </TableCell>
                 <TableCell>{c.company || "-"}</TableCell>
+                <TableCell>
+                  {c.type ? (
+                    <Badge className={getContactTypeColor(c.type)}>
+                      {getContactTypeLabel(c.type)}
+                    </Badge>
+                  ) : "-"}
+                </TableCell>
                 <TableCell>
                   {[c.department, c.title].filter(Boolean).join(" / ") || "-"}
                 </TableCell>

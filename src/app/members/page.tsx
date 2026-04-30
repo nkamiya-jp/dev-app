@@ -22,6 +22,10 @@ interface Member {
   name: string;
   role: string | null;
   color: string;
+  type: string;
+  phone: string | null;
+  specialties: string | null;
+  active: boolean;
 }
 
 interface Task {
@@ -48,9 +52,12 @@ export default function MembersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editMember, setEditMember] = useState<Member | null>(null);
   const [tab, setTab] = useState("board");
+  const [typeFilter, setTypeFilter] = useState<"staff" | "worker" | "">("staff");
 
   const loadMembers = useCallback(async () => {
-    const res = await fetch("/api/members");
+    const params = new URLSearchParams();
+    params.set("includeInactive", "1");
+    const res = await fetch(`/api/members?${params.toString()}`);
     setMembers(await res.json());
   }, []);
 
@@ -71,6 +78,9 @@ export default function MembersPage() {
       name: form.get("name") as string,
       role: (form.get("role") as string) || null,
       color: form.get("color") as string,
+      type: (form.get("type") as string) || "staff",
+      phone: (form.get("phone") as string) || null,
+      specialties: (form.get("specialties") as string) || null,
     };
     if (editMember) {
       await fetch("/api/members", {
@@ -147,7 +157,28 @@ export default function MembersPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">担当者</h2>
+        <h2 className="text-2xl font-bold">スタッフ</h2>
+        <div className="flex items-center gap-2">
+          <div className="flex border rounded-md overflow-hidden">
+            <button
+              onClick={() => setTypeFilter("staff")}
+              className={`px-3 py-1.5 text-sm ${typeFilter === "staff" ? "bg-zinc-900 text-white" : "hover:bg-gray-50"}`}
+            >
+              社員
+            </button>
+            <button
+              onClick={() => setTypeFilter("worker")}
+              className={`px-3 py-1.5 text-sm ${typeFilter === "worker" ? "bg-zinc-900 text-white" : "hover:bg-gray-50"}`}
+            >
+              内職
+            </button>
+            <button
+              onClick={() => setTypeFilter("")}
+              className={`px-3 py-1.5 text-sm ${typeFilter === "" ? "bg-zinc-900 text-white" : "hover:bg-gray-50"}`}
+            >
+              全員
+            </button>
+          </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditMember(null); }}>
           <DialogTrigger
             className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -159,8 +190,21 @@ export default function MembersPage() {
               <DialogTitle>{editMember ? "担当者を編集" : "担当者を追加"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSaveMember} className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500">区分 *</label>
+                <select
+                  name="type"
+                  defaultValue={editMember?.type || typeFilter || "staff"}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                >
+                  <option value="staff">社員</option>
+                  <option value="worker">内職</option>
+                </select>
+              </div>
               <Input name="name" placeholder="名前 *" required defaultValue={editMember?.name || ""} />
               <Input name="role" placeholder="役割（例: デザイナー、営業）" defaultValue={editMember?.role || ""} />
+              <Input name="phone" placeholder="電話番号" defaultValue={editMember?.phone || ""} />
+              <Input name="specialties" placeholder="得意商品（例: 西2.6, 西3.3）" defaultValue={editMember?.specialties || ""} />
               <div>
                 <label className="text-xs text-gray-500">カラー</label>
                 <div className="flex gap-2 mt-1">
@@ -179,11 +223,12 @@ export default function MembersPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Member chips */}
       <div className="flex flex-wrap gap-2">
-        {members.map((m) => (
+        {members.filter((m) => !typeFilter || m.type === typeFilter).map((m) => (
           <div
             key={m.id}
             className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm cursor-pointer hover:shadow-sm"
@@ -207,7 +252,7 @@ export default function MembersPage() {
 
         <TabsContent value="board">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-            {members.map((member) => {
+            {members.filter((m) => !typeFilter || m.type === typeFilter).map((member) => {
               const memberTasks = activeTasks.filter((t) => t.assignee === member.name);
               return (
                 <Card key={member.id} className="bg-white shadow-sm">

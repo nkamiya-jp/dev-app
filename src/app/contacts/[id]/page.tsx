@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { getStageLabel, getStageColor } from "@/lib/stages";
 import Link from "next/link";
 import { ContactEditButton } from "./contact-edit";
+import { getContactTypeLabel, getContactTypeColor } from "@/lib/contact-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -40,15 +41,30 @@ export default async function ContactDetailPage({
           email: contact.email,
           phone: contact.phone,
           address: contact.address,
+          type: contact.type,
+          discountRate: contact.discountRate,
         }} />
       </div>
 
       <div className="grid grid-cols-3 gap-6">
         <Card className="col-span-1">
           <CardHeader>
-            <CardTitle>{contact.name}</CardTitle>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle>{contact.name}</CardTitle>
+              {contact.type && (
+                <Badge className={getContactTypeColor(contact.type)}>
+                  {getContactTypeLabel(contact.type)}
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
+            {contact.discountRate != null && (
+              <div>
+                <span className="text-gray-500">掛率:</span>{" "}
+                <span className="font-medium">{contact.discountRate}%</span>
+              </div>
+            )}
             {contact.company && (
               <div>
                 <span className="text-gray-500">会社:</span>{" "}

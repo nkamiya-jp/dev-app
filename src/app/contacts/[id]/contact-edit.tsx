@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Pencil } from "lucide-react";
+import { CONTACT_TYPES } from "@/lib/contact-meta";
 
 interface Contact {
   id: string;
@@ -22,6 +23,8 @@ interface Contact {
   email: string | null;
   phone: string | null;
   address: string | null;
+  type: string | null;
+  discountRate: number | null;
 }
 
 export function ContactEditButton({ contact }: { contact: Contact }) {
@@ -41,6 +44,8 @@ export function ContactEditButton({ contact }: { contact: Contact }) {
       email: form.get("email") || null,
       phone: form.get("phone") || null,
       address: form.get("address") || null,
+      type: form.get("type") || null,
+      discountRate: form.get("discountRate") ? Number(form.get("discountRate")) : null,
     };
 
     await fetch(`/api/contacts/${contact.id}`, {
@@ -93,6 +98,31 @@ export function ContactEditButton({ contact }: { contact: Contact }) {
           <div>
             <label className="text-xs text-gray-500">住所</label>
             <Input name="address" defaultValue={contact.address || ""} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">取引先タイプ</label>
+              <select
+                name="type"
+                defaultValue={contact.type || ""}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">未設定</option>
+                {CONTACT_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">掛率（%）</label>
+              <Input
+                name="discountRate"
+                type="number"
+                step="0.1"
+                placeholder="例: 50"
+                defaultValue={contact.discountRate ?? ""}
+              />
+            </div>
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "保存中..." : "保存"}

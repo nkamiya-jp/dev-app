@@ -29,9 +29,12 @@ export async function POST(request: NextRequest) {
         : null;
 
       if (existing) {
+        // 既存の見込客の leadStatus / temperature は上書きしない
+        const { leadStatus: _ls, leadSource: _src, temperature: _temp, ...rest } = data;
+        void _ls; void _src; void _temp;
         await prisma.contact.update({
           where: { id: existing.id },
-          data,
+          data: rest,
         });
         updated++;
       } else {

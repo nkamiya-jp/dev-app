@@ -31,6 +31,8 @@ model Contact {
   tasks          Task[]
   notes          Note[]
   activities     Activity[]
+  orders         Order[]
+  shipments      Shipment[]
 }
 
 model Deal {
@@ -66,12 +68,106 @@ model Note {
 }
 
 model Member {
-  id        String   @id @default(cuid())
-  name      String
-  role      String?
-  color     String   @default("#3b82f6")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  role        String?
+  color       String   @default("#3b82f6")
+  type        String   @default("staff")  // staff (社員) | worker (内職)
+  phone       String?
+  specialties String?  // 内職の得意商品（カンマ区切り）
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  productions Production[]
+}
+
+model Product {
+  id              String       @id @default(cuid())
+  code            String       @unique
+  name            String
+  series          String?      // 西陣 | 友禅 | 伊勢 | その他
+  size            String?      // 2.6寸, 3.3寸 など
+  wholesalePrice  Int?         // 卸単価（税抜）
+  workerCost      Int?         // 内職単価
+  description     String?
+  active          Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  orderItems      OrderItem[]
+  productions     Production[]
+  shipments       Shipment[]
+  inventory       Inventory?
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  orderDate   DateTime
+  dueDate     DateTime?
+  status      String   @default("pending")  // pending | in_progress | completed | cancelled
+  note        String?
+  items       OrderItem[]
+  shipments   Shipment[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model OrderItem {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  quantity      Int
+  monthlyPlans  String?  // JSON: {"2026-04": 100, "2026-05": 200}
+  weeklyPlans   String?  // JSON: 週別配分
+  shippedQty    Int      @default(0)
+  unitPrice     Int?     // 単価（注文時の価格、Productからコピー）
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Production {
+  id              String   @id @default(cuid())
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id])
+  workerId        String
+  worker          Member   @relation(fields: [workerId], references: [id])
+  quantity        Int
+  requestDate     DateTime
+  dueDate         DateTime?
+  deliveredQty    Int      @default(0)
+  deliveredDate   DateTime?
+  status          String   @default("requested")  // requested | in_progress | delivered
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Shipment {
+  id          String   @id @default(cuid())
+  orderId     String?
+  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id])
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  shipDate    DateTime
+  quantity    Int
+  amount      Int      // 出荷時の売上額
+  status      String   @default("scheduled")  // scheduled | shipped | delivered
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Inventory {
+  id          String   @id @default(cuid())
+  productId   String   @unique
+  product     Product  @relation(fields: [productId], references: [id])
+  stock       Int      @default(0)
+  updatedAt   DateTime @updatedAt
 }
 
 model Activity {
