@@ -78,7 +78,7 @@ model Member {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  productions Production[]
+  productionAssignments ProductionAssignment[]
 }
 
 model Product {
@@ -97,6 +97,7 @@ model Product {
   productions     Production[]
   shipments       Shipment[]
   inventory       Inventory?
+  developments    Development[]
 }
 
 model Order {
@@ -132,17 +133,46 @@ model Production {
   id              String   @id @default(cuid())
   productId       String
   product         Product  @relation(fields: [productId], references: [id])
-  workerId        String
-  worker          Member   @relation(fields: [workerId], references: [id])
   quantity        Int
   requestDate     DateTime
   dueDate         DateTime?
-  deliveredQty    Int      @default(0)
-  deliveredDate   DateTime?
   status          String   @default("requested")  // requested | in_progress | delivered
   note            String?
+  assignments     ProductionAssignment[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model ProductionAssignment {
+  id            String     @id @default(cuid())
+  productionId  String
+  production    Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  workerId      String
+  worker        Member     @relation(fields: [workerId], references: [id])
+  step          String?    // 工程名（裁断/縫製/仕上げ など、任意）
+  quantity      Int        // この内職への割当数
+  deliveredQty  Int        @default(0)
+  deliveredDate DateTime?
+  status        String     @default("requested")  // requested | in_progress | delivered
+  note          String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model Development {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  status       String   @default("active")  // active | released | paused | abandoned
+  initiator    String?  // 誰が発案
+  startDate    DateTime?
+  releasedDate DateTime?
+  productId    String?  // リリース時の商品マスタ紐付け
+  product      Product? @relation(fields: [productId], references: [id])
+  notes        String?
+  tasks        Task[]
+  createdAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Shipment {
@@ -182,19 +212,21 @@ model Activity {
 }
 
 model Task {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  contactId   String
-  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  dealId      String?
-  deal        Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  dueDate     DateTime?
-  priority    String   @default("medium")
-  status      String   @default("todo")
-  forStage    String?
-  assignee    String?
-  completed   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  contactId     String?
+  contact       Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  dealId        String?
+  deal          Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  developmentId String?
+  development   Development? @relation(fields: [developmentId], references: [id], onDelete: SetNull)
+  dueDate       DateTime?
+  priority      String   @default("medium")
+  status        String   @default("todo")
+  forStage      String?
+  assignee      String?
+  completed     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

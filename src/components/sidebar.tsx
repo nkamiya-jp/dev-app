@@ -19,6 +19,7 @@ import {
   Hammer,
   Truck,
   Boxes,
+  Lightbulb,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +42,7 @@ const navSections = [
     items: [
       { href: "/prospects", label: "開拓", icon: Target },
       { href: "/deals", label: "案件", icon: KanbanSquare },
+      { href: "/development", label: "商品開発", icon: Lightbulb },
       { href: "/tasks", label: "タスク", icon: CheckSquare },
       { href: "/gantt", label: "ガントチャート", icon: GanttChart },
       { href: "/notes", label: "メモ", icon: FileText },

@@ -7,12 +7,14 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const contactId = request.nextUrl.searchParams.get("contactId");
   const dealId = request.nextUrl.searchParams.get("dealId");
+  const developmentId = request.nextUrl.searchParams.get("developmentId");
   const tasks = await prisma.task.findMany({
     where: {
       ...(contactId ? { contactId } : {}),
       ...(dealId ? { dealId } : {}),
+      ...(developmentId ? { developmentId } : {}),
     },
-    include: { contact: true, deal: true },
+    include: { contact: true, deal: true, development: true },
     orderBy: [{ status: "asc" }, { priority: "desc" }, { dueDate: "asc" }],
   });
   return Response.json(tasks);

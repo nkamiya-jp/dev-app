@@ -215,7 +215,7 @@ export default function TasksPage() {
                           <option key={s.id} value={s.id}>{s.label}</option>
                         ))}
                       </select>
-                      <span className="text-xs text-gray-500">{task.contact.name}</span>
+                      {task.contact && <span className="text-xs text-gray-500">{task.contact.name}</span>}
                       {task.deal && (
                         <Link href={`/deals/${task.deal.id}`} className="text-xs text-blue-600 hover:underline">
                           {task.deal.title}

@@ -143,7 +143,7 @@ export default async function Dashboard() {
                   <div key={task.id} className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{task.title}</p>
-                      <p className="text-xs text-gray-500">{task.contact.name}</p>
+                      <p className="text-xs text-gray-500">{task.contact?.name || "-"}</p>
                     </div>
                     {task.dueDate && (
                       <span className="text-xs text-gray-500">
