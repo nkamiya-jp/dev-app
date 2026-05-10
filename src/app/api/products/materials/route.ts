@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
         category: master.category,
         unitPrice: master.unitPrice,
         unitType: master.unitType,
-        yieldCount: data.yieldCount ? Number(data.yieldCount) : (master.defaultYield || 1),
+        // 取れ数は商品ごとに異なるため、必ず呼び出し側から受け取る
+        yieldCount: data.yieldCount ? Number(data.yieldCount) : 1,
       };
     }
   }

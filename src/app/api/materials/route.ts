@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       category: data.category || "other",
       unitPrice: Number(data.unitPrice) || 0,
       unitType: data.unitType || "piece",
-      defaultYield: data.defaultYield ? Number(data.defaultYield) : null,
+      // 取れ数は商品ごとに大きく変わるため、マスタには持たない
       active: data.active ?? true,
       note: data.note || null,
     },
@@ -54,7 +54,6 @@ export async function PUT(request: NextRequest) {
       ...(rest.category !== undefined && { category: rest.category }),
       ...(rest.unitPrice !== undefined && { unitPrice: Number(rest.unitPrice) || 0 }),
       ...(rest.unitType !== undefined && { unitType: rest.unitType }),
-      ...(rest.defaultYield !== undefined && { defaultYield: rest.defaultYield ? Number(rest.defaultYield) : null }),
       ...(rest.active !== undefined && { active: rest.active }),
       ...(rest.note !== undefined && { note: rest.note || null }),
     },

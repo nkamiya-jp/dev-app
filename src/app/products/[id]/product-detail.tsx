@@ -29,7 +29,6 @@ interface MasterMaterial {
   category: string;
   unitPrice: number;
   unitType: string;
-  defaultYield: number | null;
   active: boolean;
 }
 
@@ -170,13 +169,14 @@ export function ProductDetail({ productId }: { productId: string }) {
     load();
   }
 
-  async function addMaterialFromMaster(master: MasterMaterial) {
+  async function addMaterialFromMaster(master: MasterMaterial, yieldCount: number) {
     await fetch("/api/products/materials", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         productId,
         materialId: master.id,
+        yieldCount,
       }),
     });
     setPickerCategory(null);
@@ -481,12 +481,13 @@ function MaterialPickerDialog({
 }: {
   category: "fabric" | "other" | null;
   onClose: () => void;
-  onPick: (m: MasterMaterial) => void;
+  onPick: (m: MasterMaterial, yieldCount: number) => void;
   existingMaterialIds: string[];
 }) {
   const [items, setItems] = useState<MasterMaterial[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  const [yields, setYields] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!category) return;
@@ -500,11 +501,16 @@ function MaterialPickerDialog({
       .finally(() => setLoading(false));
   }, [category, search]);
 
+  // ダイアログを閉じたら入力値をクリア
+  useEffect(() => {
+    if (!category) setYields({});
+  }, [category]);
+
   const open = !!category;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {category === "fabric" ? "生地" : "資材"}を選択
@@ -516,6 +522,9 @@ function MaterialPickerDialog({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <p className="text-xs text-gray-500">
+            この商品で1単位（m/個/セット）から何個取れるかを入力してから「追加」してください
+          </p>
           <div className="max-h-96 overflow-y-auto border rounded-md">
             {loading ? (
               <p className="text-center py-4 text-gray-400 text-sm">読み込み中...</p>
@@ -531,14 +540,20 @@ function MaterialPickerDialog({
                 <thead className="bg-gray-50 border-b sticky top-0">
                   <tr>
                     <th className="text-left px-2 py-1.5 font-medium text-gray-500">名前</th>
-                    <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24">単価</th>
-                    <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-20">取れ数</th>
+                    <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-28">単価</th>
+                    <th className="text-center px-2 py-1.5 font-medium text-gray-500 w-24">取れ数 *</th>
+                    <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24">1個あたり</th>
                     <th className="px-2 py-1.5 w-16"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {items.map((m) => {
                     const used = existingMaterialIds.includes(m.id);
+                    const yieldStr = yields[m.id] ?? "";
+                    const yieldNum = Number(yieldStr);
+                    const valid = !used && yieldStr !== "" && yieldNum > 0;
+                    const perPiece = valid ? m.unitPrice / yieldNum : 0;
+                    const unitLabel = m.unitType === "meter" ? "m" : m.unitType === "set" ? "セット" : "個";
                     return (
                       <tr key={m.id} className="hover:bg-gray-50">
                         <td className="px-2 py-1.5">
@@ -546,17 +561,28 @@ function MaterialPickerDialog({
                           {m.code && <div className="font-mono text-[10px] text-gray-400">{m.code}</div>}
                         </td>
                         <td className="px-2 py-1.5 text-right">
-                          {m.unitPrice.toLocaleString()}円/{m.unitType === "meter" ? "m" : m.unitType === "set" ? "セット" : "個"}
+                          {m.unitPrice.toLocaleString()}円/{unitLabel}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="number"
+                            min="1"
+                            value={yieldStr}
+                            onChange={(e) => setYields((p) => ({ ...p, [m.id]: e.target.value }))}
+                            disabled={used}
+                            placeholder="例: 50"
+                            className="w-full px-2 py-1 text-sm border rounded text-right disabled:bg-gray-100"
+                          />
                         </td>
                         <td className="px-2 py-1.5 text-right text-gray-600">
-                          {m.defaultYield ?? "-"}
+                          {valid ? `${perPiece.toFixed(1)}円` : "-"}
                         </td>
                         <td className="px-2 py-1.5 text-right">
                           <Button
                             size="sm"
-                            variant={used ? "outline" : "default"}
-                            onClick={() => onPick(m)}
-                            disabled={used}
+                            variant={valid ? "default" : "outline"}
+                            onClick={() => valid && onPick(m, yieldNum)}
+                            disabled={!valid}
                             className="h-7 px-2 text-xs"
                           >
                             {used ? "登録済" : "追加"}

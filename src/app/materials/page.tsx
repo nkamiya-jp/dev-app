@@ -21,7 +21,6 @@ interface Material {
   category: string;
   unitPrice: number;
   unitType: string;
-  defaultYield: number | null;
   active: boolean;
   note: string | null;
   _count: { productMaterials: number };
@@ -163,7 +162,6 @@ export default function MaterialsPage() {
                         <th className="text-left px-3 py-2 font-medium text-gray-500">資材名</th>
                         <th className="text-right px-3 py-2 font-medium text-gray-500 w-28">単価</th>
                         <th className="text-center px-3 py-2 font-medium text-gray-500 w-20">単位</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-500 w-28">標準取れ数</th>
                         <th className="text-right px-3 py-2 font-medium text-gray-500 w-28">使用商品</th>
                         <th className="px-3 py-2 w-24"></th>
                       </tr>
@@ -181,9 +179,6 @@ export default function MaterialsPage() {
                           </td>
                           <td className="px-3 py-2 text-center text-gray-600">
                             {UNIT_TYPES.find((u) => u.id === m.unitType)?.label}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-600">
-                            {m.defaultYield ?? "-"}
                           </td>
                           <td className="px-3 py-2 text-right">
                             {m._count.productMaterials > 0 ? (
@@ -249,7 +244,6 @@ function MaterialForm({
   const [category, setCategory] = useState(material?.category || "fabric");
   const [unitPrice, setUnitPrice] = useState(material?.unitPrice?.toString() || "");
   const [unitType, setUnitType] = useState(material?.unitType || "meter");
-  const [defaultYield, setDefaultYield] = useState(material?.defaultYield?.toString() || "");
   const [active, setActive] = useState(material?.active ?? true);
   const [note, setNote] = useState(material?.note || "");
 
@@ -263,7 +257,6 @@ function MaterialForm({
           category,
           unitPrice: unitPrice ? Number(unitPrice) : 0,
           unitType,
-          defaultYield: defaultYield ? Number(defaultYield) : null,
           active,
           note: note || null,
         });
@@ -288,7 +281,7 @@ function MaterialForm({
         <label className="text-xs text-gray-500">資材名 *</label>
         <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="例: 西陣裂A" />
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-xs text-gray-500">単価（円）*</label>
           <Input type="number" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} required />
@@ -301,11 +294,10 @@ function MaterialForm({
             ))}
           </select>
         </div>
-        <div>
-          <label className="text-xs text-gray-500">標準取れ数</label>
-          <Input type="number" value={defaultYield} onChange={(e) => setDefaultYield(e.target.value)} placeholder="参考値" />
-        </div>
       </div>
+      <p className="text-xs text-gray-400 -mt-1">
+        ※ 取れ数（1単位から何個取れるか）は商品ごとに大きく変わるため、商品詳細画面で個別に設定します
+      </p>
       <div>
         <label className="text-xs text-gray-500">備考</label>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="w-full border rounded-md px-3 py-2 text-sm resize-y" />
