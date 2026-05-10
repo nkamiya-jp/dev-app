@@ -12,7 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Pencil } from "lucide-react";
-import { CONTACT_TYPES } from "@/lib/contact-meta";
+import { CONTACT_TYPES, getDefaultRate } from "@/lib/contact-meta";
 
 interface Contact {
   id: string;
@@ -27,10 +27,29 @@ interface Contact {
   discountRate: number | null;
 }
 
-export function ContactEditButton({ contact }: { contact: Contact }) {
+export function ContactEditButton({
+  contact,
+  onSaved,
+  variant = "default",
+}: {
+  contact: Contact;
+  onSaved?: () => void;
+  variant?: "default" | "icon";
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [typeValue, setTypeValue] = useState(contact.type || "");
+  const [rateValue, setRateValue] = useState(contact.discountRate?.toString() || "");
   const router = useRouter();
+
+  function handleTypeChange(newType: string) {
+    setTypeValue(newType);
+    // タイプ変更時、掛率が空なら自動セット
+    const defaultRate = getDefaultRate(newType);
+    if (defaultRate !== null && !rateValue) {
+      setRateValue(String(defaultRate));
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -56,15 +75,19 @@ export function ContactEditButton({ contact }: { contact: Contact }) {
 
     setLoading(false);
     setOpen(false);
-    router.refresh();
+    if (onSaved) onSaved();
+    else router.refresh();
   }
+
+  const triggerClass = variant === "icon"
+    ? "inline-flex items-center justify-center rounded-md border border-input bg-background p-1.5 hover:bg-accent hover:text-accent-foreground"
+    : "inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
-      >
-        <Pencil className="size-4 mr-1" /> 編集
+      <DialogTrigger className={triggerClass}>
+        <Pencil className="size-4" />
+        {variant !== "icon" && <span className="ml-1">編集</span>}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -104,7 +127,8 @@ export function ContactEditButton({ contact }: { contact: Contact }) {
               <label className="text-xs text-gray-500">取引先タイプ</label>
               <select
                 name="type"
-                defaultValue={contact.type || ""}
+                value={typeValue}
+                onChange={(e) => handleTypeChange(e.target.value)}
                 className="w-full border rounded-md px-3 py-2 text-sm"
               >
                 <option value="">未設定</option>
@@ -119,8 +143,9 @@ export function ContactEditButton({ contact }: { contact: Contact }) {
                 name="discountRate"
                 type="number"
                 step="0.1"
+                value={rateValue}
+                onChange={(e) => setRateValue(e.target.value)}
                 placeholder="例: 50"
-                defaultValue={contact.discountRate ?? ""}
               />
             </div>
           </div>

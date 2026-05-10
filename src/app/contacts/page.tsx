@@ -15,6 +15,7 @@ import {
 import { ContactFormDialog } from "@/components/contact-form-dialog";
 import { SansanImportDialog } from "@/components/sansan-import-dialog";
 import { CONTACT_TYPES, getContactTypeLabel, getContactTypeColor } from "@/lib/contact-meta";
+import { ContactEditButton } from "./[id]/contact-edit";
 
 interface Contact {
   id: string;
@@ -24,7 +25,9 @@ interface Contact {
   title: string | null;
   email: string | null;
   phone: string | null;
+  address: string | null;
   type: string | null;
+  discountRate: number | null;
   createdAt: string;
   _count: { deals: number; tasks: number };
 }
@@ -84,17 +87,19 @@ export default function ContactsPage() {
             <TableHead>名前</TableHead>
             <TableHead>会社</TableHead>
             <TableHead>タイプ</TableHead>
+            <TableHead className="text-right">掛率</TableHead>
             <TableHead>部署 / 役職</TableHead>
             <TableHead>メール</TableHead>
             <TableHead>電話</TableHead>
             <TableHead>案件</TableHead>
             <TableHead>タスク</TableHead>
+            <TableHead className="w-12"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {filtered.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={8} className="text-center text-gray-500 py-8">
+              <TableCell colSpan={10} className="text-center text-gray-500 py-8">
                 顧客がいません
               </TableCell>
             </TableRow>
@@ -117,6 +122,9 @@ export default function ContactsPage() {
                     </Badge>
                   ) : "-"}
                 </TableCell>
+                <TableCell className="text-right text-sm">
+                  {c.discountRate != null ? `${c.discountRate}%` : "-"}
+                </TableCell>
                 <TableCell>
                   {[c.department, c.title].filter(Boolean).join(" / ") || "-"}
                 </TableCell>
@@ -131,6 +139,24 @@ export default function ContactsPage() {
                   {c._count.tasks > 0 && (
                     <Badge variant="secondary">{c._count.tasks}</Badge>
                   )}
+                </TableCell>
+                <TableCell>
+                  <ContactEditButton
+                    contact={{
+                      id: c.id,
+                      name: c.name,
+                      company: c.company,
+                      department: c.department,
+                      title: c.title,
+                      email: c.email,
+                      phone: c.phone,
+                      address: c.address,
+                      type: c.type,
+                      discountRate: c.discountRate,
+                    }}
+                    onSaved={loadContacts}
+                    variant="icon"
+                  />
                 </TableCell>
               </TableRow>
             ))
