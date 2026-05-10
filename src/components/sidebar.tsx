@@ -21,6 +21,7 @@ import {
   Boxes,
   Lightbulb,
   TrendingUp,
+  CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +55,7 @@ const navSections = [
     items: [
       { href: "/orders", label: "受注", icon: ShoppingCart },
       { href: "/forecast", label: "需要予測", icon: TrendingUp },
+      { href: "/shipping-plan", label: "出荷計画", icon: CalendarDays },
       { href: "/production", label: "製造", icon: Hammer },
       { href: "/shipments", label: "出荷", icon: Truck },
       { href: "/inventory", label: "在庫", icon: Boxes },
