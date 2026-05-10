@@ -59,16 +59,23 @@ interface Product {
   workerCost: number | null;
 }
 
+interface InventoryRow {
+  id: string;
+  stock: number;
+}
+
 export default function ProductionPage() {
   const [productions, setProductions] = useState<Production[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [inventory, setInventory] = useState<InventoryRow[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [view, setView] = useState<"list" | "worker" | "product">("worker");
+  const [view, setView] = useState<"list" | "worker" | "product">("product");
   const [deliverTarget, setDeliverTarget] = useState<{ assignment: Assignment; production: Production } | null>(null);
   const [assignTarget, setAssignTarget] = useState<Production | null>(null);
+  const [quickAddProduct, setQuickAddProduct] = useState<Product | null>(null);
 
   // 新規依頼ダイアログの工程行
   const [newRows, setNewRows] = useState<{ workerId: string; step: string; quantity: string }[]>([
@@ -76,15 +83,33 @@ export default function ProductionPage() {
   ]);
 
   const load = useCallback(async () => {
-    const [prRes, wRes, pRes] = await Promise.all([
+    const [prRes, wRes, pRes, iRes] = await Promise.all([
       fetch("/api/productions"),
       fetch("/api/members?type=worker"),
       fetch("/api/products"),
+      fetch("/api/inventory"),
     ]);
     setProductions(await prRes.json());
     setWorkers(await wRes.json());
     setProducts(await pRes.json());
+    setInventory(await iRes.json());
   }, []);
+
+  async function quickCreateProduction(productId: string, workerId: string, quantity: number, requestDate: string, dueDate: string | null, note: string | null) {
+    await fetch("/api/productions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId,
+        quantity,
+        requestDate,
+        dueDate,
+        note,
+        assignments: [{ workerId, quantity }],
+      }),
+    });
+    load();
+  }
 
   useEffect(() => {
     load();
@@ -377,7 +402,16 @@ export default function ProductionPage() {
         </Card>
       </div>
 
-      {filtered.length === 0 ? (
+      {view === "product" ? (
+        <ProductView
+          productions={filtered}
+          products={products}
+          inventory={inventory}
+          onStatusChange={changeAssignmentStatus}
+          onDeliver={(a, p) => setDeliverTarget({ assignment: a, production: p })}
+          onQuickAdd={setQuickAddProduct}
+        />
+      ) : filtered.length === 0 ? (
         <Card className="bg-white shadow-sm">
           <CardContent className="py-12 text-center text-gray-400">
             <Hammer className="size-12 mx-auto mb-3 text-gray-300" />
@@ -391,13 +425,6 @@ export default function ProductionPage() {
           productions={filtered}
           onStatusChange={changeAssignmentStatus}
           onDeliver={(a, p) => setDeliverTarget({ assignment: a, production: p })}
-        />
-      ) : view === "product" ? (
-        <ProductView
-          productions={filtered}
-          onStatusChange={changeAssignmentStatus}
-          onDeliver={(a, p) => setDeliverTarget({ assignment: a, production: p })}
-          onAddAssignment={setAssignTarget}
         />
       ) : (
         <ListView
@@ -472,7 +499,96 @@ export default function ProductionPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* 商品別クイック追加（1依頼=1内職） */}
+      <Dialog open={!!quickAddProduct} onOpenChange={(o) => !o && setQuickAddProduct(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>制作依頼を追加</DialogTitle>
+          </DialogHeader>
+          {quickAddProduct && (
+            <QuickAddForm
+              product={quickAddProduct}
+              workers={workers}
+              onAdd={async (workerId, qty, requestDate, dueDate, note) => {
+                await quickCreateProduction(quickAddProduct.id, workerId, qty, requestDate, dueDate, note);
+                setQuickAddProduct(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function QuickAddForm({
+  product,
+  workers,
+  onAdd,
+}: {
+  product: Product;
+  workers: Worker[];
+  onAdd: (workerId: string, quantity: number, requestDate: string, dueDate: string | null, note: string | null) => void;
+}) {
+  const [workerId, setWorkerId] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [requestDate, setRequestDate] = useState(new Date().toISOString().split("T")[0]);
+  const [dueDate, setDueDate] = useState("");
+  const [note, setNote] = useState("");
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!workerId || !quantity) return;
+        onAdd(workerId, Number(quantity), requestDate, dueDate || null, note || null);
+      }}
+      className="space-y-3"
+    >
+      <div className="bg-gray-50 rounded p-3 text-sm">
+        <p className="font-mono text-xs text-gray-500">{product.code}</p>
+        <p className="font-medium">{product.name}</p>
+      </div>
+      <div>
+        <label className="text-xs text-gray-500">内職 *</label>
+        <select
+          value={workerId}
+          onChange={(e) => setWorkerId(e.target.value)}
+          required
+          className="w-full border rounded-md px-3 py-2 text-sm"
+        >
+          <option value="">選択...</option>
+          {workers.map((w) => (
+            <option key={w.id} value={w.id}>{w.name}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs text-gray-500">数量（お渡し数）*</label>
+        <Input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-gray-500">依頼日 *</label>
+          <Input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} required />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">納品予定日</label>
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-gray-500">備考</label>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          className="w-full border rounded-md px-3 py-2 text-sm resize-y"
+        />
+      </div>
+      <Button type="submit" className="w-full">登録</Button>
+    </form>
   );
 }
 
@@ -718,26 +834,214 @@ function WorkerView({
 
 function ProductView({
   productions,
+  products,
+  inventory,
   onStatusChange,
   onDeliver,
-  onAddAssignment,
+  onQuickAdd,
 }: {
   productions: Production[];
+  products: Product[];
+  inventory: InventoryRow[];
   onStatusChange: (id: string, status: string) => void;
   onDeliver: (a: Assignment, p: Production) => void;
-  onAddAssignment: (p: Production) => void;
+  onQuickAdd: (product: Product) => void;
 }) {
+  const stockMap = new Map(inventory.map((i) => [i.id, i.stock]));
+
+  // 商品ごとに製造依頼をグループ化（製造データのある商品のみ表示）
+  const groups = new Map<string, { product: Production["product"]; productions: Production[] }>();
+  for (const p of productions) {
+    const g = groups.get(p.productId);
+    if (g) g.productions.push(p);
+    else groups.set(p.productId, { product: p.product, productions: [p] });
+  }
+
+  // データのない商品も「+追加」できるようにリストに含める（オプショナル）
+  // → 今回はデータのある商品のみ表示し、ヘッダーに「商品を選んで依頼」ボタン
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-      {productions.map((p) => (
-        <ProductionCard
-          key={p.id}
-          p={p}
-          onStatusChange={onStatusChange}
-          onDeliver={onDeliver}
-          onAddAssignment={onAddAssignment}
-        />
-      ))}
+    <div className="space-y-6">
+      {/* 商品を選んで新規依頼（データのない商品にも依頼可能） */}
+      <div className="bg-white shadow-sm border rounded-lg p-3">
+        <p className="text-xs text-gray-500 mb-2">商品を選択して新しい制作依頼を追加</p>
+        <ProductPicker products={products} onPick={onQuickAdd} />
+      </div>
+
+      {groups.size === 0 && (
+        <Card className="bg-white shadow-sm">
+          <CardContent className="py-12 text-center text-gray-400">
+            <Hammer className="size-12 mx-auto mb-3 text-gray-300" />
+            <p>まだ制作依頼がありません</p>
+            <p className="text-xs mt-1">上の検索から商品を選んで依頼を追加してください</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {[...groups.entries()].map(([productId, { product, productions }]) => {
+        const carryOver = stockMap.get(productId) ?? 0;
+        // 全Productionの全Assignmentをフラット化
+        const rows = productions.flatMap((p) =>
+          p.assignments.map((a) => ({ assignment: a, production: p }))
+        );
+        rows.sort((a, b) =>
+          new Date(b.production.requestDate).getTime() - new Date(a.production.requestDate).getTime()
+        );
+        const totalRequested = rows
+          .filter((r) => r.assignment.status !== "delivered")
+          .reduce((s, r) => s + r.assignment.quantity, 0);
+        const totalDelivered = rows
+          .filter((r) => r.assignment.status === "delivered")
+          .reduce((s, r) => s + r.assignment.deliveredQty, 0);
+
+        return (
+          <Card key={productId} className="bg-white shadow-sm">
+            <CardContent className="p-0">
+              <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50/50">
+                <div>
+                  <p className="font-mono text-xs text-gray-500">{product.code}</p>
+                  <h3 className="font-bold text-base">{product.name}</h3>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">繰越（在庫）</p>
+                    <p className="text-xl font-bold">{carryOver.toLocaleString()}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">未納品</p>
+                    <p className="text-xl font-bold text-orange-600">{totalRequested.toLocaleString()}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">納品済合計</p>
+                    <p className="text-xl font-bold text-green-600">{totalDelivered.toLocaleString()}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => onQuickAdd(product as Product)}
+                  >
+                    <Plus className="size-4 mr-1" /> 依頼を追加
+                  </Button>
+                </div>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">対応者</th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-500">お渡し数</th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-500">納品済</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">内職依頼日</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">納品予定日</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">状況</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {rows.map(({ assignment: a, production: p }) => {
+                    const isOverdue =
+                      a.status !== "delivered" && p.dueDate && new Date(p.dueDate) < new Date();
+                    return (
+                      <tr key={a.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: a.worker.color }} />
+                            <span className="font-medium">{a.worker.name}</span>
+                            {a.step && <span className="text-xs text-gray-500">[{a.step}]</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium">{a.quantity}</td>
+                        <td className="px-4 py-2 text-right text-green-600">
+                          {a.deliveredQty > 0 ? a.deliveredQty : "-"}
+                        </td>
+                        <td className="px-4 py-2 text-gray-600 text-xs">
+                          {new Date(p.requestDate).toLocaleDateString("ja-JP")}
+                        </td>
+                        <td className={`px-4 py-2 text-xs ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                          {p.dueDate ? new Date(p.dueDate).toLocaleDateString("ja-JP") : "-"}
+                        </td>
+                        <td className="px-4 py-2">
+                          <Badge className={`text-xs ${getProductionStatusColor(a.status)}`}>
+                            {getProductionStatusLabel(a.status)}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {a.status !== "delivered" && (
+                            <div className="flex gap-1 justify-end">
+                              {a.status === "requested" && (
+                                <button
+                                  onClick={() => onStatusChange(a.id, "in_progress")}
+                                  className="text-xs px-2 py-1 rounded border bg-blue-50 hover:bg-blue-100 text-blue-700"
+                                >
+                                  開始
+                                </button>
+                              )}
+                              <button
+                                onClick={() => onDeliver(a, p)}
+                                className="text-xs px-2 py-1 rounded border bg-green-50 hover:bg-green-100 text-green-700"
+                              >
+                                納品
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProductPicker({
+  products,
+  onPick,
+}: {
+  products: Product[];
+  onPick: (p: Product) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const filtered = search
+    ? products.filter(
+        (p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.code.toLowerCase().includes(search.toLowerCase())
+      )
+    : products;
+
+  return (
+    <div className="relative">
+      <Input
+        placeholder="商品名・コードで検索..."
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+      />
+      {open && filtered.length > 0 && search && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg max-h-64 overflow-y-auto z-10">
+          {filtered.slice(0, 20).map((p) => (
+            <button
+              key={p.id}
+              onClick={() => {
+                onPick(p);
+                setSearch("");
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm flex items-center gap-2 border-b last:border-0"
+            >
+              <span className="font-mono text-xs text-gray-500 w-20">{p.code}</span>
+              <span>{p.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
