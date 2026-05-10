@@ -8,7 +8,13 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Trash2, Plus, Pencil, Save, X } from "lucide-react";
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
-import { calcCostBreakdown, calcGrossProfit } from "@/lib/product-cost";
+import {
+  calcCostBreakdown,
+  calcGrossProfit,
+  calcRetailFromCost,
+  buildPriceMatrix,
+  DEFAULT_COST_RATIO,
+} from "@/lib/product-cost";
 
 interface CostStep {
   id: string;
@@ -35,6 +41,8 @@ interface Product {
   name: string;
   series: string | null;
   size: string | null;
+  retailPrice: number | null;
+  costRatio: number | null;
   wholesalePrice: number | null;
   workerCost: number | null;
   salesCost: number | null;
@@ -76,6 +84,14 @@ export function ProductDetail({ productId }: { productId: string }) {
   });
   const sellPrice = product.wholesalePrice ?? 0;
   const { profit, rate } = calcGrossProfit(breakdown.total, sellPrice);
+
+  // 上代と卸価格マトリクス
+  const cost = breakdown.total;
+  const costRatio = product.costRatio ?? DEFAULT_COST_RATIO;
+  const retail = product.retailPrice ?? 0;
+  const actualCostRatio = retail > 0 ? cost / retail : 0;
+  const priceMatrix = retail > 0 ? buildPriceMatrix(retail, cost) : [];
+  const suggestedRetail = calcRetailFromCost(cost, costRatio);
 
   async function saveBasic(data: Partial<Product>) {
     await fetch(`/api/products/${productId}`, {
@@ -265,6 +281,59 @@ export function ProductDetail({ productId }: { productId: string }) {
         </CardContent>
       </Card>
 
+      {/* 上代と卸価格マトリクス */}
+      <Card className="bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">上代・卸価格</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PriceSettings
+            cost={cost}
+            retail={retail}
+            costRatio={costRatio}
+            actualCostRatio={actualCostRatio}
+            suggestedRetail={suggestedRetail}
+            onSaveRetail={(v) => saveBasic({ retailPrice: v })}
+            onSaveCostRatio={(v) => saveBasic({ costRatio: v })}
+          />
+
+          {priceMatrix.length > 0 ? (
+            <div className="mt-4">
+              <p className="text-sm text-gray-500 mb-2">顧客掛率別の卸価格と粗利</p>
+              <table className="w-full text-sm border">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-center px-3 py-2 font-medium text-gray-500 border-r w-20">掛率</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">卸価格</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">粗利</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500">粗利率</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {priceMatrix.map((row) => (
+                    <tr key={row.rate} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-center font-medium border-r">{row.ratePct}%</td>
+                      <td className="px-3 py-2 text-right font-bold border-r">{row.wholesalePrice.toLocaleString()}円</td>
+                      <td className={`px-3 py-2 text-right font-medium border-r ${row.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {row.profit.toLocaleString()}円
+                      </td>
+                      <td className={`px-3 py-2 text-right font-medium ${row.profitRate >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {row.profitRate.toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-gray-400 mt-2">
+                ※ 卸価格 = 上代 × 掛率 / 粗利 = 卸価格 − 原価
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-4 mt-2">上代を設定すると掛率別の卸価格が表示されます</p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* 制作工程（複数） */}
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
@@ -338,6 +407,92 @@ export function ProductDetail({ productId }: { productId: string }) {
           />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ─── 上代・原価率の設定 ───
+function PriceSettings({
+  cost,
+  retail,
+  costRatio,
+  actualCostRatio,
+  suggestedRetail,
+  onSaveRetail,
+  onSaveCostRatio,
+}: {
+  cost: number;
+  retail: number;
+  costRatio: number;
+  actualCostRatio: number;
+  suggestedRetail: number;
+  onSaveRetail: (v: number) => void;
+  onSaveCostRatio: (v: number) => void;
+}) {
+  const [retailDraft, setRetailDraft] = useState(String(retail));
+  const [ratioDraft, setRatioDraft] = useState(String(Math.round(costRatio * 100)));
+
+  // 同期
+  useEffect(() => setRetailDraft(String(retail)), [retail]);
+  useEffect(() => setRatioDraft(String(Math.round(costRatio * 100))), [costRatio]);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label className="text-xs text-gray-500">原価（自動計算）</label>
+        <p className="font-bold text-2xl">{Math.round(cost).toLocaleString()}<span className="text-sm font-normal text-gray-500"> 円</span></p>
+      </div>
+      <div>
+        <label className="text-xs text-gray-500">上代（小売価格）</label>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            value={retailDraft}
+            onChange={(e) => setRetailDraft(e.target.value)}
+            onBlur={() => {
+              const n = Number(retailDraft);
+              if (!isNaN(n) && n !== retail) onSaveRetail(n);
+            }}
+            placeholder="未設定"
+            className="text-lg font-bold"
+          />
+        </div>
+        {cost > 0 && retail > 0 && (
+          <p className="text-xs text-gray-400 mt-1">
+            実原価率: {(actualCostRatio * 100).toFixed(1)}%
+          </p>
+        )}
+      </div>
+      <div>
+        <label className="text-xs text-gray-500">原価率（逆算用）</label>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            step="0.1"
+            value={ratioDraft}
+            onChange={(e) => setRatioDraft(e.target.value)}
+            onBlur={() => {
+              const pct = Number(ratioDraft);
+              if (!isNaN(pct)) {
+                const ratio = pct / 100;
+                if (Math.abs(ratio - costRatio) > 0.0001) onSaveCostRatio(ratio);
+              }
+            }}
+            className="w-20"
+          />
+          <span className="text-sm text-gray-500">%</span>
+        </div>
+        {cost > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onSaveRetail(suggestedRetail)}
+            className="mt-1 text-xs"
+          >
+            原価÷{(costRatio * 100).toFixed(0)}%で逆算 → {suggestedRetail.toLocaleString()}円
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

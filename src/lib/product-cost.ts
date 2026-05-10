@@ -80,3 +80,37 @@ export function calcGrossProfit(cost: number, sellPrice: number) {
   const rate = sellPrice > 0 ? (profit / sellPrice) * 100 : 0;
   return { profit, rate };
 }
+
+// デフォルト原価率: 30% = 0.30
+// 上代 = 原価 / 原価率
+export const DEFAULT_COST_RATIO = 0.30;
+
+export function calcRetailFromCost(cost: number, costRatio: number = DEFAULT_COST_RATIO): number {
+  if (costRatio <= 0) return 0;
+  return Math.round(cost / costRatio);
+}
+
+// 卸価格 = 上代 × 卸率
+export function calcWholesalePrice(retail: number, wholesaleRate: number): number {
+  return Math.round(retail * wholesaleRate);
+}
+
+// 標準掛率パターン
+export const WHOLESALE_RATES = [0.50, 0.45, 0.40, 0.38];
+
+export interface PriceRow {
+  rate: number; // 0.50 など
+  ratePct: number; // 50
+  wholesalePrice: number;
+  profit: number;
+  profitRate: number; // 卸価格に対する粗利率 %
+}
+
+export function buildPriceMatrix(retail: number, cost: number, rates: number[] = WHOLESALE_RATES): PriceRow[] {
+  return rates.map((rate) => {
+    const wholesalePrice = calcWholesalePrice(retail, rate);
+    const profit = wholesalePrice - cost;
+    const profitRate = wholesalePrice > 0 ? (profit / wholesalePrice) * 100 : 0;
+    return { rate, ratePct: Math.round(rate * 100), wholesalePrice, profit, profitRate };
+  });
+}

@@ -35,6 +35,8 @@ export async function PUT(
       ...(data.name !== undefined && { name: data.name }),
       ...(data.series !== undefined && { series: data.series || null }),
       ...(data.size !== undefined && { size: data.size || null }),
+      ...(data.retailPrice !== undefined && { retailPrice: data.retailPrice }),
+      ...(data.costRatio !== undefined && { costRatio: data.costRatio }),
       ...(data.wholesalePrice !== undefined && { wholesalePrice: data.wholesalePrice }),
       ...(data.workerCost !== undefined && { workerCost: data.workerCost }),
       ...(data.salesCost !== undefined && { salesCost: data.salesCost }),

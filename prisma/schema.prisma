@@ -87,7 +87,9 @@ model Product {
   name            String
   series          String?      // 西陣 | 友禅 | 伊勢 | その他
   size            String?      // 2.6寸, 3.3寸 など
-  wholesalePrice  Int?         // 卸単価（税抜）
+  retailPrice     Int?         // 上代（小売価格、税抜）
+  costRatio       Float?       // 原価率（上代逆算用、デフォルト 0.30 = 30%）
+  wholesalePrice  Int?         // [標準] 標準卸価格（顧客別未設定時の参考値）
   workerCost      Int?         // [legacy] 旧 内職単価（後方互換用）
   salesCost       Int?         // 営業費（個あたり）
   packagingCost   Int?         // 梱包費（個あたり）
