@@ -98,6 +98,7 @@ model Product {
   shipments       Shipment[]
   inventory       Inventory?
   developments    Development[]
+  forecasts       ProductForecast[]
 }
 
 model Order {
@@ -190,6 +191,19 @@ model Shipment {
   note        String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model ProductForecast {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  month     String   // "2026-05"
+  forecast  Int
+  source    String?  // manual | prev_year | moving_avg
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([productId, month])
 }
 
 model Inventory {

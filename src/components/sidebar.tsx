@@ -20,6 +20,7 @@ import {
   Truck,
   Boxes,
   Lightbulb,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +53,7 @@ const navSections = [
     label: "製造・出荷 (MFG)",
     items: [
       { href: "/orders", label: "受注", icon: ShoppingCart },
+      { href: "/forecast", label: "需要予測", icon: TrendingUp },
       { href: "/production", label: "製造", icon: Hammer },
       { href: "/shipments", label: "出荷", icon: Truck },
       { href: "/inventory", label: "在庫", icon: Boxes },
