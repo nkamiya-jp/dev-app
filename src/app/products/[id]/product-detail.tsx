@@ -5,8 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Link from "next/link";
-import { Trash2, Plus, Pencil, Save, X } from "lucide-react";
+import { Trash2, Plus, Pencil, Save, X, Link2, BookOpen } from "lucide-react";
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
 import {
   calcCostBreakdown,
@@ -15,6 +21,17 @@ import {
   DEFAULT_COST_RATIO,
 } from "@/lib/product-cost";
 import { getAllMatrixRows } from "@/lib/contact-meta";
+
+interface MasterMaterial {
+  id: string;
+  code: string | null;
+  name: string;
+  category: string;
+  unitPrice: number;
+  unitType: string;
+  defaultYield: number | null;
+  active: boolean;
+}
 
 interface CostStep {
   id: string;
@@ -26,6 +43,7 @@ interface CostStep {
 
 interface Material {
   id: string;
+  materialId: string | null;
   name: string;
   category: string;
   unitPrice: number;
@@ -63,6 +81,7 @@ const UNIT_TYPES = [
 export function ProductDetail({ productId }: { productId: string }) {
   const [product, setProduct] = useState<Product | null>(null);
   const [editBasic, setEditBasic] = useState(false);
+  const [pickerCategory, setPickerCategory] = useState<"fabric" | "other" | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/products/${productId}`);
@@ -148,6 +167,19 @@ export function ProductDetail({ productId }: { productId: string }) {
         yieldCount: 1,
       }),
     });
+    load();
+  }
+
+  async function addMaterialFromMaster(master: MasterMaterial) {
+    await fetch("/api/products/materials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId,
+        materialId: master.id,
+      }),
+    });
+    setPickerCategory(null);
     load();
   }
 
@@ -386,9 +418,14 @@ export function ProductDetail({ productId }: { productId: string }) {
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">生地代金</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => addMaterial("fabric")}>
-            <Plus className="size-4 mr-1" /> 生地を追加
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPickerCategory("fabric")}>
+              <BookOpen className="size-4 mr-1" /> マスタから
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => addMaterial("fabric")}>
+              <Plus className="size-4 mr-1" /> 手入力
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <MaterialTable
@@ -405,9 +442,14 @@ export function ProductDetail({ productId }: { productId: string }) {
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">その他資材費</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => addMaterial("other")}>
-            <Plus className="size-4 mr-1" /> 資材を追加
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPickerCategory("other")}>
+              <BookOpen className="size-4 mr-1" /> マスタから
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => addMaterial("other")}>
+              <Plus className="size-4 mr-1" /> 手入力
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <MaterialTable
@@ -419,7 +461,121 @@ export function ProductDetail({ productId }: { productId: string }) {
           />
         </CardContent>
       </Card>
+
+      <MaterialPickerDialog
+        category={pickerCategory}
+        onClose={() => setPickerCategory(null)}
+        onPick={addMaterialFromMaster}
+        existingMaterialIds={product.materials.map((m) => m.materialId).filter((x): x is string => !!x)}
+      />
     </div>
+  );
+}
+
+// ─── 資材マスタピッカー ───
+function MaterialPickerDialog({
+  category,
+  onClose,
+  onPick,
+  existingMaterialIds,
+}: {
+  category: "fabric" | "other" | null;
+  onClose: () => void;
+  onPick: (m: MasterMaterial) => void;
+  existingMaterialIds: string[];
+}) {
+  const [items, setItems] = useState<MasterMaterial[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!category) return;
+    setLoading(true);
+    const params = new URLSearchParams();
+    params.set("category", category);
+    if (search) params.set("search", search);
+    fetch(`/api/materials?${params}`)
+      .then((r) => r.json())
+      .then((d) => setItems(d))
+      .finally(() => setLoading(false));
+  }, [category, search]);
+
+  const open = !!category;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {category === "fabric" ? "生地" : "資材"}を選択
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Input
+            placeholder="名前・コードで検索"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="max-h-96 overflow-y-auto border rounded-md">
+            {loading ? (
+              <p className="text-center py-4 text-gray-400 text-sm">読み込み中...</p>
+            ) : items.length === 0 ? (
+              <div className="text-center py-6 text-sm text-gray-400">
+                <p>登録された{category === "fabric" ? "生地" : "資材"}がありません</p>
+                <Link href="/materials" className="text-blue-600 hover:underline text-xs mt-1 inline-block">
+                  資材マスタで登録 →
+                </Link>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b sticky top-0">
+                  <tr>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-500">名前</th>
+                    <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24">単価</th>
+                    <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-20">取れ数</th>
+                    <th className="px-2 py-1.5 w-16"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {items.map((m) => {
+                    const used = existingMaterialIds.includes(m.id);
+                    return (
+                      <tr key={m.id} className="hover:bg-gray-50">
+                        <td className="px-2 py-1.5">
+                          <div className="font-medium">{m.name}</div>
+                          {m.code && <div className="font-mono text-[10px] text-gray-400">{m.code}</div>}
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          {m.unitPrice.toLocaleString()}円/{m.unitType === "meter" ? "m" : m.unitType === "set" ? "セット" : "個"}
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-gray-600">
+                          {m.defaultYield ?? "-"}
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          <Button
+                            size="sm"
+                            variant={used ? "outline" : "default"}
+                            onClick={() => onPick(m)}
+                            disabled={used}
+                            className="h-7 px-2 text-xs"
+                          >
+                            {used ? "登録済" : "追加"}
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <p className="text-xs text-gray-400">
+            <Link href="/materials" className="text-blue-600 hover:underline">資材マスタ</Link>
+            で新規登録・編集できます
+          </p>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -724,12 +880,17 @@ function MaterialRow({
   return (
     <tr>
       <td className="px-3 py-1">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name !== material.name && commit("name", name)}
-          className="w-full px-2 py-1 text-sm border rounded"
-        />
+        <div className="flex items-center gap-1">
+          {material.materialId && (
+            <Link2 className="size-3 text-blue-500 shrink-0" aria-label="マスタ連動" />
+          )}
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name !== material.name && commit("name", name)}
+            className="w-full px-2 py-1 text-sm border rounded"
+          />
+        </div>
       </td>
       <td className="px-3 py-1">
         <input

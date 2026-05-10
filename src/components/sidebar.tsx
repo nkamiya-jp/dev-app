@@ -22,6 +22,7 @@ import {
   Lightbulb,
   TrendingUp,
   CalendarDays,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +66,7 @@ const navSections = [
     label: "マスタ",
     items: [
       { href: "/products", label: "商品", icon: Package },
+      { href: "/materials", label: "資材", icon: Layers },
       { href: "/contacts", label: "顧客", icon: Users },
       { href: "/members", label: "スタッフ", icon: UserCircle },
     ],
