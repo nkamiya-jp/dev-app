@@ -12,9 +12,9 @@ import {
   calcCostBreakdown,
   calcGrossProfit,
   calcRetailFromCost,
-  buildPriceMatrix,
   DEFAULT_COST_RATIO,
 } from "@/lib/product-cost";
+import { getAllMatrixRows } from "@/lib/contact-meta";
 
 interface CostStep {
   id: string;
@@ -85,12 +85,17 @@ export function ProductDetail({ productId }: { productId: string }) {
   const sellPrice = product.wholesalePrice ?? 0;
   const { profit, rate } = calcGrossProfit(breakdown.total, sellPrice);
 
-  // 上代と卸価格マトリクス
+  // 上代と卸価格マトリクス（顧客タイプ別の掛率を使用）
   const cost = breakdown.total;
   const costRatio = product.costRatio ?? DEFAULT_COST_RATIO;
   const retail = product.retailPrice ?? 0;
   const actualCostRatio = retail > 0 ? cost / retail : 0;
-  const priceMatrix = retail > 0 ? buildPriceMatrix(retail, cost) : [];
+  const matrixRows = retail > 0 ? getAllMatrixRows().map((r) => {
+    const price = Math.round(retail * r.ratePct / 100);
+    const profit = price - cost;
+    const profitRate = price > 0 ? (profit / price) * 100 : 0;
+    return { ...r, price, profit, profitRate };
+  }) : [];
   const suggestedRetail = calcRetailFromCost(cost, costRatio);
 
   async function saveBasic(data: Partial<Product>) {
@@ -297,23 +302,30 @@ export function ProductDetail({ productId }: { productId: string }) {
             onSaveCostRatio={(v) => saveBasic({ costRatio: v })}
           />
 
-          {priceMatrix.length > 0 ? (
+          {matrixRows.length > 0 ? (
             <div className="mt-4">
-              <p className="text-sm text-gray-500 mb-2">顧客掛率別の卸価格と粗利</p>
+              <p className="text-sm text-gray-500 mb-2">取引タイプ別の販売価格と粗利</p>
               <table className="w-full text-sm border">
                 <thead className="bg-gray-50 border-b">
                   <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500 border-r min-w-[140px]">取引タイプ</th>
                     <th className="text-center px-3 py-2 font-medium text-gray-500 border-r w-20">掛率</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">卸価格</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">販売価格</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">粗利</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500">粗利率</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {priceMatrix.map((row) => (
-                    <tr key={row.rate} className="hover:bg-gray-50">
+                  {matrixRows.map((row, idx) => (
+                    <tr key={`${row.typeId}-${row.ratePct}-${idx}`} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 border-r">
+                        <Badge className={`text-xs ${row.color}`}>{row.typeLabel}</Badge>
+                        {row.kind === "markup" && (
+                          <span className="ml-1 text-[10px] text-orange-600">↑</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-center font-medium border-r">{row.ratePct}%</td>
-                      <td className="px-3 py-2 text-right font-bold border-r">{row.wholesalePrice.toLocaleString()}円</td>
+                      <td className="px-3 py-2 text-right font-bold border-r">{row.price.toLocaleString()}円</td>
                       <td className={`px-3 py-2 text-right font-medium border-r ${row.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
                         {row.profit.toLocaleString()}円
                       </td>
@@ -325,11 +337,11 @@ export function ProductDetail({ productId }: { productId: string }) {
                 </tbody>
               </table>
               <p className="text-xs text-gray-400 mt-2">
-                ※ 卸価格 = 上代 × 掛率 / 粗利 = 卸価格 − 原価
+                ※ 販売価格 = 上代 × 掛率 / 粗利 = 販売価格 − 原価 / ↑ = 上代より高い価格設定（マークアップ）
               </p>
             </div>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-4 mt-2">上代を設定すると掛率別の卸価格が表示されます</p>
+            <p className="text-sm text-gray-400 text-center py-4 mt-2">上代を設定すると取引タイプ別の販売価格が表示されます</p>
           )}
         </CardContent>
       </Card>
