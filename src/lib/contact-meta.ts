@@ -42,6 +42,22 @@ export const CONTACT_TYPES: ContactTypeMeta[] = [
     description: "海外卸先（未定）",
   },
   {
+    id: "overseas_retail",
+    label: "海外小売",
+    color: "bg-teal-100 text-teal-700",
+    defaultRate: null,
+    kind: "discount",
+    description: "海外の小売店",
+  },
+  {
+    id: "custom_order",
+    label: "別注",
+    color: "bg-violet-100 text-violet-700",
+    defaultRate: null,
+    kind: "none",
+    description: "別注品の取引先（個別単価）",
+  },
+  {
     id: "sd",
     label: "SD",
     color: "bg-purple-100 text-purple-700",
