@@ -50,14 +50,33 @@ export default function MaterialsPage() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Material | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setError(null);
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (categoryFilter) params.set("category", categoryFilter);
     params.set("includeInactive", "1");
-    const res = await fetch(`/api/materials?${params}`);
-    setItems(await res.json());
+    try {
+      const res = await fetch(`/api/materials?${params}`);
+      if (!res.ok) {
+        const text = await res.text();
+        setError(`API ${res.status}: ${text.slice(0, 200)}`);
+        setItems([]);
+        return;
+      }
+      const data = await res.json();
+      if (!Array.isArray(data)) {
+        setError(`想定外のレスポンス: ${JSON.stringify(data).slice(0, 200)}`);
+        setItems([]);
+        return;
+      }
+      setItems(data);
+    } catch (e) {
+      setError(`通信エラー: ${e instanceof Error ? e.message : String(e)}`);
+      setItems([]);
+    }
   }, [search, categoryFilter]);
 
   useEffect(() => {
@@ -137,6 +156,14 @@ export default function MaterialsPage() {
         </div>
       </div>
 
+      {error && (
+        <Card className="bg-red-50 border-red-200 shadow-sm">
+          <CardContent className="py-4 text-sm text-red-700">
+            <p className="font-medium mb-1">読み込みに失敗しました</p>
+            <p className="text-xs font-mono">{error}</p>
+          </CardContent>
+        </Card>
+      )}
       {items.length === 0 ? (
         <Card className="bg-white shadow-sm">
           <CardContent className="py-12 text-center text-gray-400">
