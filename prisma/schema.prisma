@@ -88,7 +88,9 @@ model Product {
   series          String?      // 西陣 | 友禅 | 伊勢 | その他
   size            String?      // 2.6寸, 3.3寸 など
   wholesalePrice  Int?         // 卸単価（税抜）
-  workerCost      Int?         // 内職単価
+  workerCost      Int?         // [legacy] 旧 内職単価（後方互換用）
+  salesCost       Int?         // 営業費（個あたり）
+  packagingCost   Int?         // 梱包費（個あたり）
   description     String?
   active          Boolean      @default(true)
   createdAt       DateTime     @default(now())
@@ -99,6 +101,35 @@ model Product {
   inventory       Inventory?
   developments    Development[]
   forecasts       ProductForecast[]
+  costSteps       ProductCostStep[]
+  materials       ProductMaterial[]
+}
+
+model ProductCostStep {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  step      String   // 工程名 例: 裁断 / 縫製 / 仕上げ
+  unitCost  Int      // 1個あたり単価
+  sortOrder Int      @default(0)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProductMaterial {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String   // 例: 西陣裂A、ボタン、糸
+  category   String   @default("other")  // "fabric" | "other"
+  unitPrice  Int      // 単価
+  unitType   String   @default("piece")  // "meter" | "piece" | "set"
+  yieldCount Int      @default(1)        // 1単位から取れる個数
+  sortOrder  Int      @default(0)
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Order {

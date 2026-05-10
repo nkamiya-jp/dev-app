@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -285,11 +286,11 @@ function ProductGroup({
           <Card key={p.id} className={`bg-white shadow-sm hover:shadow-md transition-shadow ${!p.active ? "opacity-50" : ""}`}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between mb-2">
-                <div className="flex-1 min-w-0">
+                <Link href={`/products/${p.id}`} className="flex-1 min-w-0 group hover:underline">
                   <p className="text-xs text-gray-500 font-mono">{p.code}</p>
                   <p className="font-medium truncate">{p.name}</p>
                   {p.size && <p className="text-xs text-gray-400 mt-0.5">{p.size}</p>}
-                </div>
+                </Link>
                 <button
                   onClick={() => onEdit(p)}
                   className="text-gray-400 hover:text-gray-700 p-1 -m-1"
