@@ -140,15 +140,26 @@ model Material {
   id           String   @id @default(cuid())
   code         String?  @unique
   name         String
-  category     String   @default("other")  // "fabric" | "other"
+  category     String   @default("その他")  // MaterialCategory.name を保存
   unitPrice    Int
-  unitType     String   @default("piece")  // "meter" | "piece" | "set"
-  defaultYield Int?
+  unitType     String   @default("piece")   // "meter" | "piece" | "set"
+  defaultYield Int?     // [legacy] 未使用
   active       Boolean  @default(true)
   note         String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   productMaterials ProductMaterial[]
+}
+
+model MaterialCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("bg-gray-100 text-gray-700")
+  unitType  String   @default("piece")  // このカテゴリのデフォルト単位
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Order {
