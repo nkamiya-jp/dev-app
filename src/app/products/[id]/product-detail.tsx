@@ -64,6 +64,9 @@ interface Product {
   workerCost: number | null;
   salesCost: number | null;
   packagingCost: number | null;
+  shippingCost: number | null;
+  outboundCost: number | null;
+  mgmtCost: number | null;
   description: string | null;
   active: boolean;
   costSteps: CostStep[];
@@ -97,6 +100,9 @@ export function ProductDetail({ productId }: { productId: string }) {
   const breakdown = calcCostBreakdown({
     salesCost: product.salesCost,
     packagingCost: product.packagingCost,
+    shippingCost: product.shippingCost,
+    outboundCost: product.outboundCost,
+    mgmtCost: product.mgmtCost,
     costSteps: product.costSteps,
     materials: product.materials,
   });
@@ -201,8 +207,8 @@ export function ProductDetail({ productId }: { productId: string }) {
     load();
   }
 
-  const fabricMaterials = product.materials.filter((m) => m.category === "fabric");
-  const otherMaterials = product.materials.filter((m) => m.category !== "fabric");
+  const fabricMaterials = product.materials.filter((m) => m.category === "fabric" || m.category === "生地");
+  const otherMaterials = product.materials.filter((m) => m.category !== "fabric" && m.category !== "生地");
 
   return (
     <div className="space-y-4">
@@ -240,16 +246,30 @@ export function ProductDetail({ productId }: { productId: string }) {
                 <p className="font-bold text-lg">{product.wholesalePrice ? `${product.wholesalePrice.toLocaleString()}円` : "-"}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">営業費</p>
-                <p className="font-medium">{product.salesCost ? `${product.salesCost.toLocaleString()}円` : "-"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">梱包費</p>
-                <p className="font-medium">{product.packagingCost ? `${product.packagingCost.toLocaleString()}円` : "-"}</p>
-              </div>
-              <div>
                 <p className="text-xs text-gray-500">在庫</p>
                 <p className="font-medium">{product.inventory?.stock ?? 0}</p>
+              </div>
+              <div className="col-span-2 md:col-span-4 grid grid-cols-3 md:grid-cols-5 gap-3 mt-1 pt-3 border-t">
+                <div>
+                  <p className="text-xs text-gray-500">営業費</p>
+                  <p className="font-medium text-sm">{product.salesCost ? `${product.salesCost.toLocaleString()}円` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">梱包費</p>
+                  <p className="font-medium text-sm">{product.packagingCost ? `${product.packagingCost.toLocaleString()}円` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">運賃</p>
+                  <p className="font-medium text-sm">{product.shippingCost ? `${product.shippingCost.toLocaleString()}円` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">出荷費</p>
+                  <p className="font-medium text-sm">{product.outboundCost ? `${product.outboundCost.toLocaleString()}円` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">制作管理</p>
+                  <p className="font-medium text-sm">{product.mgmtCost ? `${product.mgmtCost.toLocaleString()}円` : "-"}</p>
+                </div>
               </div>
               {product.description && (
                 <div className="col-span-2 md:col-span-4">
@@ -268,7 +288,7 @@ export function ProductDetail({ productId }: { productId: string }) {
           <CardTitle className="text-lg">原価サマリー（1個あたり）</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="border-l-4 border-l-gray-400 pl-3">
               <p className="text-xs text-gray-500">営業費</p>
               <p className="font-bold">{breakdown.salesCost.toLocaleString()}円</p>
@@ -276,6 +296,18 @@ export function ProductDetail({ productId }: { productId: string }) {
             <div className="border-l-4 border-l-gray-400 pl-3">
               <p className="text-xs text-gray-500">梱包費</p>
               <p className="font-bold">{breakdown.packagingCost.toLocaleString()}円</p>
+            </div>
+            <div className="border-l-4 border-l-gray-400 pl-3">
+              <p className="text-xs text-gray-500">運賃</p>
+              <p className="font-bold">{breakdown.shippingCost.toLocaleString()}円</p>
+            </div>
+            <div className="border-l-4 border-l-gray-400 pl-3">
+              <p className="text-xs text-gray-500">出荷費</p>
+              <p className="font-bold">{breakdown.outboundCost.toLocaleString()}円</p>
+            </div>
+            <div className="border-l-4 border-l-gray-400 pl-3">
+              <p className="text-xs text-gray-500">制作管理</p>
+              <p className="font-bold">{breakdown.mgmtCost.toLocaleString()}円</p>
             </div>
             <div className="border-l-4 border-l-blue-500 pl-3">
               <p className="text-xs text-gray-500">制作代金</p>
@@ -289,7 +321,7 @@ export function ProductDetail({ productId }: { productId: string }) {
               <p className="text-xs text-gray-500">その他資材費</p>
               <p className="font-bold">{Math.round(breakdown.otherMaterialCost).toLocaleString()}円</p>
             </div>
-            <div className="border-l-4 border-l-red-500 pl-3 col-span-2 md:col-span-3 bg-red-50/30 rounded-r p-2">
+            <div className="border-l-4 border-l-red-500 pl-3 col-span-2 md:col-span-4 bg-red-50/30 rounded-r p-2">
               <p className="text-xs text-gray-500">合計原価</p>
               <p className="font-bold text-2xl">{Math.round(breakdown.total).toLocaleString()}円</p>
             </div>
@@ -708,6 +740,9 @@ function BasicEditForm({
   const [wholesalePrice, setWholesalePrice] = useState(product.wholesalePrice?.toString() || "");
   const [salesCost, setSalesCost] = useState(product.salesCost?.toString() || "");
   const [packagingCost, setPackagingCost] = useState(product.packagingCost?.toString() || "");
+  const [shippingCost, setShippingCost] = useState(product.shippingCost?.toString() || "");
+  const [outboundCost, setOutboundCost] = useState(product.outboundCost?.toString() || "");
+  const [mgmtCost, setMgmtCost] = useState(product.mgmtCost?.toString() || "");
   const [description, setDescription] = useState(product.description || "");
   const [active, setActive] = useState(product.active);
 
@@ -723,6 +758,9 @@ function BasicEditForm({
           wholesalePrice: wholesalePrice ? Number(wholesalePrice) : null,
           salesCost: salesCost ? Number(salesCost) : null,
           packagingCost: packagingCost ? Number(packagingCost) : null,
+          shippingCost: shippingCost ? Number(shippingCost) : null,
+          outboundCost: outboundCost ? Number(outboundCost) : null,
+          mgmtCost: mgmtCost ? Number(mgmtCost) : null,
           description: description || null,
           active,
         });
@@ -762,6 +800,18 @@ function BasicEditForm({
         <div>
           <label className="text-xs text-gray-500">梱包費（円/個）</label>
           <Input type="number" value={packagingCost} onChange={(e) => setPackagingCost(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">運賃（円/個）</label>
+          <Input type="number" value={shippingCost} onChange={(e) => setShippingCost(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">出荷費（円/個）</label>
+          <Input type="number" value={outboundCost} onChange={(e) => setOutboundCost(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">制作管理費（円/個）</label>
+          <Input type="number" value={mgmtCost} onChange={(e) => setMgmtCost(e.target.value)} />
         </div>
       </div>
       <div>

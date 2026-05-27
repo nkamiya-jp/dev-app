@@ -93,6 +93,9 @@ model Product {
   workerCost      Int?         // [legacy] 旧 内職単価（後方互換用）
   salesCost       Int?         // 営業費（個あたり）
   packagingCost   Int?         // 梱包費（個あたり）
+  shippingCost    Int?         // 運賃（個あたり）
+  outboundCost    Int?         // 出荷費（個あたり）
+  mgmtCost        Int?         // 制作管理費（個あたり）
   description     String?
   active          Boolean      @default(true)
   createdAt       DateTime     @default(now())

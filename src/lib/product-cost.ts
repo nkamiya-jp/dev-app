@@ -18,6 +18,9 @@ export interface Material {
 export interface ProductCostInput {
   salesCost?: number | null;
   packagingCost?: number | null;
+  shippingCost?: number | null;  // 運賃（個あたり）
+  outboundCost?: number | null;  // 出荷費（個あたり）
+  mgmtCost?: number | null;      // 制作管理費（個あたり）
   costSteps?: CostStep[];
   materials?: Material[];
 }
@@ -25,6 +28,9 @@ export interface ProductCostInput {
 export interface CostBreakdown {
   salesCost: number;
   packagingCost: number;
+  shippingCost: number;
+  outboundCost: number;
+  mgmtCost: number;
   productionCost: number; // 制作代金合計
   fabricCost: number; // 生地代金合計
   otherMaterialCost: number; // その他資材費合計
@@ -42,6 +48,9 @@ export function calcMaterialPerPiece(m: Material): number {
 export function calcCostBreakdown(input: ProductCostInput): CostBreakdown {
   const salesCost = input.salesCost ?? 0;
   const packagingCost = input.packagingCost ?? 0;
+  const shippingCost = input.shippingCost ?? 0;
+  const outboundCost = input.outboundCost ?? 0;
+  const mgmtCost = input.mgmtCost ?? 0;
 
   const stepBreakdown = (input.costSteps ?? []).map((s) => ({
     step: s.step,
@@ -54,18 +63,24 @@ export function calcCostBreakdown(input: ProductCostInput): CostBreakdown {
     perPiece: calcMaterialPerPiece(m),
     category: m.category,
   }));
+  // 「生地」カテゴリは fabric として扱う（後方互換のため "fabric" 文字列も維持）
   const fabricCost = materialBreakdown
-    .filter((m) => m.category === "fabric")
+    .filter((m) => m.category === "fabric" || m.category === "生地")
     .reduce((s, m) => s + m.perPiece, 0);
   const otherMaterialCost = materialBreakdown
-    .filter((m) => m.category !== "fabric")
+    .filter((m) => m.category !== "fabric" && m.category !== "生地")
     .reduce((s, m) => s + m.perPiece, 0);
 
-  const total = salesCost + packagingCost + productionCost + fabricCost + otherMaterialCost;
+  const total =
+    salesCost + packagingCost + shippingCost + outboundCost + mgmtCost +
+    productionCost + fabricCost + otherMaterialCost;
 
   return {
     salesCost,
     packagingCost,
+    shippingCost,
+    outboundCost,
+    mgmtCost,
     productionCost,
     fabricCost,
     otherMaterialCost,
