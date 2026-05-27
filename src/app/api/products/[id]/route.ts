@@ -9,15 +9,26 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const product = await prisma.product.findUnique({
+  const productRaw = await prisma.product.findUnique({
     where: { id },
     include: {
       costSteps: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
-      materials: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+      materials: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        include: { material: { select: { fabricWidth: true } } },
+      },
       inventory: true,
     },
   });
-  if (!product) return Response.json({ error: "Not found" }, { status: 404 });
+  if (!productRaw) return Response.json({ error: "Not found" }, { status: 404 });
+  // material リレーション の fabricWidth をフラットに展開
+  const product = {
+    ...productRaw,
+    materials: productRaw.materials.map((m) => ({
+      ...m,
+      fabricWidth: m.material?.fabricWidth ?? null,
+    })),
+  };
   return Response.json(product);
 }
 
@@ -44,6 +55,8 @@ export async function PUT(
       ...(data.shippingCost !== undefined && { shippingCost: data.shippingCost }),
       ...(data.outboundCost !== undefined && { outboundCost: data.outboundCost }),
       ...(data.mgmtCost !== undefined && { mgmtCost: data.mgmtCost }),
+      ...(data.cutHeight !== undefined && { cutHeight: data.cutHeight }),
+      ...(data.cutWidth !== undefined && { cutWidth: data.cutWidth }),
       ...(data.description !== undefined && { description: data.description || null }),
       ...(data.active !== undefined && { active: data.active }),
     },

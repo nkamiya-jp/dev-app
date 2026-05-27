@@ -96,6 +96,8 @@ model Product {
   shippingCost    Int?         // 運賃（個あたり）
   outboundCost    Int?         // 出荷費（個あたり）
   mgmtCost        Int?         // 制作管理費（個あたり）
+  cutHeight       Int?         // 裁断 縦 (cm)
+  cutWidth        Int?         // 裁断 横 (cm)
   description     String?
   active          Boolean      @default(true)
   createdAt       DateTime     @default(now())
@@ -132,7 +134,8 @@ model ProductMaterial {
   category   String    @default("other")  // "fabric" | "other"
   unitPrice  Int       // 単価
   unitType   String    @default("piece")  // "meter" | "piece" | "set"
-  yieldCount Int       @default(1)        // 1単位から取れる個数
+  yieldCount Int       @default(1)        // 1単位から取れる個数（裁断計算で上書きされる）
+  pairId     String?   // 表地と裏地（不織）をペアで管理（同じ裁断で連動）
   sortOrder  Int       @default(0)
   note       String?
   createdAt  DateTime  @default(now())
@@ -147,6 +150,7 @@ model Material {
   unitPrice    Int
   unitType     String   @default("piece")   // "meter" | "piece" | "set"
   defaultYield Int?     // [legacy] 未使用
+  fabricWidth  Int?     // 生地の巾 (cm) - 生地カテゴリのみ使用
   active       Boolean  @default(true)
   note         String?
   createdAt    DateTime @default(now())

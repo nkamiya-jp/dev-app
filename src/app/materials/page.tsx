@@ -34,6 +34,7 @@ interface Material {
   category: string;
   unitPrice: number;
   unitType: string;
+  fabricWidth: number | null;
   active: boolean;
   note: string | null;
   _count: { productMaterials: number };
@@ -412,8 +413,10 @@ function MaterialForm({
   const [unitType, setUnitType] = useState(
     material?.unitType || activeCats.find((c) => c.name === (material?.category || activeCats[0]?.name))?.unitType || "piece"
   );
+  const [fabricWidth, setFabricWidth] = useState(material?.fabricWidth?.toString() || "");
   const [active, setActive] = useState(material?.active ?? true);
   const [note, setNote] = useState(material?.note || "");
+  const isFabric = category === "生地" || category === "fabric";
 
   function handleCategoryChange(newCat: string) {
     setCategory(newCat);
@@ -434,6 +437,7 @@ function MaterialForm({
           category,
           unitPrice: unitPrice ? Number(unitPrice) : 0,
           unitType,
+          fabricWidth: isFabric && fabricWidth ? Number(fabricWidth) : null,
           active,
           note: note || null,
         });
@@ -476,6 +480,20 @@ function MaterialForm({
           </select>
         </div>
       </div>
+      {isFabric && (
+        <div>
+          <label className="text-xs text-gray-500">生地巾（cm）</label>
+          <Input
+            type="number"
+            value={fabricWidth}
+            onChange={(e) => setFabricWidth(e.target.value)}
+            placeholder="例: 72"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            ※ 商品の裁断寸法と組み合わせて、取れ数を自動計算します
+          </p>
+        </div>
+      )}
       <p className="text-xs text-gray-400 -mt-1">
         ※ 取れ数（1単位から何個取れるか）は商品ごとに異なるため、商品詳細画面で個別に設定します
       </p>

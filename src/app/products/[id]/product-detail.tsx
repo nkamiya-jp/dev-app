@@ -21,6 +21,7 @@ import {
   DEFAULT_COST_RATIO,
 } from "@/lib/product-cost";
 import { getAllMatrixRows } from "@/lib/contact-meta";
+import { calcYieldPerMeter, describeYield } from "@/lib/cutting-calc";
 
 interface MasterMaterial {
   id: string;
@@ -29,6 +30,7 @@ interface MasterMaterial {
   category: string;
   unitPrice: number;
   unitType: string;
+  fabricWidth: number | null;
   active: boolean;
 }
 
@@ -48,6 +50,7 @@ interface Material {
   unitPrice: number;
   unitType: string;
   yieldCount: number;
+  fabricWidth?: number | null;  // 連動した資材マスタの巾（生地）
   sortOrder: number;
   note: string | null;
 }
@@ -67,6 +70,8 @@ interface Product {
   shippingCost: number | null;
   outboundCost: number | null;
   mgmtCost: number | null;
+  cutHeight: number | null;
+  cutWidth: number | null;
   description: string | null;
   active: boolean;
   costSteps: CostStep[];
@@ -271,6 +276,24 @@ export function ProductDetail({ productId }: { productId: string }) {
                   <p className="font-medium text-sm">{product.mgmtCost ? `${product.mgmtCost.toLocaleString()}円` : "-"}</p>
                 </div>
               </div>
+              <div className="col-span-2 md:col-span-4 grid grid-cols-2 gap-3 mt-1 pt-3 border-t">
+                <div>
+                  <p className="text-xs text-gray-500">裁断 縦 × 横 (cm)</p>
+                  <p className="font-medium text-sm">
+                    {product.cutHeight && product.cutWidth
+                      ? `${product.cutHeight} × ${product.cutWidth} cm`
+                      : "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">→ 1m取れ数の目安</p>
+                  <p className="text-xs text-gray-600">
+                    {product.cutHeight && product.cutWidth
+                      ? "生地を追加時に巾と組み合わせて計算"
+                      : "縦/横を設定してください"}
+                  </p>
+                </div>
+              </div>
               {product.description && (
                 <div className="col-span-2 md:col-span-4">
                   <p className="text-xs text-gray-500">備考</p>
@@ -356,6 +379,36 @@ export function ProductDetail({ productId }: { productId: string }) {
           <CardTitle className="text-lg">上代・卸価格</CardTitle>
         </CardHeader>
         <CardContent>
+          {/* 計算フロー図 */}
+          <div className="mb-4 p-3 bg-blue-50/50 rounded border border-blue-100 text-xs text-gray-600">
+            <p className="font-medium text-gray-700 mb-1">📐 計算の流れ</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono bg-white px-2 py-0.5 rounded border">
+                原価 {Math.round(cost).toLocaleString()}円
+              </span>
+              <span>÷</span>
+              <span className="font-mono bg-white px-2 py-0.5 rounded border">
+                原価率 {(costRatio * 100).toFixed(0)}%
+              </span>
+              <span>=</span>
+              <span className="font-mono bg-white px-2 py-0.5 rounded border">
+                上代の目安 {suggestedRetail.toLocaleString()}円
+              </span>
+              <span className="text-gray-400">→ 実上代</span>
+              <span className="font-mono bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                {retail.toLocaleString()}円
+              </span>
+              <span>×</span>
+              <span className="font-mono bg-white px-2 py-0.5 rounded border">
+                顧客掛率
+              </span>
+              <span>=</span>
+              <span className="font-mono bg-green-100 px-2 py-0.5 rounded border border-green-200">
+                販売価格
+              </span>
+            </div>
+          </div>
+
           <PriceSettings
             cost={cost}
             retail={retail}
@@ -374,6 +427,7 @@ export function ProductDetail({ productId }: { productId: string }) {
                   <tr>
                     <th className="text-left px-3 py-2 font-medium text-gray-500 border-r min-w-[140px]">取引タイプ</th>
                     <th className="text-center px-3 py-2 font-medium text-gray-500 border-r w-20">掛率</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">計算式</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">販売価格</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">粗利</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500">粗利率</th>
@@ -389,6 +443,9 @@ export function ProductDetail({ productId }: { productId: string }) {
                         )}
                       </td>
                       <td className="px-3 py-2 text-center font-medium border-r">{row.ratePct}%</td>
+                      <td className="px-3 py-2 text-right text-[11px] font-mono text-gray-500 border-r">
+                        {retail.toLocaleString()} × {row.ratePct}%
+                      </td>
                       <td className="px-3 py-2 text-right font-bold border-r">{row.price.toLocaleString()}円</td>
                       <td className={`px-3 py-2 text-right font-medium border-r ${row.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
                         {row.profit.toLocaleString()}円
@@ -499,6 +556,7 @@ export function ProductDetail({ productId }: { productId: string }) {
         onClose={() => setPickerCategory(null)}
         onPick={addMaterialFromMaster}
         existingMaterialIds={product.materials.map((m) => m.materialId).filter((x): x is string => !!x)}
+        productCut={{ cutHeight: product.cutHeight, cutWidth: product.cutWidth }}
       />
     </div>
   );
@@ -510,11 +568,13 @@ function MaterialPickerDialog({
   onClose,
   onPick,
   existingMaterialIds,
+  productCut,
 }: {
   category: "fabric" | "other" | null;
   onClose: () => void;
   onPick: (m: MasterMaterial, yieldCount: number) => void;
   existingMaterialIds: string[];
+  productCut: { cutHeight: number | null; cutWidth: number | null };
 }) {
   const [items, setItems] = useState<MasterMaterial[]>([]);
   const [search, setSearch] = useState("");
@@ -525,13 +585,28 @@ function MaterialPickerDialog({
     if (!category) return;
     setLoading(true);
     const params = new URLSearchParams();
-    params.set("category", category);
+    // 旧 "fabric" 引数は新カテゴリ「生地」と互換
+    const catParam = category === "fabric" ? "生地" : category;
+    params.set("category", catParam);
     if (search) params.set("search", search);
     fetch(`/api/materials?${params}`)
       .then((r) => r.json())
-      .then((d) => setItems(d))
+      .then((d) => {
+        setItems(Array.isArray(d) ? d : []);
+        // 取れ数の自動推定（裁断計算）
+        if (category === "fabric" && productCut.cutHeight && productCut.cutWidth) {
+          const auto: Record<string, string> = {};
+          for (const m of d) {
+            if (m.fabricWidth) {
+              const y = calcYieldPerMeter(productCut, { fabricWidth: m.fabricWidth });
+              if (y && y > 0) auto[m.id] = String(y);
+            }
+          }
+          setYields((prev) => ({ ...auto, ...prev }));
+        }
+      })
       .finally(() => setLoading(false));
-  }, [category, search]);
+  }, [category, search, productCut]);
 
   // ダイアログを閉じたら入力値をクリア
   useEffect(() => {
@@ -539,6 +614,7 @@ function MaterialPickerDialog({
   }, [category]);
 
   const open = !!category;
+  const hasCut = !!(productCut.cutHeight && productCut.cutWidth);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -555,7 +631,9 @@ function MaterialPickerDialog({
             onChange={(e) => setSearch(e.target.value)}
           />
           <p className="text-xs text-gray-500">
-            この商品で1単位（m/個/セット）から何個取れるかを入力してから「追加」してください
+            {category === "fabric" && hasCut
+              ? `※ 商品の裁断寸法 (${productCut.cutHeight}cm × ${productCut.cutWidth}cm) と生地巾から取れ数を自動推定済み（必要に応じて変更可）`
+              : "この商品で1単位（m/個/セット）から何個取れるかを入力してから「追加」してください"}
           </p>
           <div className="max-h-96 overflow-y-auto border rounded-md">
             {loading ? (
@@ -586,11 +664,17 @@ function MaterialPickerDialog({
                     const valid = !used && yieldStr !== "" && yieldNum > 0;
                     const perPiece = valid ? m.unitPrice / yieldNum : 0;
                     const unitLabel = m.unitType === "meter" ? "m" : m.unitType === "set" ? "セット" : "個";
+                    const autoYield = hasCut && m.fabricWidth
+                      ? calcYieldPerMeter(productCut, { fabricWidth: m.fabricWidth })
+                      : null;
                     return (
                       <tr key={m.id} className="hover:bg-gray-50">
                         <td className="px-2 py-1.5">
                           <div className="font-medium">{m.name}</div>
                           {m.code && <div className="font-mono text-[10px] text-gray-400">{m.code}</div>}
+                          {m.fabricWidth && (
+                            <div className="text-[10px] text-purple-600">巾 {m.fabricWidth}cm</div>
+                          )}
                         </td>
                         <td className="px-2 py-1.5 text-right">
                           {m.unitPrice.toLocaleString()}円/{unitLabel}
@@ -603,8 +687,13 @@ function MaterialPickerDialog({
                             onChange={(e) => setYields((p) => ({ ...p, [m.id]: e.target.value }))}
                             disabled={used}
                             placeholder="例: 50"
-                            className="w-full px-2 py-1 text-sm border rounded text-right disabled:bg-gray-100"
+                            className={`w-full px-2 py-1 text-sm border rounded text-right disabled:bg-gray-100 ${
+                              autoYield && Number(yieldStr) === autoYield ? "bg-purple-50" : ""
+                            }`}
                           />
+                          {autoYield && Number(yieldStr) === autoYield && (
+                            <div className="text-[9px] text-purple-600 text-right">自動</div>
+                          )}
                         </td>
                         <td className="px-2 py-1.5 text-right text-gray-600">
                           {valid ? `${perPiece.toFixed(1)}円` : "-"}
@@ -743,6 +832,8 @@ function BasicEditForm({
   const [shippingCost, setShippingCost] = useState(product.shippingCost?.toString() || "");
   const [outboundCost, setOutboundCost] = useState(product.outboundCost?.toString() || "");
   const [mgmtCost, setMgmtCost] = useState(product.mgmtCost?.toString() || "");
+  const [cutHeight, setCutHeight] = useState(product.cutHeight?.toString() || "");
+  const [cutWidth, setCutWidth] = useState(product.cutWidth?.toString() || "");
   const [description, setDescription] = useState(product.description || "");
   const [active, setActive] = useState(product.active);
 
@@ -761,6 +852,8 @@ function BasicEditForm({
           shippingCost: shippingCost ? Number(shippingCost) : null,
           outboundCost: outboundCost ? Number(outboundCost) : null,
           mgmtCost: mgmtCost ? Number(mgmtCost) : null,
+          cutHeight: cutHeight ? Number(cutHeight) : null,
+          cutWidth: cutWidth ? Number(cutWidth) : null,
           description: description || null,
           active,
         });
@@ -812,6 +905,14 @@ function BasicEditForm({
         <div>
           <label className="text-xs text-gray-500">制作管理費（円/個）</label>
           <Input type="number" value={mgmtCost} onChange={(e) => setMgmtCost(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">裁断 縦（cm）</label>
+          <Input type="number" value={cutHeight} onChange={(e) => setCutHeight(e.target.value)} placeholder="例: 15" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">裁断 横（cm）</label>
+          <Input type="number" value={cutWidth} onChange={(e) => setCutWidth(e.target.value)} placeholder="例: 10" />
         </div>
       </div>
       <div>

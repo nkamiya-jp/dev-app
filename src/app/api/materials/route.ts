@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       category: data.category || "other",
       unitPrice: Number(data.unitPrice) || 0,
       unitType: data.unitType || "piece",
-      // 取れ数は商品ごとに大きく変わるため、マスタには持たない
+      fabricWidth: data.fabricWidth ? Number(data.fabricWidth) : null,
       active: data.active ?? true,
       note: data.note || null,
     },
@@ -54,6 +54,7 @@ export async function PUT(request: NextRequest) {
       ...(rest.category !== undefined && { category: rest.category }),
       ...(rest.unitPrice !== undefined && { unitPrice: Number(rest.unitPrice) || 0 }),
       ...(rest.unitType !== undefined && { unitType: rest.unitType }),
+      ...(rest.fabricWidth !== undefined && { fabricWidth: rest.fabricWidth ? Number(rest.fabricWidth) : null }),
       ...(rest.active !== undefined && { active: rest.active }),
       ...(rest.note !== undefined && { note: rest.note || null }),
     },
