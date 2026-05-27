@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import Link from "next/link";
-import { Trash2, Plus, Pencil, Save, X, Link2, BookOpen } from "lucide-react";
+import { Trash2, Plus, Pencil, Save, X, Link2, BookOpen, Check } from "lucide-react";
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
 import {
   calcCostBreakdown,
@@ -943,24 +943,41 @@ function CostStepRow({
   onDelete,
 }: {
   step: CostStep;
-  onUpdate: (id: string, d: Partial<CostStep>) => void;
+  onUpdate: (id: string, d: Partial<CostStep>) => Promise<void> | void;
   onDelete: (id: string) => void;
 }) {
   const [name, setName] = useState(step.step);
   const [cost, setCost] = useState(String(step.unitCost));
   const [note, setNote] = useState(step.note || "");
 
-  function commit(field: string, value: string | number) {
-    onUpdate(step.id, { [field]: value });
+  const dirty =
+    name !== step.step ||
+    Number(cost) !== step.unitCost ||
+    note !== (step.note || "");
+
+  async function commitAll() {
+    if (!dirty) return;
+    await onUpdate(step.id, {
+      step: name,
+      unitCost: Number(cost) || 0,
+      note: note || null,
+    });
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitAll();
+    }
   }
 
   return (
-    <tr>
+    <tr className={dirty ? "bg-amber-50/40" : ""}>
       <td className="px-3 py-1">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onBlur={() => name !== step.step && commit("step", name)}
+          onKeyDown={handleKey}
           className="w-full px-2 py-1 text-sm border rounded"
         />
       </td>
@@ -969,7 +986,7 @@ function CostStepRow({
           type="number"
           value={cost}
           onChange={(e) => setCost(e.target.value)}
-          onBlur={() => Number(cost) !== step.unitCost && commit("unitCost", Number(cost))}
+          onKeyDown={handleKey}
           className="w-full px-2 py-1 text-sm border rounded text-right"
         />
       </td>
@@ -977,15 +994,25 @@ function CostStepRow({
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          onBlur={() => note !== (step.note || "") && commit("note", note)}
+          onKeyDown={handleKey}
           className="w-full px-2 py-1 text-sm border rounded"
           placeholder="（任意）"
         />
       </td>
       <td className="px-3 py-1 text-right">
-        <button onClick={() => onDelete(step.id)} className="text-red-500 hover:bg-red-50 p-1 rounded">
-          <Trash2 className="size-4" />
-        </button>
+        <div className="flex gap-1 justify-end">
+          <button
+            onClick={commitAll}
+            disabled={!dirty}
+            className={`p-1 rounded ${dirty ? "text-white bg-amber-500 hover:bg-amber-600" : "text-gray-300 cursor-not-allowed"}`}
+            title="確定"
+          >
+            <Check className="size-4" />
+          </button>
+          <button onClick={() => onDelete(step.id)} className="text-red-500 hover:bg-red-50 p-1 rounded" title="削除">
+            <Trash2 className="size-4" />
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -1040,7 +1067,7 @@ function MaterialRow({
   onDelete,
 }: {
   material: Material;
-  onUpdate: (id: string, d: Partial<Material>) => void;
+  onUpdate: (id: string, d: Partial<Material>) => Promise<void> | void;
   onDelete: (id: string) => void;
 }) {
   const [name, setName] = useState(material.name);
@@ -1048,14 +1075,33 @@ function MaterialRow({
   const [unitType, setUnitType] = useState(material.unitType);
   const [yieldCount, setYieldCount] = useState(String(material.yieldCount));
 
-  function commit(field: string, value: string | number) {
-    onUpdate(material.id, { [field]: value });
+  const dirty =
+    name !== material.name ||
+    Number(unitPrice) !== material.unitPrice ||
+    unitType !== material.unitType ||
+    Number(yieldCount) !== material.yieldCount;
+
+  async function commitAll() {
+    if (!dirty) return;
+    await onUpdate(material.id, {
+      name,
+      unitPrice: Number(unitPrice) || 0,
+      unitType,
+      yieldCount: Number(yieldCount) || 1,
+    });
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitAll();
+    }
   }
 
   const perPiece = Number(unitPrice) / (Number(yieldCount) || 1);
 
   return (
-    <tr>
+    <tr className={dirty ? "bg-amber-50/40" : ""}>
       <td className="px-3 py-1">
         <div className="flex items-center gap-1">
           {material.materialId && (
@@ -1064,7 +1110,7 @@ function MaterialRow({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onBlur={() => name !== material.name && commit("name", name)}
+            onKeyDown={handleKey}
             className="w-full px-2 py-1 text-sm border rounded"
           />
         </div>
@@ -1074,17 +1120,14 @@ function MaterialRow({
           type="number"
           value={unitPrice}
           onChange={(e) => setUnitPrice(e.target.value)}
-          onBlur={() => Number(unitPrice) !== material.unitPrice && commit("unitPrice", Number(unitPrice))}
+          onKeyDown={handleKey}
           className="w-full px-2 py-1 text-sm border rounded text-right"
         />
       </td>
       <td className="px-3 py-1">
         <select
           value={unitType}
-          onChange={(e) => {
-            setUnitType(e.target.value);
-            commit("unitType", e.target.value);
-          }}
+          onChange={(e) => setUnitType(e.target.value)}
           className="w-full px-1 py-1 text-sm border rounded"
         >
           {UNIT_TYPES.map((u) => (
@@ -1097,7 +1140,7 @@ function MaterialRow({
           type="number"
           value={yieldCount}
           onChange={(e) => setYieldCount(e.target.value)}
-          onBlur={() => Number(yieldCount) !== material.yieldCount && commit("yieldCount", Number(yieldCount))}
+          onKeyDown={handleKey}
           className="w-full px-2 py-1 text-sm border rounded text-right"
         />
       </td>
@@ -1105,9 +1148,19 @@ function MaterialRow({
         {perPiece.toFixed(1)}円
       </td>
       <td className="px-3 py-1 text-right">
-        <button onClick={() => onDelete(material.id)} className="text-red-500 hover:bg-red-50 p-1 rounded">
-          <Trash2 className="size-4" />
-        </button>
+        <div className="flex gap-1 justify-end">
+          <button
+            onClick={commitAll}
+            disabled={!dirty}
+            className={`p-1 rounded ${dirty ? "text-white bg-amber-500 hover:bg-amber-600" : "text-gray-300 cursor-not-allowed"}`}
+            title="確定"
+          >
+            <Check className="size-4" />
+          </button>
+          <button onClick={() => onDelete(material.id)} className="text-red-500 hover:bg-red-50 p-1 rounded" title="削除">
+            <Trash2 className="size-4" />
+          </button>
+        </div>
       </td>
     </tr>
   );
