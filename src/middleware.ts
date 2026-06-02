@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// 認証は一時的に無効化中（ベータ運用のため）
+// 復活させる時は AUTH_ENABLED を true に戻す
+const AUTH_ENABLED = false;
+
 const PUBLIC_PATHS = ["/login", "/api/auth", "/_next", "/icons", "/manifest.json", "/sw.js", "/offline"];
 
 export function middleware(request: NextRequest) {
+  if (!AUTH_ENABLED) {
+    return NextResponse.next();
+  }
+
   const { pathname } = request.nextUrl;
 
   // 公開パスはスルー
