@@ -21,12 +21,27 @@ export async function GET(
     },
   });
   if (!productRaw) return Response.json({ error: "Not found" }, { status: 404 });
-  // material リレーション の fabricWidth をフラットに展開
+
+  // カテゴリ階層を読み込み、leaf → top のマッピングを作る
+  const cats = await prisma.materialCategory.findMany();
+  const byId = new Map(cats.map((c) => [c.id, c]));
+  function getTopName(leafName: string): string {
+    let cur = cats.find((c) => c.name === leafName);
+    while (cur && cur.parentId) {
+      const p = byId.get(cur.parentId);
+      if (!p) break;
+      cur = p;
+    }
+    return cur?.name ?? leafName;
+  }
+
+  // material リレーション の fabricWidth と topCategory をフラットに展開
   const product = {
     ...productRaw,
     materials: productRaw.materials.map((m) => ({
       ...m,
       fabricWidth: m.material?.fabricWidth ?? null,
+      topCategory: getTopName(m.category),
     })),
   };
   return Response.json(product);

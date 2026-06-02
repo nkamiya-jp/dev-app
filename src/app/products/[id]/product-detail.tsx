@@ -38,6 +38,7 @@ interface CostStep {
   id: string;
   step: string;
   unitCost: number;
+  category: string;  // "制作費" | "裁断費"
   sortOrder: number;
   note: string | null;
 }
@@ -46,7 +47,8 @@ interface Material {
   id: string;
   materialId: string | null;
   name: string;
-  category: string;
+  category: string;       // leaf カテゴリ名（表地, 口金, 梱包資材 など）
+  topCategory?: string;   // 大分類（生地費, 資材費, 梱包資材費）
   unitPrice: number;
   unitType: string;
   yieldCount: number;
@@ -88,7 +90,8 @@ const UNIT_TYPES = [
 export function ProductDetail({ productId }: { productId: string }) {
   const [product, setProduct] = useState<Product | null>(null);
   const [editBasic, setEditBasic] = useState(false);
-  const [pickerCategory, setPickerCategory] = useState<"fabric" | "other" | null>(null);
+  type PickerGroup = "生地費" | "資材費" | "梱包資材費";
+  const [pickerCategory, setPickerCategory] = useState<PickerGroup | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/products/${productId}`);
@@ -137,11 +140,11 @@ export function ProductDetail({ productId }: { productId: string }) {
     load();
   }
 
-  async function addStep() {
+  async function addStep(category: "制作費" | "裁断費" = "制作費") {
     await fetch("/api/products/cost-steps", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId, step: "新工程", unitCost: 0 }),
+      body: JSON.stringify({ productId, step: category === "裁断費" ? "新裁断" : "新工程", unitCost: 0, category }),
     });
     load();
   }
@@ -164,16 +167,21 @@ export function ProductDetail({ productId }: { productId: string }) {
     load();
   }
 
-  async function addMaterial(category: "fabric" | "other") {
+  async function addMaterial(group: "生地費" | "資材費" | "梱包資材費") {
+    const meta = {
+      "生地費": { name: "新生地", category: "表地", unitType: "meter" },
+      "資材費": { name: "新資材", category: "その他", unitType: "piece" },
+      "梱包資材費": { name: "新梱包資材", category: "梱包資材", unitType: "piece" },
+    }[group];
     await fetch("/api/products/materials", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         productId,
-        name: category === "fabric" ? "新生地" : "新資材",
-        category,
+        name: meta.name,
+        category: meta.category,
         unitPrice: 0,
-        unitType: category === "fabric" ? "meter" : "piece",
+        unitType: meta.unitType,
         yieldCount: 1,
       }),
     });
@@ -212,8 +220,20 @@ export function ProductDetail({ productId }: { productId: string }) {
     load();
   }
 
-  const fabricMaterials = product.materials.filter((m) => m.category === "fabric" || m.category === "生地");
-  const otherMaterials = product.materials.filter((m) => m.category !== "fabric" && m.category !== "生地");
+  // 大分類ごとに分類
+  function isFabric(m: Material) {
+    return m.topCategory === "生地費" || m.category === "fabric" || m.category === "生地" || m.category === "表地" || m.category === "裏地" || m.category === "芯材";
+  }
+  function isPackaging(m: Material) {
+    return m.topCategory === "梱包資材費" || m.category === "梱包資材";
+  }
+  const fabricMaterials = product.materials.filter(isFabric);
+  const packagingMaterials = product.materials.filter(isPackaging);
+  const otherMaterials = product.materials.filter((m) => !isFabric(m) && !isPackaging(m));
+
+  // 工程をカテゴリで分ける
+  const productionSteps = product.costSteps.filter((s) => (s.category || "制作費") === "制作費");
+  const cuttingSteps = product.costSteps.filter((s) => s.category === "裁断費");
 
   return (
     <div className="space-y-4">
@@ -311,40 +331,33 @@ export function ProductDetail({ productId }: { productId: string }) {
           <CardTitle className="text-lg">原価サマリー（1個あたり）</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="border-l-4 border-l-gray-400 pl-3">
-              <p className="text-xs text-gray-500">営業費</p>
-              <p className="font-bold">{breakdown.salesCost.toLocaleString()}円</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="border-l-4 border-l-slate-500 pl-3 bg-slate-50/40 rounded-r p-2">
+              <p className="text-xs text-gray-500">労務費</p>
+              <p className="font-bold">{breakdown.laborCost.toLocaleString()}円</p>
+              <p className="text-[10px] text-gray-400">営業{breakdown.salesCost}+梱包{breakdown.packagingCost}+運賃{breakdown.shippingCost}+出荷{breakdown.outboundCost}+管理{breakdown.mgmtCost}</p>
             </div>
-            <div className="border-l-4 border-l-gray-400 pl-3">
-              <p className="text-xs text-gray-500">梱包費</p>
-              <p className="font-bold">{breakdown.packagingCost.toLocaleString()}円</p>
+            <div className="border-l-4 border-l-rose-500 pl-3 bg-rose-50/40 rounded-r p-2">
+              <p className="text-xs text-gray-500">梱包資材費</p>
+              <p className="font-bold">{Math.round(breakdown.packagingMaterialCost).toLocaleString()}円</p>
             </div>
-            <div className="border-l-4 border-l-gray-400 pl-3">
-              <p className="text-xs text-gray-500">運賃</p>
-              <p className="font-bold">{breakdown.shippingCost.toLocaleString()}円</p>
-            </div>
-            <div className="border-l-4 border-l-gray-400 pl-3">
-              <p className="text-xs text-gray-500">出荷費</p>
-              <p className="font-bold">{breakdown.outboundCost.toLocaleString()}円</p>
-            </div>
-            <div className="border-l-4 border-l-gray-400 pl-3">
-              <p className="text-xs text-gray-500">制作管理</p>
-              <p className="font-bold">{breakdown.mgmtCost.toLocaleString()}円</p>
-            </div>
-            <div className="border-l-4 border-l-blue-500 pl-3">
-              <p className="text-xs text-gray-500">制作代金</p>
+            <div className="border-l-4 border-l-blue-500 pl-3 bg-blue-50/40 rounded-r p-2">
+              <p className="text-xs text-gray-500">制作費</p>
               <p className="font-bold">{breakdown.productionCost.toLocaleString()}円</p>
             </div>
-            <div className="border-l-4 border-l-purple-500 pl-3">
-              <p className="text-xs text-gray-500">生地代金</p>
+            <div className="border-l-4 border-l-purple-500 pl-3 bg-purple-50/40 rounded-r p-2">
+              <p className="text-xs text-gray-500">生地費</p>
               <p className="font-bold">{Math.round(breakdown.fabricCost).toLocaleString()}円</p>
             </div>
-            <div className="border-l-4 border-l-orange-500 pl-3">
-              <p className="text-xs text-gray-500">その他資材費</p>
-              <p className="font-bold">{Math.round(breakdown.otherMaterialCost).toLocaleString()}円</p>
+            <div className="border-l-4 border-l-amber-500 pl-3 bg-amber-50/40 rounded-r p-2">
+              <p className="text-xs text-gray-500">資材費</p>
+              <p className="font-bold">{Math.round(breakdown.materialCost).toLocaleString()}円</p>
             </div>
-            <div className="border-l-4 border-l-red-500 pl-3 col-span-2 md:col-span-4 bg-red-50/30 rounded-r p-2">
+            <div className="border-l-4 border-l-teal-500 pl-3 bg-teal-50/40 rounded-r p-2">
+              <p className="text-xs text-gray-500">裁断費</p>
+              <p className="font-bold">{breakdown.cuttingCost.toLocaleString()}円</p>
+            </div>
+            <div className="border-l-4 border-l-red-500 pl-3 col-span-2 md:col-span-3 bg-red-50/30 rounded-r p-2">
               <p className="text-xs text-gray-500">合計原価</p>
               <p className="font-bold text-2xl">{Math.round(breakdown.total).toLocaleString()}円</p>
             </div>
@@ -467,16 +480,16 @@ export function ProductDetail({ productId }: { productId: string }) {
         </CardContent>
       </Card>
 
-      {/* 制作工程（複数） */}
+      {/* 制作費 */}
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">制作代金（工程）</CardTitle>
-          <Button variant="outline" size="sm" onClick={addStep}>
+          <CardTitle className="text-lg">制作費</CardTitle>
+          <Button variant="outline" size="sm" onClick={() => addStep("制作費")}>
             <Plus className="size-4 mr-1" /> 工程を追加
           </Button>
         </CardHeader>
         <CardContent>
-          {product.costSteps.length === 0 ? (
+          {productionSteps.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">工程未登録</p>
           ) : (
             <table className="w-full text-sm">
@@ -489,11 +502,11 @@ export function ProductDetail({ productId }: { productId: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {product.costSteps.map((s) => (
+                {productionSteps.map((s) => (
                   <CostStepRow key={s.id} step={s} onUpdate={updateStep} onDelete={deleteStep} />
                 ))}
                 <tr className="bg-blue-50/30 font-bold">
-                  <td className="px-3 py-2">合計</td>
+                  <td className="px-3 py-2">制作費合計</td>
                   <td className="px-3 py-2 text-right">{breakdown.productionCost.toLocaleString()}円</td>
                   <td colSpan={2}></td>
                 </tr>
@@ -503,15 +516,51 @@ export function ProductDetail({ productId }: { productId: string }) {
         </CardContent>
       </Card>
 
-      {/* 生地代金 */}
+      {/* 裁断費 */}
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">生地代金</CardTitle>
+          <CardTitle className="text-lg">裁断費</CardTitle>
+          <Button variant="outline" size="sm" onClick={() => addStep("裁断費")}>
+            <Plus className="size-4 mr-1" /> 裁断作業を追加
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {cuttingSteps.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">裁断作業未登録</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500">作業</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-32">単価（円/個）</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500">備考</th>
+                  <th className="px-3 py-2 w-20"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {cuttingSteps.map((s) => (
+                  <CostStepRow key={s.id} step={s} onUpdate={updateStep} onDelete={deleteStep} />
+                ))}
+                <tr className="bg-teal-50/30 font-bold">
+                  <td className="px-3 py-2">裁断費合計</td>
+                  <td className="px-3 py-2 text-right">{breakdown.cuttingCost.toLocaleString()}円</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 生地費 */}
+      <Card className="bg-white shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">生地費（表地・裏地・芯材）</CardTitle>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPickerCategory("fabric")}>
+            <Button variant="outline" size="sm" onClick={() => setPickerCategory("生地費")}>
               <BookOpen className="size-4 mr-1" /> マスタから
             </Button>
-            <Button variant="outline" size="sm" onClick={() => addMaterial("fabric")}>
+            <Button variant="outline" size="sm" onClick={() => addMaterial("生地費")}>
               <Plus className="size-4 mr-1" /> 手入力
             </Button>
           </div>
@@ -521,21 +570,21 @@ export function ProductDetail({ productId }: { productId: string }) {
             materials={fabricMaterials}
             onUpdate={updateMaterial}
             onDelete={deleteMaterial}
-            totalLabel="生地代金合計"
+            totalLabel="生地費合計"
             totalValue={breakdown.fabricCost}
           />
         </CardContent>
       </Card>
 
-      {/* その他資材費 */}
+      {/* 資材費 */}
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">その他資材費</CardTitle>
+          <CardTitle className="text-lg">資材費（留め具・箱・鏡・その他）</CardTitle>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPickerCategory("other")}>
+            <Button variant="outline" size="sm" onClick={() => setPickerCategory("資材費")}>
               <BookOpen className="size-4 mr-1" /> マスタから
             </Button>
-            <Button variant="outline" size="sm" onClick={() => addMaterial("other")}>
+            <Button variant="outline" size="sm" onClick={() => addMaterial("資材費")}>
               <Plus className="size-4 mr-1" /> 手入力
             </Button>
           </div>
@@ -545,8 +594,32 @@ export function ProductDetail({ productId }: { productId: string }) {
             materials={otherMaterials}
             onUpdate={updateMaterial}
             onDelete={deleteMaterial}
-            totalLabel="その他資材費合計"
-            totalValue={breakdown.otherMaterialCost}
+            totalLabel="資材費合計"
+            totalValue={breakdown.materialCost}
+          />
+        </CardContent>
+      </Card>
+
+      {/* 梱包資材費 */}
+      <Card className="bg-white shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">梱包資材費</CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPickerCategory("梱包資材費")}>
+              <BookOpen className="size-4 mr-1" /> マスタから
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => addMaterial("梱包資材費")}>
+              <Plus className="size-4 mr-1" /> 手入力
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <MaterialTable
+            materials={packagingMaterials}
+            onUpdate={updateMaterial}
+            onDelete={deleteMaterial}
+            totalLabel="梱包資材費合計"
+            totalValue={breakdown.packagingMaterialCost}
           />
         </CardContent>
       </Card>
@@ -570,7 +643,7 @@ function MaterialPickerDialog({
   existingMaterialIds,
   productCut,
 }: {
-  category: "fabric" | "other" | null;
+  category: "生地費" | "資材費" | "梱包資材費" | null;
   onClose: () => void;
   onPick: (m: MasterMaterial, yieldCount: number) => void;
   existingMaterialIds: string[];
@@ -581,22 +654,31 @@ function MaterialPickerDialog({
   const [loading, setLoading] = useState(false);
   const [yields, setYields] = useState<Record<string, string>>({});
 
+  // 大分類 → そこに属する leaf カテゴリの一覧
+  const LEAF_MAP: Record<string, string[]> = {
+    "生地費": ["表地", "裏地", "芯材"],
+    "資材費": ["口金", "ファスナー", "ボタン", "箱", "鏡", "その他"],
+    "梱包資材費": ["梱包資材"],
+  };
+
   useEffect(() => {
     if (!category) return;
     setLoading(true);
-    const params = new URLSearchParams();
-    // 旧 "fabric" 引数は新カテゴリ「生地」と互換
-    const catParam = category === "fabric" ? "生地" : category;
-    params.set("category", catParam);
-    if (search) params.set("search", search);
-    fetch(`/api/materials?${params}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setItems(Array.isArray(d) ? d : []);
-        // 取れ数の自動推定（裁断計算）
-        if (category === "fabric" && productCut.cutHeight && productCut.cutWidth) {
+    const leaves = LEAF_MAP[category] ?? [];
+    // 該当 leaf カテゴリ全部を fetch して結合
+    Promise.all(leaves.map((leaf) => {
+      const p = new URLSearchParams();
+      p.set("category", leaf);
+      if (search) p.set("search", search);
+      return fetch(`/api/materials?${p}`).then((r) => r.json()).catch(() => []);
+    }))
+      .then((results) => {
+        const merged = results.flatMap((r) => Array.isArray(r) ? r : []);
+        setItems(merged);
+        // 取れ数の自動推定（裁断計算、生地費のみ）
+        if (category === "生地費" && productCut.cutHeight && productCut.cutWidth) {
           const auto: Record<string, string> = {};
-          for (const m of d) {
+          for (const m of merged) {
             if (m.fabricWidth) {
               const y = calcYieldPerMeter(productCut, { fabricWidth: m.fabricWidth });
               if (y && y > 0) auto[m.id] = String(y);
@@ -621,7 +703,7 @@ function MaterialPickerDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {category === "fabric" ? "生地" : "資材"}を選択
+            {category}を選択
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
@@ -631,7 +713,7 @@ function MaterialPickerDialog({
             onChange={(e) => setSearch(e.target.value)}
           />
           <p className="text-xs text-gray-500">
-            {category === "fabric" && hasCut
+            {category === "生地費" && hasCut
               ? `※ 商品の裁断寸法 (${productCut.cutHeight}cm × ${productCut.cutWidth}cm) と生地巾から取れ数を自動推定済み（必要に応じて変更可）`
               : "この商品で1単位（m/個/セット）から何個取れるかを入力してから「追加」してください"}
           </p>
@@ -640,7 +722,7 @@ function MaterialPickerDialog({
               <p className="text-center py-4 text-gray-400 text-sm">読み込み中...</p>
             ) : items.length === 0 ? (
               <div className="text-center py-6 text-sm text-gray-400">
-                <p>登録された{category === "fabric" ? "生地" : "資材"}がありません</p>
+                <p>登録された{category}がありません</p>
                 <Link href="/materials" className="text-blue-600 hover:underline text-xs mt-1 inline-block">
                   資材マスタで登録 →
                 </Link>

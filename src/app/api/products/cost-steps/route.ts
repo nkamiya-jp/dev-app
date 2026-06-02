@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
       productId: data.productId,
       step: data.step,
       unitCost: Number(data.unitCost) || 0,
+      category: data.category || "制作費",
       sortOrder: data.sortOrder ?? 0,
       note: data.note || null,
     },
@@ -27,6 +28,7 @@ export async function PUT(request: NextRequest) {
     data: {
       ...(rest.step !== undefined && { step: rest.step }),
       ...(rest.unitCost !== undefined && { unitCost: Number(rest.unitCost) || 0 }),
+      ...(rest.category !== undefined && { category: rest.category }),
       ...(rest.sortOrder !== undefined && { sortOrder: rest.sortOrder }),
       ...(rest.note !== undefined && { note: rest.note || null }),
     },

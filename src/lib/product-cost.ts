@@ -4,15 +4,17 @@ export interface CostStep {
   id: string;
   step: string;
   unitCost: number;
+  category?: string; // "制作費" | "裁断費"
 }
 
 export interface Material {
   id: string;
   name: string;
-  category: string; // "fabric" | "other"
+  category: string; // leaf カテゴリ名 例: 表地, 口金, 梱包資材
   unitPrice: number;
   unitType: string; // "meter" | "piece" | "set"
   yieldCount: number;
+  topCategory?: string; // 大分類: "生地費" | "資材費" | "梱包資材費" など（API側で展開）
 }
 
 export interface ProductCostInput {
@@ -26,23 +28,42 @@ export interface ProductCostInput {
 }
 
 export interface CostBreakdown {
+  // 労務費
+  laborCost: number;      // = salesCost + shippingCost + outboundCost + mgmtCost + packagingCost
+  // 内訳
   salesCost: number;
   packagingCost: number;
   shippingCost: number;
   outboundCost: number;
   mgmtCost: number;
-  productionCost: number; // 制作代金合計
-  fabricCost: number; // 生地代金合計
-  otherMaterialCost: number; // その他資材費合計
-  total: number; // 1個あたり原価
+
+  // 各大分類
+  productionCost: number;   // 制作費（制作費カテゴリの工程合計）
+  cuttingCost: number;      // 裁断費（裁断費カテゴリの工程合計）
+  fabricCost: number;       // 生地費（表地・裏地・芯材）
+  materialCost: number;     // 資材費（留め具・資材）
+  packagingMaterialCost: number; // 梱包資材費
+
+  total: number; // 合計原価
   // 詳細
-  stepBreakdown: { step: string; cost: number }[];
-  materialBreakdown: { name: string; perPiece: number; category: string }[];
+  stepBreakdown: { step: string; cost: number; category: string }[];
+  materialBreakdown: { name: string; perPiece: number; category: string; topCategory: string }[];
 }
 
 export function calcMaterialPerPiece(m: Material): number {
   if (!m.yieldCount || m.yieldCount <= 0) return 0;
   return m.unitPrice / m.yieldCount;
+}
+
+// 大分類の判定（leaf カテゴリ → top カテゴリ名）
+// API 側で topCategory がセットされていなければ、ここで簡易フォールバック
+const FABRIC_LEAVES = new Set(["fabric", "生地", "表地", "裏地", "芯材"]);
+const PACKAGING_LEAVES = new Set(["梱包資材"]);
+function resolveTopCategory(m: Material): string {
+  if (m.topCategory) return m.topCategory;
+  if (FABRIC_LEAVES.has(m.category)) return "生地費";
+  if (PACKAGING_LEAVES.has(m.category)) return "梱包資材費";
+  return "資材費";
 }
 
 export function calcCostBreakdown(input: ProductCostInput): CostBreakdown {
@@ -51,39 +72,40 @@ export function calcCostBreakdown(input: ProductCostInput): CostBreakdown {
   const shippingCost = input.shippingCost ?? 0;
   const outboundCost = input.outboundCost ?? 0;
   const mgmtCost = input.mgmtCost ?? 0;
+  const laborCost = salesCost + packagingCost + shippingCost + outboundCost + mgmtCost;
 
   const stepBreakdown = (input.costSteps ?? []).map((s) => ({
     step: s.step,
     cost: s.unitCost,
+    category: s.category || "制作費",
   }));
-  const productionCost = stepBreakdown.reduce((s, x) => s + x.cost, 0);
+  const productionCost = stepBreakdown.filter((s) => s.category === "制作費").reduce((s, x) => s + x.cost, 0);
+  const cuttingCost   = stepBreakdown.filter((s) => s.category === "裁断費").reduce((s, x) => s + x.cost, 0);
 
   const materialBreakdown = (input.materials ?? []).map((m) => ({
     name: m.name,
     perPiece: calcMaterialPerPiece(m),
     category: m.category,
+    topCategory: resolveTopCategory(m),
   }));
-  // 「生地」カテゴリは fabric として扱う（後方互換のため "fabric" 文字列も維持）
-  const fabricCost = materialBreakdown
-    .filter((m) => m.category === "fabric" || m.category === "生地")
-    .reduce((s, m) => s + m.perPiece, 0);
-  const otherMaterialCost = materialBreakdown
-    .filter((m) => m.category !== "fabric" && m.category !== "生地")
-    .reduce((s, m) => s + m.perPiece, 0);
+  const fabricCost           = materialBreakdown.filter((m) => m.topCategory === "生地費").reduce((s, m) => s + m.perPiece, 0);
+  const materialCost         = materialBreakdown.filter((m) => m.topCategory === "資材費").reduce((s, m) => s + m.perPiece, 0);
+  const packagingMaterialCost= materialBreakdown.filter((m) => m.topCategory === "梱包資材費").reduce((s, m) => s + m.perPiece, 0);
 
-  const total =
-    salesCost + packagingCost + shippingCost + outboundCost + mgmtCost +
-    productionCost + fabricCost + otherMaterialCost;
+  const total = laborCost + productionCost + cuttingCost + fabricCost + materialCost + packagingMaterialCost;
 
   return {
+    laborCost,
     salesCost,
     packagingCost,
     shippingCost,
     outboundCost,
     mgmtCost,
     productionCost,
+    cuttingCost,
     fabricCost,
-    otherMaterialCost,
+    materialCost,
+    packagingMaterialCost,
     total,
     stepBreakdown,
     materialBreakdown,
