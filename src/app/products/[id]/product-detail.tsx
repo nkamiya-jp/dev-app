@@ -38,7 +38,9 @@ interface CostStep {
   id: string;
   step: string;
   unitCost: number;
-  category: string;  // "制作費" | "裁断費"
+  quantity: number;          // 内製ショット数 / 通常は1
+  category: string;          // "制作費" | "裁断費"
+  subType: string | null;    // "内製" | "外注"
   sortOrder: number;
   note: string | null;
 }
@@ -140,11 +142,19 @@ export function ProductDetail({ productId }: { productId: string }) {
     load();
   }
 
-  async function addStep(category: "制作費" | "裁断費" = "制作費") {
+  async function addStep(category: "制作費" | "裁断費" = "制作費", subType: "内製" | "外注" | null = null) {
+    const body: Record<string, unknown> = { productId, category };
+    if (subType === "内製") {
+      Object.assign(body, { step: "内製 裁断", subType, unitCost: 5, quantity: 1 });
+    } else if (subType === "外注") {
+      Object.assign(body, { step: "外注 裁断", subType, unitCost: 0, quantity: 1 });
+    } else {
+      Object.assign(body, { step: category === "裁断費" ? "新裁断" : "新工程", unitCost: 0, quantity: 1 });
+    }
     await fetch("/api/products/cost-steps", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId, step: category === "裁断費" ? "新裁断" : "新工程", unitCost: 0, category }),
+      body: JSON.stringify(body),
     });
     load();
   }
@@ -519,10 +529,15 @@ export function ProductDetail({ productId }: { productId: string }) {
       {/* 裁断費 */}
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">裁断費</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => addStep("裁断費")}>
-            <Plus className="size-4 mr-1" /> 裁断作業を追加
-          </Button>
+          <CardTitle className="text-lg">裁断費（内製・外注）</CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => addStep("裁断費", "内製")}>
+              <Plus className="size-4 mr-1" /> 内製を追加
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => addStep("裁断費", "外注")}>
+              <Plus className="size-4 mr-1" /> 外注を追加
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {cuttingSteps.length === 0 ? (
@@ -531,18 +546,21 @@ export function ProductDetail({ productId }: { productId: string }) {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">作業</th>
-                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-32">単価（円/個）</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 w-16">区分</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500">作業内容</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-20">ショット</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-28">単価/金額</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">小計</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-500">備考</th>
                   <th className="px-3 py-2 w-20"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {cuttingSteps.map((s) => (
-                  <CostStepRow key={s.id} step={s} onUpdate={updateStep} onDelete={deleteStep} />
+                  <CuttingStepRow key={s.id} step={s} onUpdate={updateStep} onDelete={deleteStep} />
                 ))}
                 <tr className="bg-teal-50/30 font-bold">
-                  <td className="px-3 py-2">裁断費合計</td>
+                  <td className="px-3 py-2" colSpan={4}>裁断費合計</td>
                   <td className="px-3 py-2 text-right">{breakdown.cuttingCost.toLocaleString()}円</td>
                   <td colSpan={2}></td>
                 </tr>
@@ -1071,6 +1089,126 @@ function CostStepRow({
           onKeyDown={handleKey}
           className="w-full px-2 py-1 text-sm border rounded text-right"
         />
+      </td>
+      <td className="px-3 py-1">
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={handleKey}
+          className="w-full px-2 py-1 text-sm border rounded"
+          placeholder="（任意）"
+        />
+      </td>
+      <td className="px-3 py-1 text-right">
+        <div className="flex gap-1 justify-end">
+          <button
+            onClick={commitAll}
+            disabled={!dirty}
+            className={`p-1 rounded ${dirty ? "text-white bg-amber-500 hover:bg-amber-600" : "text-gray-300 cursor-not-allowed"}`}
+            title="確定"
+          >
+            <Check className="size-4" />
+          </button>
+          <button onClick={() => onDelete(step.id)} className="text-red-500 hover:bg-red-50 p-1 rounded" title="削除">
+            <Trash2 className="size-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ─── 裁断費の専用行（内製/外注） ───
+function CuttingStepRow({
+  step,
+  onUpdate,
+  onDelete,
+}: {
+  step: CostStep;
+  onUpdate: (id: string, d: Partial<CostStep>) => Promise<void> | void;
+  onDelete: (id: string) => void;
+}) {
+  const subType = (step.subType || "内製") as "内製" | "外注";
+  const [name, setName] = useState(step.step);
+  const [quantity, setQuantity] = useState(String(step.quantity ?? 1));
+  const [unitCost, setUnitCost] = useState(String(step.unitCost));
+  const [note, setNote] = useState(step.note || "");
+
+  const isInternal = subType === "内製";
+  const qNum = Number(quantity) || 0;
+  const cNum = Number(unitCost) || 0;
+  const subtotal = isInternal ? qNum * cNum : cNum;
+
+  const dirty =
+    name !== step.step ||
+    (isInternal && qNum !== step.quantity) ||
+    cNum !== step.unitCost ||
+    note !== (step.note || "");
+
+  async function commitAll() {
+    if (!dirty) return;
+    await onUpdate(step.id, {
+      step: name,
+      quantity: isInternal ? qNum : 1,
+      unitCost: cNum,
+      note: note || null,
+    });
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); commitAll(); }
+  }
+
+  return (
+    <tr className={dirty ? "bg-amber-50/40" : ""}>
+      <td className="px-3 py-1">
+        <Badge
+          className={
+            isInternal ? "bg-teal-100 text-teal-700" : "bg-orange-100 text-orange-700"
+          }
+        >
+          {subType}
+        </Badge>
+      </td>
+      <td className="px-3 py-1">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={handleKey}
+          className="w-full px-2 py-1 text-sm border rounded"
+        />
+      </td>
+      <td className="px-3 py-1">
+        {isInternal ? (
+          <input
+            type="number"
+            min="0"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            onKeyDown={handleKey}
+            className="w-full px-2 py-1 text-sm border rounded text-right"
+            placeholder="例: 4"
+          />
+        ) : (
+          <span className="text-gray-300">—</span>
+        )}
+      </td>
+      <td className="px-3 py-1">
+        <div className="flex items-center justify-end gap-1">
+          <input
+            type="number"
+            value={unitCost}
+            onChange={(e) => setUnitCost(e.target.value)}
+            onKeyDown={handleKey}
+            className="w-full px-2 py-1 text-sm border rounded text-right"
+          />
+          <span className="text-[10px] text-gray-400 whitespace-nowrap">
+            {isInternal ? "円/shot" : "円"}
+          </span>
+        </div>
+      </td>
+      <td className="px-3 py-1 text-right font-medium">
+        {subtotal.toLocaleString()}円
       </td>
       <td className="px-3 py-1">
         <input

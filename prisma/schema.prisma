@@ -117,8 +117,10 @@ model ProductCostStep {
   productId String
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   step      String   // 工程名 例: 裁断 / 縫製 / 仕上げ
-  unitCost  Int      // 1個あたり単価
+  unitCost  Int      // 1個あたり単価（内製の場合は作業単価、外注は総額）
+  quantity  Int      @default(1)  // 内製のショット数。外注は通常 1
   category  String   @default("制作費")  // "制作費" | "裁断費"
+  subType   String?  // "内製" | "外注"（主に裁断費で使用）
   sortOrder Int      @default(0)
   note      String?
   createdAt DateTime @default(now())

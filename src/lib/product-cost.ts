@@ -3,8 +3,16 @@
 export interface CostStep {
   id: string;
   step: string;
-  unitCost: number;
-  category?: string; // "制作費" | "裁断費"
+  unitCost: number;     // 内製: 1ショットあたりの単価 / 外注: 総額 / 通常: 単価
+  quantity?: number;    // 内製のショット数（外注/通常は 1）
+  category?: string;    // "制作費" | "裁断費"
+  subType?: string | null; // "内製" | "外注"
+}
+
+// 1個あたりのコスト寄与（subType と quantity を考慮）
+export function effectiveStepCost(s: CostStep): number {
+  const q = s.quantity ?? 1;
+  return s.unitCost * q;
 }
 
 export interface Material {
@@ -76,7 +84,7 @@ export function calcCostBreakdown(input: ProductCostInput): CostBreakdown {
 
   const stepBreakdown = (input.costSteps ?? []).map((s) => ({
     step: s.step,
-    cost: s.unitCost,
+    cost: effectiveStepCost(s),  // 内製は quantity × unitCost、外注は unitCost
     category: s.category || "制作費",
   }));
   const productionCost = stepBreakdown.filter((s) => s.category === "制作費").reduce((s, x) => s + x.cost, 0);
