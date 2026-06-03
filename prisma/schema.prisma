@@ -279,6 +279,31 @@ model ProductForecast {
   @@unique([productId, month])
 }
 
+model PriceListSnapshot {
+  id        String   @id @default(cuid())
+  name      String   // 例: "2026年5月価格改定"
+  note      String?  // メモ（理由など）
+  snappedAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  items     PriceListItem[]
+}
+
+model PriceListItem {
+  id          String   @id @default(cuid())
+  snapshotId  String
+  snapshot    PriceListSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  productId   String   // 元商品ID（参照のため、削除後も値は保持）
+  productCode String?
+  productName String
+  series      String?
+  cost        Int      @default(0)        // 当時の原価
+  retailPrice Int?                         // 当時の上代
+  prices      String                       // JSON: { "AmazonJP": 150, "京都問屋": 45, ... }
+  createdAt   DateTime @default(now())
+  @@index([snapshotId])
+}
+
 model Inventory {
   id          String   @id @default(cuid())
   productId   String   @unique
