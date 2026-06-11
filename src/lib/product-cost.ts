@@ -28,18 +28,19 @@ export interface Material {
 }
 
 export interface ProductCostInput {
-  salesCost?: number | null;
+  salesCost?: number | null;     // 営業費（運賃含む）
+  outboundCost?: number | null;  // 出荷費（梱包含む）
+  mgmtCost?: number | null;      // 管理費
+  // [legacy] 統合済みフィールド（後方互換のため受けるが、通常 null）
   packagingCost?: number | null;
-  shippingCost?: number | null;  // 運賃（個あたり）
-  outboundCost?: number | null;  // 出荷費（個あたり）
-  mgmtCost?: number | null;      // 制作管理費（個あたり）
+  shippingCost?: number | null;
   costSteps?: CostStep[];
   materials?: Material[];
 }
 
 export interface CostBreakdown {
-  // 労務費
-  laborCost: number;      // = salesCost + shippingCost + outboundCost + mgmtCost + packagingCost
+  // 労務費 = 営業費 + 出荷費 + 管理費（legacy分も合算）
+  laborCost: number;
   // 内訳
   salesCost: number;
   packagingCost: number;

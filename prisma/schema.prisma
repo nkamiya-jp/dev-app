@@ -91,13 +91,17 @@ model Product {
   costRatio       Float?       // 原価率（上代逆算用、デフォルト 0.30 = 30%）
   wholesalePrice  Int?         // [標準] 標準卸価格（顧客別未設定時の参考値）
   workerCost      Int?         // [legacy] 旧 内職単価（後方互換用）
-  salesCost       Int?         // 営業費（個あたり）
-  packagingCost   Int?         // 梱包費（個あたり）
-  shippingCost    Int?         // 運賃（個あたり）
-  outboundCost    Int?         // 出荷費（個あたり）
-  mgmtCost        Int?         // 制作管理費（個あたり）
+  salesCost       Int?         // 営業費（個あたり、運賃含む）
+  packagingCost   Int?         // [legacy] 梱包費 → 出荷費に統合済み
+  shippingCost    Int?         // [legacy] 運賃 → 営業費に統合済み
+  outboundCost    Int?         // 出荷費（個あたり、梱包含む）
+  mgmtCost        Int?         // 管理費（個あたり）
   cutHeight       Int?         // 裁断 縦 (cm)
   cutWidth        Int?         // 裁断 横 (cm)
+  sizeW           Float?       // 商品サイズ 幅 W (cm)
+  sizeH           Float?       // 商品サイズ 高さ H (cm)
+  sizeD           Float?       // 商品サイズ 奥行 D (cm)
+  weightG         Float?       // 重さ (g)
   description     String?
   active          Boolean      @default(true)
   createdAt       DateTime     @default(now())

@@ -78,6 +78,10 @@ interface Product {
   mgmtCost: number | null;
   cutHeight: number | null;
   cutWidth: number | null;
+  sizeW: number | null;
+  sizeH: number | null;
+  sizeD: number | null;
+  weightG: number | null;
   description: string | null;
   active: boolean;
   costSteps: CostStep[];
@@ -289,43 +293,39 @@ export function ProductDetail({ productId }: { productId: string }) {
                 <p className="text-xs text-gray-500">在庫</p>
                 <p className="font-medium">{product.inventory?.stock ?? 0}</p>
               </div>
-              <div className="col-span-2 md:col-span-4 grid grid-cols-3 md:grid-cols-5 gap-3 mt-1 pt-3 border-t">
+              <div className="col-span-2 md:col-span-4 grid grid-cols-3 gap-3 mt-1 pt-3 border-t">
                 <div>
-                  <p className="text-xs text-gray-500">営業費</p>
+                  <p className="text-xs text-gray-500">営業費（運賃込）</p>
                   <p className="font-medium text-sm">{product.salesCost ? `${product.salesCost.toLocaleString()}円` : "-"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">梱包費</p>
-                  <p className="font-medium text-sm">{product.packagingCost ? `${product.packagingCost.toLocaleString()}円` : "-"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">運賃</p>
-                  <p className="font-medium text-sm">{product.shippingCost ? `${product.shippingCost.toLocaleString()}円` : "-"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">出荷費</p>
+                  <p className="text-xs text-gray-500">出荷費（梱包込）</p>
                   <p className="font-medium text-sm">{product.outboundCost ? `${product.outboundCost.toLocaleString()}円` : "-"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">制作管理</p>
+                  <p className="text-xs text-gray-500">管理費</p>
                   <p className="font-medium text-sm">{product.mgmtCost ? `${product.mgmtCost.toLocaleString()}円` : "-"}</p>
                 </div>
               </div>
-              <div className="col-span-2 md:col-span-4 grid grid-cols-2 gap-3 mt-1 pt-3 border-t">
+              <div className="col-span-2 md:col-span-4 grid grid-cols-3 gap-3 mt-1 pt-3 border-t">
                 <div>
-                  <p className="text-xs text-gray-500">裁断 縦 × 横 (cm)</p>
+                  <p className="text-xs text-gray-500">商品サイズ W × H × D (cm)</p>
                   <p className="font-medium text-sm">
-                    {product.cutHeight && product.cutWidth
-                      ? `${product.cutHeight} × ${product.cutWidth} cm`
+                    {product.sizeW || product.sizeH || product.sizeD
+                      ? `${product.sizeW ?? "-"} × ${product.sizeH ?? "-"} × ${product.sizeD ?? "-"}`
                       : "-"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">→ 1m取れ数の目安</p>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-gray-500">重さ</p>
+                  <p className="font-medium text-sm">{product.weightG ? `${product.weightG.toLocaleString()} g` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">裁断 縦 × 横 (cm)</p>
+                  <p className="font-medium text-sm">
                     {product.cutHeight && product.cutWidth
-                      ? "生地を追加時に巾と組み合わせて計算"
-                      : "縦/横を設定してください"}
+                      ? `${product.cutHeight} × ${product.cutWidth}`
+                      : "-"}
                   </p>
                 </div>
               </div>
@@ -350,7 +350,7 @@ export function ProductDetail({ productId }: { productId: string }) {
             <div className="border-l-4 border-l-slate-500 pl-3 bg-slate-50/40 rounded-r p-2">
               <p className="text-xs text-gray-500">労務費</p>
               <p className="font-bold">{breakdown.laborCost.toLocaleString()}円</p>
-              <p className="text-[10px] text-gray-400">営業{breakdown.salesCost}+梱包{breakdown.packagingCost}+運賃{breakdown.shippingCost}+出荷{breakdown.outboundCost}+管理{breakdown.mgmtCost}</p>
+              <p className="text-[10px] text-gray-400">営業{breakdown.salesCost}+出荷{breakdown.outboundCost}+管理{breakdown.mgmtCost}</p>
             </div>
             <div className="border-l-4 border-l-rose-500 pl-3 bg-rose-50/40 rounded-r p-2">
               <p className="text-xs text-gray-500">梱包資材費</p>
@@ -1010,12 +1010,14 @@ function BasicEditForm({
   const [size, setSize] = useState(product.size || "");
   const [wholesalePrice, setWholesalePrice] = useState(product.wholesalePrice?.toString() || "");
   const [salesCost, setSalesCost] = useState(product.salesCost?.toString() || "");
-  const [packagingCost, setPackagingCost] = useState(product.packagingCost?.toString() || "");
-  const [shippingCost, setShippingCost] = useState(product.shippingCost?.toString() || "");
   const [outboundCost, setOutboundCost] = useState(product.outboundCost?.toString() || "");
   const [mgmtCost, setMgmtCost] = useState(product.mgmtCost?.toString() || "");
   const [cutHeight, setCutHeight] = useState(product.cutHeight?.toString() || "");
   const [cutWidth, setCutWidth] = useState(product.cutWidth?.toString() || "");
+  const [sizeW, setSizeW] = useState(product.sizeW?.toString() || "");
+  const [sizeH, setSizeH] = useState(product.sizeH?.toString() || "");
+  const [sizeD, setSizeD] = useState(product.sizeD?.toString() || "");
+  const [weightG, setWeightG] = useState(product.weightG?.toString() || "");
   const [description, setDescription] = useState(product.description || "");
   const [active, setActive] = useState(product.active);
 
@@ -1030,12 +1032,14 @@ function BasicEditForm({
           size: size || null,
           wholesalePrice: wholesalePrice ? Number(wholesalePrice) : null,
           salesCost: salesCost ? Number(salesCost) : null,
-          packagingCost: packagingCost ? Number(packagingCost) : null,
-          shippingCost: shippingCost ? Number(shippingCost) : null,
           outboundCost: outboundCost ? Number(outboundCost) : null,
           mgmtCost: mgmtCost ? Number(mgmtCost) : null,
           cutHeight: cutHeight ? Number(cutHeight) : null,
           cutWidth: cutWidth ? Number(cutWidth) : null,
+          sizeW: sizeW ? Number(sizeW) : null,
+          sizeH: sizeH ? Number(sizeH) : null,
+          sizeD: sizeD ? Number(sizeD) : null,
+          weightG: weightG ? Number(weightG) : null,
           description: description || null,
           active,
         });
@@ -1069,23 +1073,15 @@ function BasicEditForm({
           <Input type="number" value={wholesalePrice} onChange={(e) => setWholesalePrice(e.target.value)} />
         </div>
         <div>
-          <label className="text-xs text-gray-500">営業費（円/個）</label>
+          <label className="text-xs text-gray-500">営業費（円/個、運賃込）</label>
           <Input type="number" value={salesCost} onChange={(e) => setSalesCost(e.target.value)} />
         </div>
         <div>
-          <label className="text-xs text-gray-500">梱包費（円/個）</label>
-          <Input type="number" value={packagingCost} onChange={(e) => setPackagingCost(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">運賃（円/個）</label>
-          <Input type="number" value={shippingCost} onChange={(e) => setShippingCost(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">出荷費（円/個）</label>
+          <label className="text-xs text-gray-500">出荷費（円/個、梱包込）</label>
           <Input type="number" value={outboundCost} onChange={(e) => setOutboundCost(e.target.value)} />
         </div>
         <div>
-          <label className="text-xs text-gray-500">制作管理費（円/個）</label>
+          <label className="text-xs text-gray-500">管理費（円/個）</label>
           <Input type="number" value={mgmtCost} onChange={(e) => setMgmtCost(e.target.value)} />
         </div>
         <div>
@@ -1095,6 +1091,24 @@ function BasicEditForm({
         <div>
           <label className="text-xs text-gray-500">裁断 横（cm）</label>
           <Input type="number" value={cutWidth} onChange={(e) => setCutWidth(e.target.value)} placeholder="例: 10" />
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        <div>
+          <label className="text-xs text-gray-500">サイズ W（cm）</label>
+          <Input type="number" step="0.1" value={sizeW} onChange={(e) => setSizeW(e.target.value)} placeholder="幅" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">サイズ H（cm）</label>
+          <Input type="number" step="0.1" value={sizeH} onChange={(e) => setSizeH(e.target.value)} placeholder="高さ" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">サイズ D（cm）</label>
+          <Input type="number" step="0.1" value={sizeD} onChange={(e) => setSizeD(e.target.value)} placeholder="奥行" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">重さ（g）</label>
+          <Input type="number" step="0.1" value={weightG} onChange={(e) => setWeightG(e.target.value)} placeholder="例: 45" />
         </div>
       </div>
       <div>
