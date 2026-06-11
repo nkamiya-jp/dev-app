@@ -52,6 +52,8 @@ export async function GET() {
         unitPrice: m.unitPrice,
         unitType: m.unitType,
         yieldCount: m.yieldCount,
+        usedMeters: m.usedMeters,
+        usageCount: m.usageCount,
         topCategory: getTopName(m.category),
       })),
     });

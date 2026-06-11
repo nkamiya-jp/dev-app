@@ -137,7 +137,9 @@ model ProductMaterial {
   category   String    @default("other")  // "fabric" | "other"
   unitPrice  Int       // 単価
   unitType   String    @default("piece")  // "meter" | "piece" | "set"
-  yieldCount Int       @default(1)        // 1単位から取れる個数（裁断計算で上書きされる）
+  yieldCount Int       @default(1)        // [生地] 使用Mから取れる個数
+  usedMeters Float     @default(1)        // [生地] 使用M数（例: 0.9）
+  usageCount Float     @default(1)        // [資材/梱包資材] 1個あたりの使用数（例: ボタン2個）
   pairId     String?   // 表地と裏地（不織）をペアで管理（同じ裁断で連動）
   sortOrder  Int       @default(0)
   note       String?

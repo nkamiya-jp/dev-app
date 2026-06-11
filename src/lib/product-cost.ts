@@ -21,7 +21,9 @@ export interface Material {
   category: string; // leaf カテゴリ名 例: 表地, 口金, 梱包資材
   unitPrice: number;
   unitType: string; // "meter" | "piece" | "set"
-  yieldCount: number;
+  yieldCount: number;    // [生地] 使用Mから取れる個数
+  usedMeters?: number;   // [生地] 使用M数（例: 0.9）
+  usageCount?: number;   // [資材/梱包資材] 1個あたりの使用数（例: ボタン2個）
   topCategory?: string; // 大分類: "生地費" | "資材費" | "梱包資材費" など（API側で展開）
 }
 
@@ -59,16 +61,24 @@ export interface CostBreakdown {
 }
 
 export function calcMaterialPerPiece(m: Material): number {
-  if (!m.yieldCount || m.yieldCount <= 0) return 0;
-  return m.unitPrice / m.yieldCount;
+  const top = resolveTopCategory(m);
+  if (top === "生地費") {
+    // 生地: 単価 × 使用M ÷ 取れ数
+    if (!m.yieldCount || m.yieldCount <= 0) return 0;
+    return (m.unitPrice * (m.usedMeters ?? 1)) / m.yieldCount;
+  }
+  // 資材・梱包資材: 単価 × 使用数
+  return m.unitPrice * (m.usageCount ?? 1);
 }
 
 // 大分類の判定（leaf カテゴリ → top カテゴリ名）
 // API 側で topCategory がセットされていなければ、ここで簡易フォールバック
 const FABRIC_LEAVES = new Set(["fabric", "生地", "表地", "裏地", "芯材"]);
 const PACKAGING_LEAVES = new Set(["梱包資材"]);
+const KNOWN_TOPS = new Set(["生地費", "資材費", "梱包資材費"]);
 function resolveTopCategory(m: Material): string {
-  if (m.topCategory) return m.topCategory;
+  // topCategory が正規の大分類ならそれを使う（旧名の取り残しは無視してフォールバック）
+  if (m.topCategory && KNOWN_TOPS.has(m.topCategory)) return m.topCategory;
   if (FABRIC_LEAVES.has(m.category)) return "生地費";
   if (PACKAGING_LEAVES.has(m.category)) return "梱包資材費";
   return "資材費";
