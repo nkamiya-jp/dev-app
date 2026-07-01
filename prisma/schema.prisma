@@ -102,6 +102,7 @@ model Product {
   sizeH           Float?       // 商品サイズ 高さ H (cm)
   sizeD           Float?       // 商品サイズ 奥行 D (cm)
   weightG         Float?       // 重さ (g)
+  sortOrder       Int          @default(0)  // 価格表などの表示順（100刻み）
   description     String?
   active          Boolean      @default(true)
   createdAt       DateTime     @default(now())

@@ -12,7 +12,7 @@ export async function GET() {
       costSteps: true,
       materials: { include: { material: { select: { fabricWidth: true } } } },
     },
-    orderBy: [{ series: "asc" }, { code: "asc" }],
+    orderBy: [{ sortOrder: "asc" }, { series: "asc" }, { code: "asc" }],
   });
 
   // カテゴリ階層を読み込み、leaf → top のマッピング
@@ -57,15 +57,25 @@ export async function GET() {
         topCategory: getTopName(m.category),
       })),
     });
-    const cost = breakdown.total;
+    const cost = Math.round(breakdown.total);
     const retail = p.retailPrice ?? 0;
-    const prices: Record<string, { ratePct: number; price: number; profit: number; profitRate: number }> = {};
+    // 上代に対する原価率
+    const costRatioVsRetail = retail > 0 ? (cost / retail) * 100 : 0;
+
+    const prices: Record<string, {
+      ratePct: number;
+      price: number;       // 卸価格 = 上代 × 掛率
+      profit: number;      // 卸価格 − 原価
+      profitRate: number;  // 粗利率（卸価格ベース）
+      costRatio: number;   // 原価率（卸価格ベース）= 原価 ÷ 卸価格
+    }> = {};
     for (const r of matrixRows) {
       const key = `${r.typeId}_${r.ratePct}`;
       const price = retail > 0 ? Math.round(retail * r.ratePct / 100) : 0;
       const profit = price - cost;
       const profitRate = price > 0 ? (profit / price) * 100 : 0;
-      prices[key] = { ratePct: r.ratePct, price, profit, profitRate };
+      const costRatio = price > 0 ? (cost / price) * 100 : 0;
+      prices[key] = { ratePct: r.ratePct, price, profit, profitRate, costRatio };
     }
     return {
       productId: p.id,
@@ -73,9 +83,11 @@ export async function GET() {
       name: p.name,
       series: p.series,
       size: p.size,
-      cost: Math.round(cost),
+      sortOrder: p.sortOrder,
+      cost,
       retailPrice: retail,
       wholesalePrice: p.wholesalePrice,
+      costRatioVsRetail,   // 上代ベース原価率
       prices,
     };
   });
