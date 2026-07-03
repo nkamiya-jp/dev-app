@@ -76,6 +76,8 @@ export async function PUT(
       ...(data.sizeH !== undefined && { sizeH: data.sizeH }),
       ...(data.sizeD !== undefined && { sizeD: data.sizeD }),
       ...(data.weightG !== undefined && { weightG: data.weightG }),
+      ...(data.leadText !== undefined && { leadText: data.leadText || null }),
+      ...(data.tags !== undefined && { tags: data.tags || null }),
       ...(data.description !== undefined && { description: data.description || null }),
       ...(data.active !== undefined && { active: data.active }),
     },

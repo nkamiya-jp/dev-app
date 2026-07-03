@@ -82,6 +82,8 @@ interface Product {
   sizeH: number | null;
   sizeD: number | null;
   weightG: number | null;
+  leadText: string | null;
+  tags: string | null;
   description: string | null;
   active: boolean;
   costSteps: CostStep[];
@@ -284,43 +286,54 @@ export function ProductDetail({ productId }: { productId: string }) {
           {editBasic ? (
             <BasicEditForm product={product} onSave={saveBasic} onCancel={() => setEditBasic(false)} />
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <p className="text-xs text-gray-500">卸単価</p>
-                <p className="font-bold text-lg">{product.wholesalePrice ? `${product.wholesalePrice.toLocaleString()}円` : "-"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">在庫</p>
-                <p className="font-medium">{product.inventory?.stock ?? 0}</p>
-              </div>
-              <div className="col-span-2 md:col-span-4 grid grid-cols-3 gap-3 mt-1 pt-3 border-t">
-                <div>
-                  <p className="text-xs text-gray-500">商品サイズ W × H × D (cm)</p>
-                  <p className="font-medium text-sm">
-                    {product.sizeW || product.sizeH || product.sizeD
-                      ? `${product.sizeW ?? "-"} × ${product.sizeH ?? "-"} × ${product.sizeD ?? "-"}`
-                      : "-"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">重さ</p>
-                  <p className="font-medium text-sm">{product.weightG ? `${product.weightG.toLocaleString()} g` : "-"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">裁断 縦 × 横 (cm)</p>
-                  <p className="font-medium text-sm">
-                    {product.cutHeight && product.cutWidth
-                      ? `${product.cutHeight} × ${product.cutWidth}`
-                      : "-"}
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-4">
+              {/* リード文・説明文・タグ（テキスト中心） */}
+              {product.leadText && (
+                <p className="text-base font-medium text-gray-800 leading-relaxed">{product.leadText}</p>
+              )}
               {product.description && (
-                <div className="col-span-2 md:col-span-4">
-                  <p className="text-xs text-gray-500">備考</p>
-                  <p className="text-sm">{product.description}</p>
+                <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{product.description}</p>
+              )}
+              {product.tags && (
+                <div className="flex flex-wrap gap-1.5">
+                  {product.tags.split(",").map((t) => t.trim()).filter(Boolean).map((t) => (
+                    <span key={t} className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">#{t}</span>
+                  ))}
                 </div>
               )}
+              {!product.leadText && !product.description && !product.tags && (
+                <p className="text-sm text-gray-400">「基本情報を編集」からリード文・説明文・タグを登録できます</p>
+              )}
+
+              {/* 数値スペック（下部に小さく） */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-3 border-t text-sm">
+                <div>
+                  <p className="text-[11px] text-gray-400">卸単価</p>
+                  <p className="font-medium">{product.wholesalePrice ? `${product.wholesalePrice.toLocaleString()}円` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400">在庫</p>
+                  <p className="font-medium">{product.inventory?.stock ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400">サイズ W×H×D</p>
+                  <p className="font-medium">
+                    {product.sizeW || product.sizeH || product.sizeD
+                      ? `${product.sizeW ?? "-"}×${product.sizeH ?? "-"}×${product.sizeD ?? "-"}`
+                      : "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400">重さ</p>
+                  <p className="font-medium">{product.weightG ? `${product.weightG.toLocaleString()}g` : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400">裁断 縦×横</p>
+                  <p className="font-medium">
+                    {product.cutHeight && product.cutWidth ? `${product.cutHeight}×${product.cutWidth}` : "-"}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
@@ -1082,6 +1095,8 @@ function BasicEditForm({
   const [sizeH, setSizeH] = useState(product.sizeH?.toString() || "");
   const [sizeD, setSizeD] = useState(product.sizeD?.toString() || "");
   const [weightG, setWeightG] = useState(product.weightG?.toString() || "");
+  const [leadText, setLeadText] = useState(product.leadText || "");
+  const [tags, setTags] = useState(product.tags || "");
   const [description, setDescription] = useState(product.description || "");
   const [active, setActive] = useState(product.active);
 
@@ -1101,6 +1116,8 @@ function BasicEditForm({
           sizeH: sizeH ? Number(sizeH) : null,
           sizeD: sizeD ? Number(sizeD) : null,
           weightG: weightG ? Number(weightG) : null,
+          leadText: leadText || null,
+          tags: tags || null,
           description: description || null,
           active,
         });
@@ -1161,13 +1178,22 @@ function BasicEditForm({
         </div>
       </div>
       <div>
-        <label className="text-xs text-gray-500">備考</label>
+        <label className="text-xs text-gray-500">リード文（短いキャッチコピー）</label>
+        <Input value={leadText} onChange={(e) => setLeadText(e.target.value)} placeholder="例: 手のひらサイズの西陣織がま口財布" />
+      </div>
+      <div>
+        <label className="text-xs text-gray-500">説明文</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          rows={2}
+          rows={4}
           className="w-full border rounded-md px-3 py-2 text-sm resize-y"
+          placeholder="商品の詳細な説明。改行も使えます。"
         />
+      </div>
+      <div>
+        <label className="text-xs text-gray-500">タグ（カンマ区切り）</label>
+        <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="例: がま口,西陣,財布,金襴" />
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />

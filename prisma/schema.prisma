@@ -103,7 +103,9 @@ model Product {
   sizeD           Float?       // 商品サイズ 奥行 D (cm)
   weightG         Float?       // 重さ (g)
   sortOrder       Int          @default(0)  // 価格表などの表示順（100刻み）
-  description     String?
+  leadText        String?      // リード文（短いキャッチコピー）
+  tags            String?      // 検索用タグ（カンマ区切り 例: がま口,西陣,財布）
+  description     String?      // 商品説明文
   active          Boolean      @default(true)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
