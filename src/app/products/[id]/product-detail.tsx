@@ -295,20 +295,6 @@ export function ProductDetail({ productId }: { productId: string }) {
               </div>
               <div className="col-span-2 md:col-span-4 grid grid-cols-3 gap-3 mt-1 pt-3 border-t">
                 <div>
-                  <p className="text-xs text-gray-500">営業費（運賃込）</p>
-                  <p className="font-medium text-sm">{product.salesCost ? `${product.salesCost.toLocaleString()}円` : "-"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">出荷費（梱包込）</p>
-                  <p className="font-medium text-sm">{product.outboundCost ? `${product.outboundCost.toLocaleString()}円` : "-"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">管理費</p>
-                  <p className="font-medium text-sm">{product.mgmtCost ? `${product.mgmtCost.toLocaleString()}円` : "-"}</p>
-                </div>
-              </div>
-              <div className="col-span-2 md:col-span-4 grid grid-cols-3 gap-3 mt-1 pt-3 border-t">
-                <div>
                   <p className="text-xs text-gray-500">商品サイズ W × H × D (cm)</p>
                   <p className="font-medium text-sm">
                     {product.sizeW || product.sizeH || product.sizeD
@@ -348,7 +334,7 @@ export function ProductDetail({ productId }: { productId: string }) {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div className="border-l-4 border-l-slate-500 pl-3 bg-slate-50/40 rounded-r p-2">
-              <p className="text-xs text-gray-500">労務費</p>
+              <p className="text-xs text-gray-500">販管費</p>
               <p className="font-bold">{breakdown.laborCost.toLocaleString()}円</p>
               <p className="text-[10px] text-gray-400">営業{breakdown.salesCost}+出荷{breakdown.outboundCost}+管理{breakdown.mgmtCost}</p>
             </div>
@@ -398,6 +384,21 @@ export function ProductDetail({ productId }: { productId: string }) {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* 販管費（営業費・出荷費・管理費） */}
+      <Card className="bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">販管費（営業費・出荷費・管理費）</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SgaEditor
+            salesCost={product.salesCost}
+            outboundCost={product.outboundCost}
+            mgmtCost={product.mgmtCost}
+            onSave={saveBasic}
+          />
         </CardContent>
       </Card>
 
@@ -908,6 +909,72 @@ function MaterialPickerDialog({
   );
 }
 
+// ─── 販管費エディタ（営業費・出荷費・管理費） ───
+function SgaEditor({
+  salesCost,
+  outboundCost,
+  mgmtCost,
+  onSave,
+}: {
+  salesCost: number | null;
+  outboundCost: number | null;
+  mgmtCost: number | null;
+  onSave: (d: Partial<Product>) => void;
+}) {
+  const [sales, setSales] = useState(salesCost?.toString() || "");
+  const [outbound, setOutbound] = useState(outboundCost?.toString() || "");
+  const [mgmt, setMgmt] = useState(mgmtCost?.toString() || "");
+
+  useEffect(() => setSales(salesCost?.toString() || ""), [salesCost]);
+  useEffect(() => setOutbound(outboundCost?.toString() || ""), [outboundCost]);
+  useEffect(() => setMgmt(mgmtCost?.toString() || ""), [mgmtCost]);
+
+  const dirty =
+    Number(sales || 0) !== (salesCost ?? 0) ||
+    Number(outbound || 0) !== (outboundCost ?? 0) ||
+    Number(mgmt || 0) !== (mgmtCost ?? 0);
+
+  const total = (Number(sales) || 0) + (Number(outbound) || 0) + (Number(mgmt) || 0);
+
+  function commit() {
+    if (!dirty) return;
+    onSave({
+      salesCost: sales ? Number(sales) : null,
+      outboundCost: outbound ? Number(outbound) : null,
+      mgmtCost: mgmt ? Number(mgmt) : null,
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400">
+        ※ 販売費及び一般管理費。原価に含めて計算します（運賃は営業費に、梱包費は出荷費に統合済み）
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+        <div>
+          <label className="text-xs text-gray-500">営業費（円/個、運賃込）</label>
+          <Input type="number" value={sales} onChange={(e) => setSales(e.target.value)} placeholder="0" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">出荷費（円/個、梱包込）</label>
+          <Input type="number" value={outbound} onChange={(e) => setOutbound(e.target.value)} placeholder="0" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">管理費（円/個）</label>
+          <Input type="number" value={mgmt} onChange={(e) => setMgmt(e.target.value)} placeholder="0" />
+        </div>
+        <div>
+          <p className="text-xs text-gray-500">販管費合計</p>
+          <p className="font-bold text-lg">{total.toLocaleString()}<span className="text-sm font-normal text-gray-500"> 円</span></p>
+        </div>
+      </div>
+      <Button onClick={commit} disabled={!dirty} size="sm">
+        <Save className="size-4 mr-1" /> {dirty ? "確定して保存" : "変更なし"}
+      </Button>
+    </div>
+  );
+}
+
 // ─── 上代・原価率の設定 ───
 function PriceSettings({
   cost,
@@ -1009,9 +1076,6 @@ function BasicEditForm({
   const [series, setSeries] = useState(product.series || "");
   const [size, setSize] = useState(product.size || "");
   const [wholesalePrice, setWholesalePrice] = useState(product.wholesalePrice?.toString() || "");
-  const [salesCost, setSalesCost] = useState(product.salesCost?.toString() || "");
-  const [outboundCost, setOutboundCost] = useState(product.outboundCost?.toString() || "");
-  const [mgmtCost, setMgmtCost] = useState(product.mgmtCost?.toString() || "");
   const [cutHeight, setCutHeight] = useState(product.cutHeight?.toString() || "");
   const [cutWidth, setCutWidth] = useState(product.cutWidth?.toString() || "");
   const [sizeW, setSizeW] = useState(product.sizeW?.toString() || "");
@@ -1031,9 +1095,6 @@ function BasicEditForm({
           series: series || null,
           size: size || null,
           wholesalePrice: wholesalePrice ? Number(wholesalePrice) : null,
-          salesCost: salesCost ? Number(salesCost) : null,
-          outboundCost: outboundCost ? Number(outboundCost) : null,
-          mgmtCost: mgmtCost ? Number(mgmtCost) : null,
           cutHeight: cutHeight ? Number(cutHeight) : null,
           cutWidth: cutWidth ? Number(cutWidth) : null,
           sizeW: sizeW ? Number(sizeW) : null,
@@ -1071,18 +1132,6 @@ function BasicEditForm({
         <div>
           <label className="text-xs text-gray-500">卸単価（円）</label>
           <Input type="number" value={wholesalePrice} onChange={(e) => setWholesalePrice(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">営業費（円/個、運賃込）</label>
-          <Input type="number" value={salesCost} onChange={(e) => setSalesCost(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">出荷費（円/個、梱包込）</label>
-          <Input type="number" value={outboundCost} onChange={(e) => setOutboundCost(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">管理費（円/個）</label>
-          <Input type="number" value={mgmtCost} onChange={(e) => setMgmtCost(e.target.value)} />
         </div>
         <div>
           <label className="text-xs text-gray-500">裁断 縦（cm）</label>
