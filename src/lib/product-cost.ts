@@ -21,9 +21,10 @@ export interface Material {
   category: string; // leaf カテゴリ名 例: 表地, 口金, 梱包資材
   unitPrice: number;
   unitType: string; // "meter" | "piece" | "set"
-  yieldCount: number;    // [生地] 使用Mから取れる個数
-  usedMeters?: number;   // [生地] 使用M数（例: 0.9）
+  yieldCount: number;    // [生地] 取れ数（裁断寸法+生地巾から自動計算。フォールバック用）
+  usedMeters?: number;   // [生地][legacy] 使用M（商品レベルへ移行済み）
   usageCount?: number;   // [資材/梱包資材] 1個あたりの使用数（例: ボタン2個）
+  fabricWidth?: number | null; // [生地] 生地巾 cm（取れ数の自動計算に使用）
   topCategory?: string; // 大分類: "生地費" | "資材費" | "梱包資材費" など（API側で展開）
 }
 
@@ -34,8 +35,21 @@ export interface ProductCostInput {
   // [legacy] 統合済みフィールド（後方互換のため受けるが、通常 null）
   packagingCost?: number | null;
   shippingCost?: number | null;
+  // 裁断コンテキスト（生地費の取れ数・使用Mの自動計算に使用）
+  cutHeight?: number | null;   // 裁断 縦 cm
+  cutWidth?: number | null;    // 裁断 横 cm
+  usedMeters?: number | null;  // 生地の使用M（商品レベル）
   costSteps?: CostStep[];
   materials?: Material[];
+}
+
+// 生地の取れ数を裁断寸法と生地巾から自動計算（1m あたり）
+// = floor(生地巾 / 裁断横) × floor(100 / 裁断縦)
+export function calcFabricYield(cutHeight?: number | null, cutWidth?: number | null, fabricWidth?: number | null): number | null {
+  if (!cutHeight || !cutWidth || !fabricWidth) return null;
+  if (cutHeight <= 0 || cutWidth <= 0 || fabricWidth <= 0) return null;
+  if (cutWidth > fabricWidth) return 0;
+  return Math.floor(fabricWidth / cutWidth) * Math.floor(100 / cutHeight);
 }
 
 export interface CostBreakdown {
@@ -101,12 +115,22 @@ export function calcCostBreakdown(input: ProductCostInput): CostBreakdown {
   const productionCost = stepBreakdown.filter((s) => s.category === "制作費").reduce((s, x) => s + x.cost, 0);
   const cuttingCost   = stepBreakdown.filter((s) => s.category === "裁断費").reduce((s, x) => s + x.cost, 0);
 
-  const materialBreakdown = (input.materials ?? []).map((m) => ({
-    name: m.name,
-    perPiece: calcMaterialPerPiece(m),
-    category: m.category,
-    topCategory: resolveTopCategory(m),
-  }));
+  const usedMeters = input.usedMeters ?? 1;
+  const materialBreakdown = (input.materials ?? []).map((m) => {
+    const top = resolveTopCategory(m);
+    let perPiece: number;
+    if (top === "生地費") {
+      // 取れ数 = 裁断寸法 + 生地巾から自動計算（フォールバックは行の yieldCount）
+      const autoYield = calcFabricYield(input.cutHeight, input.cutWidth, m.fabricWidth ?? null);
+      const yieldCount = autoYield != null ? autoYield : (m.yieldCount || 0);
+      // 生地費 = 単価 × 使用M ÷ 取れ数 × 使用数（この生地を1個で何枚使うか）
+      perPiece = yieldCount > 0 ? (m.unitPrice * usedMeters) / yieldCount * (m.usageCount ?? 1) : 0;
+    } else {
+      // 資材・梱包資材 = 単価 × 使用数
+      perPiece = m.unitPrice * (m.usageCount ?? 1);
+    }
+    return { name: m.name, perPiece, category: m.category, topCategory: top };
+  });
   const fabricCost           = materialBreakdown.filter((m) => m.topCategory === "生地費").reduce((s, m) => s + m.perPiece, 0);
   const materialCost         = materialBreakdown.filter((m) => m.topCategory === "資材費").reduce((s, m) => s + m.perPiece, 0);
   const packagingMaterialCost= materialBreakdown.filter((m) => m.topCategory === "梱包資材費").reduce((s, m) => s + m.perPiece, 0);

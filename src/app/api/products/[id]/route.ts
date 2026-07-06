@@ -72,6 +72,7 @@ export async function PUT(
       ...(data.mgmtCost !== undefined && { mgmtCost: data.mgmtCost }),
       ...(data.cutHeight !== undefined && { cutHeight: data.cutHeight }),
       ...(data.cutWidth !== undefined && { cutWidth: data.cutWidth }),
+      ...(data.usedMeters !== undefined && { usedMeters: data.usedMeters }),
       ...(data.sizeW !== undefined && { sizeW: data.sizeW }),
       ...(data.sizeH !== undefined && { sizeH: data.sizeH }),
       ...(data.sizeD !== undefined && { sizeD: data.sizeD }),

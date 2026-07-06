@@ -18,6 +18,7 @@ import {
   calcCostBreakdown,
   calcGrossProfit,
   calcRetailFromCost,
+  calcFabricYield,
   DEFAULT_COST_RATIO,
 } from "@/lib/product-cost";
 import { getAllMatrixRows } from "@/lib/contact-meta";
@@ -78,6 +79,7 @@ interface Product {
   mgmtCost: number | null;
   cutHeight: number | null;
   cutWidth: number | null;
+  usedMeters: number | null;
   sizeW: number | null;
   sizeH: number | null;
   sizeD: number | null;
@@ -121,6 +123,9 @@ export function ProductDetail({ productId }: { productId: string }) {
     shippingCost: product.shippingCost,
     outboundCost: product.outboundCost,
     mgmtCost: product.mgmtCost,
+    cutHeight: product.cutHeight,
+    cutWidth: product.cutWidth,
+    usedMeters: product.usedMeters,
     costSteps: product.costSteps,
     materials: product.materials,
   });
@@ -332,6 +337,10 @@ export function ProductDetail({ productId }: { productId: string }) {
                   <p className="font-medium">
                     {product.cutHeight && product.cutWidth ? `${product.cutHeight}×${product.cutWidth}` : "-"}
                   </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400">生地 使用M</p>
+                  <p className="font-medium">{product.usedMeters ? `${product.usedMeters}m` : "-"}</p>
                 </div>
               </div>
             </div>
@@ -610,7 +619,13 @@ export function ProductDetail({ productId }: { productId: string }) {
             totalLabel="生地費合計"
             totalValue={breakdown.fabricCost}
             variant="fabric"
+            cutCtx={{ cutHeight: product.cutHeight, cutWidth: product.cutWidth, usedMeters: product.usedMeters }}
           />
+          {(!product.cutHeight || !product.cutWidth || !product.usedMeters) && (
+            <p className="text-xs text-amber-600 mt-2">
+              ⚠ 取れ数・使用Mを自動計算するには、基本情報の編集で「裁断 縦×横」と「使用M」を設定してください
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -667,7 +682,7 @@ export function ProductDetail({ productId }: { productId: string }) {
         onClose={() => setPickerCategory(null)}
         onPick={addMaterialFromMaster}
         existingMaterialIds={product.materials.map((m) => m.materialId).filter((x): x is string => !!x)}
-        productCut={{ cutHeight: product.cutHeight, cutWidth: product.cutWidth }}
+        productCut={{ cutHeight: product.cutHeight, cutWidth: product.cutWidth, usedMeters: product.usedMeters }}
       />
     </div>
   );
@@ -685,7 +700,7 @@ function MaterialPickerDialog({
   onClose: () => void;
   onPick: (m: MasterMaterial, params: { yieldCount?: number; usedMeters?: number; usageCount?: number }) => void;
   existingMaterialIds: string[];
-  productCut: { cutHeight: number | null; cutWidth: number | null };
+  productCut: { cutHeight: number | null; cutWidth: number | null; usedMeters: number | null };
 }) {
   const [items, setItems] = useState<MasterMaterial[]>([]);
   const [search, setSearch] = useState("");
@@ -760,8 +775,8 @@ function MaterialPickerDialog({
           <p className="text-xs text-gray-500">
             {isFabricPicker
               ? hasCut
-                ? `※ 裁断寸法 (${productCut.cutHeight}×${productCut.cutWidth}cm) と生地巾から1mあたりの取れ数を自動推定。使用M（例: 0.9）も入力してください`
-                : "使用M数と取れ数（使用Mから何個取れるか）を入力してから「追加」"
+                ? `※ 取れ数は裁断寸法 (${productCut.cutHeight}×${productCut.cutWidth}cm) と生地巾から自動計算。使用Mは基本情報の裁断で設定します`
+                : "※ 生地を選ぶだけでOK。取れ数・使用Mは裁断寸法から自動計算されます（基本情報で裁断寸法・使用Mを設定してください）"
               : "1個あたりの使用数を入力してから「追加」（例: ボタン2個使い → 2）"}
           </p>
           <div className="max-h-96 overflow-y-auto border rounded-md">
@@ -781,10 +796,7 @@ function MaterialPickerDialog({
                     <th className="text-left px-2 py-1.5 font-medium text-gray-500">名前</th>
                     <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24">単価</th>
                     {isFabricPicker ? (
-                      <>
-                        <th className="text-center px-2 py-1.5 font-medium text-gray-500 w-20">使用M *</th>
-                        <th className="text-center px-2 py-1.5 font-medium text-gray-500 w-20">取れ数 *</th>
-                      </>
+                      <th className="text-center px-2 py-1.5 font-medium text-gray-500 w-24">巾 / 取れ数</th>
                     ) : (
                       <th className="text-center px-2 py-1.5 font-medium text-gray-500 w-20">使用数 *</th>
                     )}
@@ -798,64 +810,35 @@ function MaterialPickerDialog({
                     const unitLabel = m.unitType === "meter" ? "m" : m.unitType === "set" ? "セット" : "個";
 
                     if (isFabricPicker) {
-                      const meterStr = meters[m.id] ?? "1";
-                      const meterNum = Number(meterStr);
-                      const yieldStr = yields[m.id] ?? "";
-                      const yieldNum = Number(yieldStr);
-                      const valid = !used && meterNum > 0 && yieldStr !== "" && yieldNum > 0;
-                      const perPiece = valid ? (m.unitPrice * meterNum) / yieldNum : 0;
                       const autoYield = hasCut && m.fabricWidth
                         ? calcYieldPerMeter(productCut, { fabricWidth: m.fabricWidth })
                         : null;
+                      const usedM = productCut.usedMeters ?? 1;
+                      const perPiece = autoYield && autoYield > 0 ? (m.unitPrice * usedM) / autoYield : 0;
                       return (
                         <tr key={m.id} className="hover:bg-gray-50">
                           <td className="px-2 py-1.5">
                             <div className="font-medium">{m.name}</div>
                             {m.code && <div className="font-mono text-[10px] text-gray-400">{m.code}</div>}
-                            {m.fabricWidth && (
-                              <div className="text-[10px] text-purple-600">巾 {m.fabricWidth}cm</div>
-                            )}
                           </td>
                           <td className="px-2 py-1.5 text-right">
                             {m.unitPrice.toLocaleString()}円/{unitLabel}
                           </td>
-                          <td className="px-2 py-1.5">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={meterStr}
-                              onChange={(e) => setMeters((p) => ({ ...p, [m.id]: e.target.value }))}
-                              disabled={used}
-                              placeholder="0.9"
-                              className="w-full px-2 py-1 text-sm border rounded text-right disabled:bg-gray-100"
-                            />
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <input
-                              type="number"
-                              min="1"
-                              value={yieldStr}
-                              onChange={(e) => setYields((p) => ({ ...p, [m.id]: e.target.value }))}
-                              disabled={used}
-                              placeholder="例: 42"
-                              className={`w-full px-2 py-1 text-sm border rounded text-right disabled:bg-gray-100 ${
-                                autoYield && Number(yieldStr) === autoYield ? "bg-purple-50" : ""
-                              }`}
-                            />
-                            {autoYield ? (
-                              <div className="text-[9px] text-purple-600 text-right">1mで{autoYield}個</div>
-                            ) : null}
+                          <td className="px-2 py-1.5 text-center text-gray-600">
+                            {m.fabricWidth ? `巾${m.fabricWidth}cm` : <span className="text-gray-300 text-[10px]">巾未設定</span>}
+                            <div className="text-[10px] text-purple-600">
+                              {autoYield != null ? (autoYield > 0 ? `取れ数 ${autoYield}` : "巾不足") : "裁断未設定"}
+                            </div>
                           </td>
                           <td className="px-2 py-1.5 text-right text-gray-600">
-                            {valid ? `${perPiece.toFixed(1)}円` : "-"}
+                            {autoYield && autoYield > 0 ? `${perPiece.toFixed(1)}円` : "-"}
                           </td>
                           <td className="px-2 py-1.5 text-right">
                             <Button
                               size="sm"
-                              variant={valid ? "default" : "outline"}
-                              onClick={() => valid && onPick(m, { usedMeters: meterNum, yieldCount: yieldNum })}
-                              disabled={!valid}
+                              variant={used ? "outline" : "default"}
+                              onClick={() => !used && onPick(m, {})}
+                              disabled={used}
                               className="h-7 px-2 text-xs"
                             >
                               {used ? "登録済" : "追加"}
@@ -1091,6 +1074,7 @@ function BasicEditForm({
   const [wholesalePrice, setWholesalePrice] = useState(product.wholesalePrice?.toString() || "");
   const [cutHeight, setCutHeight] = useState(product.cutHeight?.toString() || "");
   const [cutWidth, setCutWidth] = useState(product.cutWidth?.toString() || "");
+  const [usedMeters, setUsedMeters] = useState(product.usedMeters?.toString() || "");
   const [sizeW, setSizeW] = useState(product.sizeW?.toString() || "");
   const [sizeH, setSizeH] = useState(product.sizeH?.toString() || "");
   const [sizeD, setSizeD] = useState(product.sizeD?.toString() || "");
@@ -1112,6 +1096,7 @@ function BasicEditForm({
           wholesalePrice: wholesalePrice ? Number(wholesalePrice) : null,
           cutHeight: cutHeight ? Number(cutHeight) : null,
           cutWidth: cutWidth ? Number(cutWidth) : null,
+          usedMeters: usedMeters ? Number(usedMeters) : null,
           sizeW: sizeW ? Number(sizeW) : null,
           sizeH: sizeH ? Number(sizeH) : null,
           sizeD: sizeD ? Number(sizeD) : null,
@@ -1157,6 +1142,10 @@ function BasicEditForm({
         <div>
           <label className="text-xs text-gray-500">裁断 横（cm）</label>
           <Input type="number" value={cutWidth} onChange={(e) => setCutWidth(e.target.value)} placeholder="例: 10" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">生地 使用M（m/個）</label>
+          <Input type="number" step="0.01" value={usedMeters} onChange={(e) => setUsedMeters(e.target.value)} placeholder="例: 0.9" />
         </div>
       </div>
       <div className="grid grid-cols-4 gap-3">
@@ -1419,6 +1408,7 @@ function MaterialTable({
   totalLabel,
   totalValue,
   variant = "usage",
+  cutCtx,
 }: {
   materials: Material[];
   onUpdate: (id: string, d: Partial<Material>) => void;
@@ -1426,12 +1416,13 @@ function MaterialTable({
   totalLabel: string;
   totalValue: number;
   variant?: "fabric" | "usage";
+  cutCtx?: { cutHeight: number | null; cutWidth: number | null; usedMeters: number | null };
 }) {
   if (materials.length === 0) {
     return <p className="text-sm text-gray-400 text-center py-4">未登録</p>;
   }
   const isFabric = variant === "fabric";
-  const colCount = isFabric ? 6 : 5;
+  const colCount = isFabric ? 7 : 5;
   return (
     <table className="w-full text-sm">
       <thead className="bg-gray-50 border-b">
@@ -1440,8 +1431,9 @@ function MaterialTable({
           <th className="text-right px-3 py-2 font-medium text-gray-500 w-28">単価</th>
           {isFabric ? (
             <>
-              <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">使用M</th>
-              <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">取れ数</th>
+              <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">使用M<span className="text-[9px] text-gray-400 block">裁断で設定</span></th>
+              <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">取れ数<span className="text-[9px] text-gray-400 block">自動</span></th>
+              <th className="text-right px-3 py-2 font-medium text-gray-500 w-20">使用数<span className="text-[9px] text-gray-400 block">枚数</span></th>
             </>
           ) : (
             <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">使用数</th>
@@ -1452,7 +1444,7 @@ function MaterialTable({
       </thead>
       <tbody className="divide-y">
         {materials.map((m) => (
-          <MaterialRow key={m.id} material={m} onUpdate={onUpdate} onDelete={onDelete} variant={variant} />
+          <MaterialRow key={m.id} material={m} onUpdate={onUpdate} onDelete={onDelete} variant={variant} cutCtx={cutCtx} />
         ))}
         <tr className="bg-blue-50/30 font-bold">
           <td className="px-3 py-2" colSpan={colCount - 2}>{totalLabel}</td>
@@ -1469,34 +1461,36 @@ function MaterialRow({
   onUpdate,
   onDelete,
   variant,
+  cutCtx,
 }: {
   material: Material;
   onUpdate: (id: string, d: Partial<Material>) => Promise<void> | void;
   onDelete: (id: string) => void;
   variant: "fabric" | "usage";
+  cutCtx?: { cutHeight: number | null; cutWidth: number | null; usedMeters: number | null };
 }) {
   const isFabric = variant === "fabric";
   const [name, setName] = useState(material.name);
   const [unitPrice, setUnitPrice] = useState(String(material.unitPrice));
-  const [usedMeters, setUsedMeters] = useState(String(material.usedMeters ?? 1));
-  const [yieldCount, setYieldCount] = useState(String(material.yieldCount));
   const [usageCount, setUsageCount] = useState(String(material.usageCount ?? 1));
+
+  // 生地: 使用M（商品レベル）と取れ数（裁断寸法+生地巾から自動）
+  const usedM = cutCtx?.usedMeters ?? 1;
+  const autoYield = isFabric
+    ? calcFabricYield(cutCtx?.cutHeight ?? null, cutCtx?.cutWidth ?? null, material.fabricWidth ?? null)
+    : null;
 
   const dirty =
     name !== material.name ||
     Number(unitPrice) !== material.unitPrice ||
-    (isFabric
-      ? Number(usedMeters) !== (material.usedMeters ?? 1) || Number(yieldCount) !== material.yieldCount
-      : Number(usageCount) !== (material.usageCount ?? 1));
+    Number(usageCount) !== (material.usageCount ?? 1);
 
   async function commitAll() {
     if (!dirty) return;
     await onUpdate(material.id, {
       name,
       unitPrice: Number(unitPrice) || 0,
-      ...(isFabric
-        ? { usedMeters: Number(usedMeters) || 1, yieldCount: Number(yieldCount) || 1 }
-        : { usageCount: Number(usageCount) || 1 }),
+      usageCount: Number(usageCount) || 1,
     });
   }
 
@@ -1507,9 +1501,9 @@ function MaterialRow({
     }
   }
 
-  // 1個あたり: 生地 = 単価 × 使用M ÷ 取れ数 / 資材 = 単価 × 使用数
+  // 1個あたり: 生地 = 単価 × 使用M ÷ 取れ数 × 使用数 / 資材 = 単価 × 使用数
   const perPiece = isFabric
-    ? (Number(unitPrice) * (Number(usedMeters) || 1)) / (Number(yieldCount) || 1)
+    ? (autoYield && autoYield > 0 ? (Number(unitPrice) * usedM) / autoYield * (Number(usageCount) || 1) : 0)
     : Number(unitPrice) * (Number(usageCount) || 1);
 
   return (
@@ -1543,27 +1537,26 @@ function MaterialRow({
       </td>
       {isFabric ? (
         <>
-          <td className="px-3 py-1">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={usedMeters}
-              onChange={(e) => setUsedMeters(e.target.value)}
-              onKeyDown={handleKey}
-              className="w-full px-2 py-1 text-sm border rounded text-right"
-              placeholder="例: 0.9"
-            />
+          <td className="px-3 py-1 text-right text-gray-600">
+            {usedM}m
+          </td>
+          <td className="px-3 py-1 text-right text-gray-600">
+            {autoYield != null ? (
+              autoYield > 0 ? `${autoYield}個` : <span className="text-red-500 text-[10px]">巾不足</span>
+            ) : (
+              <span className="text-gray-300 text-[10px]">裁断/巾未設定</span>
+            )}
           </td>
           <td className="px-3 py-1">
             <input
               type="number"
-              min="1"
-              value={yieldCount}
-              onChange={(e) => setYieldCount(e.target.value)}
+              step="0.1"
+              min="0"
+              value={usageCount}
+              onChange={(e) => setUsageCount(e.target.value)}
               onKeyDown={handleKey}
               className="w-full px-2 py-1 text-sm border rounded text-right"
-              placeholder="例: 42"
+              placeholder="1"
             />
           </td>
         </>

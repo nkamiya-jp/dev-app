@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     where: { active: true },
     include: {
       costSteps: true,
-      materials: true,
+      materials: { include: { material: { select: { fabricWidth: true } } } },
     },
   });
 
@@ -61,6 +61,9 @@ export async function POST(request: NextRequest) {
       shippingCost: p.shippingCost,
       outboundCost: p.outboundCost,
       mgmtCost: p.mgmtCost,
+      cutHeight: p.cutHeight,
+      cutWidth: p.cutWidth,
+      usedMeters: p.usedMeters,
       costSteps: p.costSteps.map((s) => ({
         id: s.id,
         step: s.step,
@@ -78,6 +81,7 @@ export async function POST(request: NextRequest) {
         yieldCount: m.yieldCount,
         usedMeters: m.usedMeters,
         usageCount: m.usageCount,
+        fabricWidth: m.material?.fabricWidth ?? null,
         topCategory: getTopName(m.category),
       })),
     });
