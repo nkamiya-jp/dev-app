@@ -26,6 +26,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { CsvImportDialog } from "@/components/csv-import-dialog";
 
 interface Material {
   id: string;
@@ -256,6 +257,19 @@ export default function MaterialsPage() {
           <Button variant="outline" size="sm" onClick={() => setCategoryDialogOpen(true)}>
             <Settings2 className="size-4 mr-1" /> カテゴリ管理
           </Button>
+          <CsvImportDialog
+            title="資材マスタ"
+            endpoint="/api/materials/import"
+            onDone={load}
+            columns={[
+              { key: "code", label: "コード", example: "FAB-100" },
+              { key: "name", label: "資材名", required: true, example: "西陣裂A" },
+              { key: "category", label: "カテゴリ", example: "表地" },
+              { key: "unitPrice", label: "単価", example: "1500" },
+              { key: "unitType", label: "単位", example: "m" },
+              { key: "fabricWidth", label: "生地巾", example: "72" },
+            ]}
+          />
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
               <Plus className="size-4 mr-1" /> 資材を追加

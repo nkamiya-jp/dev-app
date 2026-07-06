@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
 import { Search, Pencil, Plus, Package } from "lucide-react";
+import { CsvImportDialog } from "@/components/csv-import-dialog";
 
 interface Product {
   id: string;
@@ -123,6 +124,27 @@ export default function ProductsPage() {
               <option key={s.id} value={s.id}>{s.label}</option>
             ))}
           </select>
+          <CsvImportDialog
+            title="商品マスタ"
+            endpoint="/api/products/import"
+            onDone={load}
+            columns={[
+              { key: "code", label: "コード", required: true, example: "西2.6" },
+              { key: "name", label: "商品名", required: true, example: "西陣 2.6寸がま口" },
+              { key: "series", label: "シリーズ", example: "西陣" },
+              { key: "size", label: "サイズ", example: "2.6寸" },
+              { key: "retailPrice", label: "上代", example: "1600" },
+              { key: "wholesalePrice", label: "卸単価", example: "800" },
+              { key: "salesCost", label: "営業費", example: "20" },
+              { key: "outboundCost", label: "出荷費", example: "30" },
+              { key: "mgmtCost", label: "管理費", example: "8" },
+              { key: "cutHeight", label: "裁断縦", example: "10" },
+              { key: "cutWidth", label: "裁断横", example: "12" },
+              { key: "usedMeters", label: "使用M", example: "0.9" },
+              { key: "leadText", label: "リード文", example: "手のひらサイズのがま口" },
+              { key: "tags", label: "タグ", example: "がま口,西陣" },
+            ]}
+          />
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
               <Plus className="size-4 mr-1" /> 商品を追加
