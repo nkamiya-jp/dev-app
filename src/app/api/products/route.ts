@@ -63,8 +63,28 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { id } = await request.json();
-  // 物理削除ではなく非アクティブ化
+  const { id, hard } = await request.json();
+
+  if (hard) {
+    // 依存（受注明細・出荷・製造）が無ければ完全削除、あれば非アクティブ化
+    const [orderItems, shipments, productions] = await Promise.all([
+      prisma.orderItem.count({ where: { productId: id } }),
+      prisma.shipment.count({ where: { productId: id } }),
+      prisma.production.count({ where: { productId: id } }),
+    ]);
+    const deps = orderItems + shipments + productions;
+    if (deps === 0) {
+      // 在庫・原価工程・資材は cascade / 関連削除
+      await prisma.inventory.deleteMany({ where: { productId: id } });
+      await prisma.product.delete({ where: { id } });
+      return Response.json({ ok: true, deleted: "hard" });
+    }
+    // 依存があるので非アクティブ化にフォールバック
+    await prisma.product.update({ where: { id }, data: { active: false } });
+    return Response.json({ ok: true, deleted: "soft", deps });
+  }
+
+  // 通常は非アクティブ化（取扱終了）
   await prisma.product.update({ where: { id }, data: { active: false } });
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, deleted: "soft" });
 }

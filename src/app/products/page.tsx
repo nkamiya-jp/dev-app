@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
-import { Search, Pencil, Plus, Package } from "lucide-react";
+import { Search, Pencil, Plus, Package, Copy, Trash2 } from "lucide-react";
 import { CsvImportDialog } from "@/components/csv-import-dialog";
 
 interface Product {
@@ -90,6 +90,38 @@ export default function ProductsPage() {
       }),
     });
     setEditTarget(null);
+    load();
+  }
+
+  async function duplicateProduct(id: string, name: string) {
+    if (!confirm(`「${name}」を複製しますか？（原価工程・生地・資材もコピーされます）`)) return;
+    const res = await fetch(`/api/products/${id}/duplicate`, { method: "POST" });
+    if (res.ok) load();
+    else alert("複製に失敗しました");
+  }
+
+  async function deleteProduct(id: string, name: string, active: boolean) {
+    // アクティブ商品はまず非アクティブ化、非アクティブ商品は完全削除を試みる
+    if (active) {
+      if (!confirm(`「${name}」を取扱終了（非表示）にしますか？`)) return;
+      await fetch("/api/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      load();
+      return;
+    }
+    if (!confirm(`「${name}」を完全に削除しますか？\n（受注・出荷・製造で使われている場合は取扱終了のままになります）`)) return;
+    const res = await fetch("/api/products", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, hard: true }),
+    });
+    const data = await res.json();
+    if (data.deleted === "soft" && data.deps) {
+      alert(`他データ（受注/出荷/製造 計${data.deps}件）で使用中のため、完全削除できません。取扱終了のままにしました。`);
+    }
     load();
   }
 
@@ -216,6 +248,8 @@ export default function ProductsPage() {
             color={series.color}
             items={items}
             onEdit={setEditTarget}
+            onDuplicate={duplicateProduct}
+            onDelete={deleteProduct}
           />
         ))}
         {noSeries.length > 0 && (
@@ -224,6 +258,8 @@ export default function ProductsPage() {
             color="bg-gray-100 text-gray-700"
             items={noSeries}
             onEdit={setEditTarget}
+            onDuplicate={duplicateProduct}
+            onDelete={deleteProduct}
           />
         )}
       </div>
@@ -291,11 +327,15 @@ function ProductGroup({
   color,
   items,
   onEdit,
+  onDuplicate,
+  onDelete,
 }: {
   title: string;
   color: string;
   items: Product[];
   onEdit: (p: Product) => void;
+  onDuplicate: (id: string, name: string) => void;
+  onDelete: (id: string, name: string, active: boolean) => void;
 }) {
   return (
     <div>
@@ -313,13 +353,29 @@ function ProductGroup({
                   <p className="font-medium truncate">{p.name}</p>
                   {p.size && <p className="text-xs text-gray-400 mt-0.5">{p.size}</p>}
                 </Link>
-                <button
-                  onClick={() => onEdit(p)}
-                  className="text-gray-400 hover:text-gray-700 p-1 -m-1"
-                  title="編集"
-                >
-                  <Pencil className="size-4" />
-                </button>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => onEdit(p)}
+                    className="text-gray-400 hover:text-gray-700 p-1"
+                    title="編集"
+                  >
+                    <Pencil className="size-4" />
+                  </button>
+                  <button
+                    onClick={() => onDuplicate(p.id, p.name)}
+                    className="text-gray-400 hover:text-blue-600 p-1"
+                    title="複製"
+                  >
+                    <Copy className="size-4" />
+                  </button>
+                  <button
+                    onClick={() => onDelete(p.id, p.name, p.active)}
+                    className="text-gray-400 hover:text-red-600 p-1"
+                    title={p.active ? "取扱終了にする" : "完全に削除"}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
                 <div>
