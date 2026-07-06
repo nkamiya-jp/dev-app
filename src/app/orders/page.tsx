@@ -15,7 +15,7 @@ import {
 import { ORDER_STATUSES, ORDER_STATUS_BG, getOrderStatusLabel, getOrderStatusColor } from "@/lib/order-status";
 import { getContactTypeColor, getContactTypeLabel } from "@/lib/contact-meta";
 import Link from "next/link";
-import { Plus, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, Search, Trash2 } from "lucide-react";
 
 interface OrderItem {
   id: string;
@@ -123,6 +123,16 @@ export default function OrdersPage() {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: orderId, status }),
+    });
+    load();
+  }
+
+  async function deleteOrder(orderId: string, label: string) {
+    if (!confirm(`受注「${label}」を削除します。明細もすべて削除されます。よろしいですか？`)) return;
+    await fetch("/api/orders", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: orderId }),
     });
     load();
   }
@@ -365,6 +375,16 @@ export default function OrdersPage() {
 
                     {/* 明細追加フォーム */}
                     <AddItemForm products={products} onAdd={(p, q, u) => addItem(order.id, p, q, u)} />
+
+                    {/* 受注削除 */}
+                    <div className="flex justify-end pt-2 border-t">
+                      <button
+                        onClick={() => deleteOrder(order.id, `${order.contact.name} / ${new Date(order.orderDate).toLocaleDateString("ja-JP")}`)}
+                        className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded px-2 py-1"
+                      >
+                        <Trash2 className="size-3.5" /> この受注を削除
+                      </button>
+                    </div>
                   </div>
                 )}
               </CardContent>
