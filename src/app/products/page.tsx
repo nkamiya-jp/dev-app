@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
-import { Search, Pencil, Plus, Package, Copy, Trash2 } from "lucide-react";
+import { Search, Pencil, Plus, Package, Copy, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { CsvImportDialog } from "@/components/csv-import-dialog";
 
 interface Product {
@@ -90,6 +90,15 @@ export default function ProductsPage() {
       }),
     });
     setEditTarget(null);
+    load();
+  }
+
+  async function reorderProduct(id: string, direction: "up" | "down") {
+    await fetch("/api/products/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, direction, withinSeries: true }),
+    });
     load();
   }
 
@@ -250,6 +259,7 @@ export default function ProductsPage() {
             onEdit={setEditTarget}
             onDuplicate={duplicateProduct}
             onDelete={deleteProduct}
+            onReorder={reorderProduct}
           />
         ))}
         {noSeries.length > 0 && (
@@ -260,6 +270,7 @@ export default function ProductsPage() {
             onEdit={setEditTarget}
             onDuplicate={duplicateProduct}
             onDelete={deleteProduct}
+            onReorder={reorderProduct}
           />
         )}
       </div>
@@ -329,6 +340,7 @@ function ProductGroup({
   onEdit,
   onDuplicate,
   onDelete,
+  onReorder,
 }: {
   title: string;
   color: string;
@@ -336,6 +348,7 @@ function ProductGroup({
   onEdit: (p: Product) => void;
   onDuplicate: (id: string, name: string) => void;
   onDelete: (id: string, name: string, active: boolean) => void;
+  onReorder: (id: string, direction: "up" | "down") => void;
 }) {
   return (
     <div>
@@ -344,10 +357,28 @@ function ProductGroup({
         <span className="text-sm text-gray-500">{items.length}件</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {items.map((p) => (
+        {items.map((p, idx) => (
           <Card key={p.id} className={`bg-white shadow-sm hover:shadow-md transition-shadow ${!p.active ? "opacity-50" : ""}`}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between mb-2">
+                <div className="flex flex-col shrink-0 mr-1 -ml-1">
+                  <button
+                    onClick={() => onReorder(p.id, "up")}
+                    disabled={idx === 0}
+                    className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="上へ"
+                  >
+                    <ChevronUp className="size-4" />
+                  </button>
+                  <button
+                    onClick={() => onReorder(p.id, "down")}
+                    disabled={idx === items.length - 1}
+                    className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="下へ"
+                  >
+                    <ChevronDown className="size-4" />
+                  </button>
+                </div>
                 <Link href={`/products/${p.id}`} className="flex-1 min-w-0 group hover:underline">
                   <p className="text-xs text-gray-500 font-mono">{p.code}</p>
                   <p className="font-medium truncate">{p.name}</p>

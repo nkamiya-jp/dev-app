@@ -4,10 +4,11 @@ import { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 
 // POST /api/products/reorder
-// body: { id, direction: "up" | "down", scope?: series名 }
-// 指定商品を、同じ表示リスト内で上/下の商品と sortOrder を入れ替える
+// body: { id, direction: "up" | "down", withinSeries?: boolean }
+// 指定商品を、上/下の商品と sortOrder を入れ替える
+// withinSeries=true のときは同じシリーズ内で入れ替え（商品マスタ用）
 export async function POST(request: NextRequest) {
-  const { id, direction } = await request.json();
+  const { id, direction, withinSeries } = await request.json();
   if (!id || (direction !== "up" && direction !== "down")) {
     return Response.json({ error: "invalid params" }, { status: 400 });
   }
@@ -15,10 +16,14 @@ export async function POST(request: NextRequest) {
   const current = await prisma.product.findUnique({ where: { id } });
   if (!current) return Response.json({ error: "not found" }, { status: 404 });
 
-  // アクティブ商品を並び順で取得
+  // アクティブ商品を並び順で取得（withinSeries時は同シリーズのみ）
   const all = await prisma.product.findMany({
-    where: { active: true },
-    orderBy: [{ sortOrder: "asc" }, { series: "asc" }, { code: "asc" }],
+    where: withinSeries
+      ? { active: true, series: current.series }
+      : { active: true },
+    orderBy: withinSeries
+      ? [{ sortOrder: "asc" }, { code: "asc" }]
+      : [{ sortOrder: "asc" }, { series: "asc" }, { code: "asc" }],
     select: { id: true, sortOrder: true },
   });
 
