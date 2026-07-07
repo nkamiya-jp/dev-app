@@ -18,6 +18,7 @@ model Contact {
   address        String?
   type           String?
   discountRate   Float?
+  closingDay     Int?     // 締日（1-31、null/0=末日締め）。月次売上の月判定に使用
   sansanPersonId String?  @unique
   leadStatus     String?
   leadSource     String?

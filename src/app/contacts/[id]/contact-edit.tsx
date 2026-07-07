@@ -25,6 +25,7 @@ interface Contact {
   address: string | null;
   type: string | null;
   discountRate: number | null;
+  closingDay: number | null;
 }
 
 export function ContactEditButton({
@@ -65,6 +66,7 @@ export function ContactEditButton({
       address: form.get("address") || null,
       type: form.get("type") || null,
       discountRate: form.get("discountRate") ? Number(form.get("discountRate")) : null,
+      closingDay: form.get("closingDay") ? Number(form.get("closingDay")) : null,
     };
 
     await fetch(`/api/contacts/${contact.id}`, {
@@ -148,6 +150,22 @@ export function ContactEditButton({
                 placeholder="例: 50"
               />
             </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">締日（月次売上の集計に使用）</label>
+            <select
+              name="closingDay"
+              defaultValue={contact.closingDay != null ? String(contact.closingDay) : ""}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+            >
+              <option value="">末日締め</option>
+              {[5, 10, 15, 20, 25].map((d) => (
+                <option key={d} value={d}>{d}日締め</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              例: 20日締め → 21日〜翌月20日の受注を翌月の売上として集計
+            </p>
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "保存中..." : "保存"}

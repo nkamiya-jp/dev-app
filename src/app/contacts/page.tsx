@@ -28,6 +28,7 @@ interface Contact {
   address: string | null;
   type: string | null;
   discountRate: number | null;
+  closingDay: number | null;
   createdAt: string;
   _count: { deals: number; tasks: number };
 }
@@ -153,6 +154,7 @@ export default function ContactsPage() {
                       address: c.address,
                       type: c.type,
                       discountRate: c.discountRate,
+                      closingDay: c.closingDay,
                     }}
                     onSaved={loadContacts}
                     variant="icon"

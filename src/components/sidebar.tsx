@@ -25,6 +25,7 @@ import {
   Layers,
   ListChecks,
   ChevronDown,
+  Coins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +58,7 @@ const navSections = [
     label: "製造・出荷 (MFG)",
     items: [
       { href: "/orders", label: "受注", icon: ShoppingCart },
+      { href: "/sales", label: "月次売上", icon: Coins },
       { href: "/forecast", label: "需要予測", icon: TrendingUp },
       { href: "/shipping-plan", label: "出荷計画", icon: CalendarDays },
       { href: "/production", label: "製造", icon: Hammer },

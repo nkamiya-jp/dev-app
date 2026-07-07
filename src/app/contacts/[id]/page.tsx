@@ -43,6 +43,7 @@ export default async function ContactDetailPage({
           address: contact.address,
           type: contact.type,
           discountRate: contact.discountRate,
+          closingDay: contact.closingDay,
         }} />
       </div>
 
