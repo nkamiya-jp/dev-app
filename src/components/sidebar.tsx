@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart3,
   Users,
@@ -24,6 +24,7 @@ import {
   CalendarDays,
   Layers,
   ListChecks,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,35 +76,74 @@ const navSections = [
   },
 ];
 
+const COLLAPSE_KEY = "sidebar-collapsed-sections";
+
 function NavContent({ pathname }: { pathname: string }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  // localStorage から復元
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLLAPSE_KEY);
+      if (raw) setCollapsed(new Set(JSON.parse(raw)));
+    } catch {}
+  }, []);
+
+  function toggle(label: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      try {
+        localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  }
+
   return (
-    <nav className="flex flex-col gap-4 px-3">
-      {navSections.map((section) => (
-        <div key={section.label} className="flex flex-col gap-1">
-          <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-            {section.label}
-          </p>
-          {section.items.map((item) => {
-            const isActive = pathname.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
+    <nav className="flex flex-col gap-3 px-3">
+      {navSections.map((section) => {
+        const isCollapsed = collapsed.has(section.label);
+        // 折りたたみ中でも、現在ページを含むセクションは中身を表示（迷子防止）
+        const hasActive = section.items.some((i) => pathname.startsWith(i.href));
+        const showItems = !isCollapsed || hasActive;
+        return (
+          <div key={section.label} className="flex flex-col gap-1">
+            <button
+              onClick={() => toggle(section.label)}
+              className="flex items-center justify-between px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-300"
+            >
+              <span>{section.label}</span>
+              <ChevronDown
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-white/10 text-white"
-                    : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                  "size-3.5 transition-transform",
+                  isCollapsed && "-rotate-90"
                 )}
-              >
-                <Icon className="size-5 shrink-0" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      ))}
+              />
+            </button>
+            {showItems && section.items.map((item) => {
+              const isActive = pathname.startsWith(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-white/10 text-white"
+                      : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                  )}
+                >
+                  <Icon className="size-5 shrink-0" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        );
+      })}
     </nav>
   );
 }
