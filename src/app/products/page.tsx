@@ -102,6 +102,16 @@ export default function ProductsPage() {
     load();
   }
 
+  async function moveProduct(id: string, targetId: string) {
+    if (id === targetId) return;
+    await fetch("/api/products/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, targetId, withinSeries: true }),
+    });
+    load();
+  }
+
   async function duplicateProduct(id: string, name: string) {
     if (!confirm(`「${name}」を複製しますか？（原価工程・生地・資材もコピーされます）`)) return;
     const res = await fetch(`/api/products/${id}/duplicate`, { method: "POST" });
@@ -260,6 +270,7 @@ export default function ProductsPage() {
             onDuplicate={duplicateProduct}
             onDelete={deleteProduct}
             onReorder={reorderProduct}
+            onMove={moveProduct}
           />
         ))}
         {noSeries.length > 0 && (
@@ -271,6 +282,7 @@ export default function ProductsPage() {
             onDuplicate={duplicateProduct}
             onDelete={deleteProduct}
             onReorder={reorderProduct}
+            onMove={moveProduct}
           />
         )}
       </div>
@@ -341,6 +353,7 @@ function ProductGroup({
   onDuplicate,
   onDelete,
   onReorder,
+  onMove,
 }: {
   title: string;
   color: string;
@@ -349,16 +362,34 @@ function ProductGroup({
   onDuplicate: (id: string, name: string) => void;
   onDelete: (id: string, name: string, active: boolean) => void;
   onReorder: (id: string, direction: "up" | "down") => void;
+  onMove: (id: string, targetId: string) => void;
 }) {
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
         <Badge className={color}>{title}</Badge>
         <span className="text-sm text-gray-500">{items.length}件</span>
+        <span className="text-[11px] text-gray-400 hidden md:inline">（カードをドラッグで並び替え）</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {items.map((p, idx) => (
-          <Card key={p.id} className={`bg-white shadow-sm hover:shadow-md transition-shadow ${!p.active ? "opacity-50" : ""}`}>
+          <Card
+            key={p.id}
+            draggable
+            onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = "move"; }}
+            onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== p.id) setOverId(p.id); }}
+            onDragLeave={() => setOverId((cur) => (cur === p.id ? null : cur))}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragId && dragId !== p.id) onMove(dragId, p.id);
+              setDragId(null);
+              setOverId(null);
+            }}
+            onDragEnd={() => { setDragId(null); setOverId(null); }}
+            className={`bg-white shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing ${!p.active ? "opacity-50" : ""} ${overId === p.id ? "ring-2 ring-blue-400" : ""} ${dragId === p.id ? "opacity-40" : ""}`}
+          >
             <CardContent className="p-4">
               <div className="flex items-start justify-between mb-2">
                 <div className="flex flex-col shrink-0 mr-1 -ml-1">
