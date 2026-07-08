@@ -44,6 +44,8 @@ export default async function ContactDetailPage({
           type: contact.type,
           discountRate: contact.discountRate,
           closingDay: contact.closingDay,
+          paymentMonthOffset: contact.paymentMonthOffset,
+          paymentDay: contact.paymentDay,
         }} />
       </div>
 

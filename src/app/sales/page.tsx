@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Printer, Users, Package } from "lucide-react";
+import { Download, Printer, Users, Package, TrendingUp, Wallet } from "lucide-react";
 import { formatMonthLabel } from "@/lib/sales-month";
 
 interface Row {
@@ -17,19 +17,26 @@ interface Row {
   months: Record<string, number>;
 }
 
-interface SalesResponse {
+interface Dataset {
   months: string[];
   customers: Row[];
   products: Row[];
   monthTotals: Record<string, number>;
+}
+
+interface SalesResponse {
+  sales: Dataset;
+  payment: Dataset;
   generatedAt: string;
 }
 
 type Axis = "customer" | "product";
+type Basis = "sales" | "payment";
 
 export default function SalesPage() {
   const [data, setData] = useState<SalesResponse | null>(null);
   const [axis, setAxis] = useState<Axis>("customer");
+  const [basis, setBasis] = useState<Basis>("sales");
   const [monthCount, setMonthCount] = useState(12);
 
   const load = useCallback(async () => {
@@ -41,9 +48,11 @@ export default function SalesPage() {
 
   if (!data) return <div className="p-6 text-gray-400">読み込み中...</div>;
 
-  const months = data.months.slice(0, monthCount);
-  const rows = axis === "customer" ? data.customers : data.products;
+  const ds = basis === "sales" ? data.sales : data.payment;
+  const months = ds.months.slice(0, monthCount);
+  const rows = axis === "customer" ? ds.customers : ds.products;
   const isCustomer = axis === "customer";
+  const isPayment = basis === "payment";
 
   function exportCSV() {
     const header = [isCustomer ? "顧客" : "商品", "合計", ...months.map(formatMonthLabel)];
@@ -52,13 +61,13 @@ export default function SalesPage() {
       String(r.total),
       ...months.map((m) => String(r.months[m] ?? 0)),
     ]);
-    const totalRow = ["月別合計", String(rows.reduce((s, r) => s + r.total, 0)), ...months.map((m) => String(data!.monthTotals[m] ?? 0))];
+    const totalRow = ["月別合計", String(rows.reduce((s, r) => s + r.total, 0)), ...months.map((m) => String(ds.monthTotals[m] ?? 0))];
     const csv = [header, ...body, totalRow].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `月次売上_${isCustomer ? "顧客別" : "商品別"}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${isPayment ? "着金予定" : "月次売上"}_${isCustomer ? "顧客別" : "商品別"}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -69,10 +78,29 @@ export default function SalesPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 print:hidden">
         <div>
-          <h2 className="text-2xl font-bold">月次売上</h2>
-          <p className="text-xs text-gray-500 mt-1">受注ベース（顧客の締日で月を判定）</p>
+          <h2 className="text-2xl font-bold">{isPayment ? "着金予定" : "月次売上"}</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            {isPayment
+              ? "受注を締日＋支払サイトで入金予定月に割当（見込みキャッシュフロー）"
+              : "受注ベース（顧客の締日で売上月を判定）"}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* 計上基準: 売上 / 着金予定 */}
+          <div className="inline-flex rounded-md border overflow-hidden">
+            <button
+              onClick={() => setBasis("sales")}
+              className={`px-3 py-2 text-sm flex items-center gap-1 ${!isPayment ? "bg-primary text-primary-foreground" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+            >
+              <TrendingUp className="size-4" /> 売上月
+            </button>
+            <button
+              onClick={() => setBasis("payment")}
+              className={`px-3 py-2 text-sm flex items-center gap-1 ${isPayment ? "bg-primary text-primary-foreground" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+            >
+              <Wallet className="size-4" /> 着金予定月
+            </button>
+          </div>
           <div className="inline-flex rounded-md border overflow-hidden">
             <button
               onClick={() => setAxis("customer")}
@@ -119,7 +147,7 @@ export default function SalesPage() {
             </thead>
             <tbody className="divide-y">
               {rows.length === 0 ? (
-                <tr><td colSpan={months.length + 2} className="text-center text-gray-400 py-8">売上データがありません</td></tr>
+                <tr><td colSpan={months.length + 2} className="text-center text-gray-400 py-8">データがありません</td></tr>
               ) : (
                 rows.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50">
@@ -151,7 +179,7 @@ export default function SalesPage() {
                   <td className="px-3 py-2 sticky left-0 bg-gray-50">月別合計</td>
                   <td className="px-3 py-2 text-right bg-blue-100/50">{grandTotal.toLocaleString()}</td>
                   {months.map((m) => (
-                    <td key={m} className="px-3 py-2 text-right">{(data.monthTotals[m] ?? 0).toLocaleString()}</td>
+                    <td key={m} className="px-3 py-2 text-right">{(ds.monthTotals[m] ?? 0).toLocaleString()}</td>
                   ))}
                 </tr>
               </tfoot>
@@ -161,7 +189,10 @@ export default function SalesPage() {
       </Card>
 
       <p className="text-xs text-gray-400 print:hidden">
-        ※ キャンセル以外の受注を集計。金額は明細（単価×数量）の合計。締日は顧客編集で設定できます。
+        ※ キャンセル以外の受注を集計。金額は明細（単価×数量）の合計。
+        {isPayment
+          ? " 着金予定月＝売上月＋支払サイト。締日・支払サイトは顧客編集で設定できます。"
+          : " 締日は顧客編集で設定できます。"}
       </p>
     </div>
   );

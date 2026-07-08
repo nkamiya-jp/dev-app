@@ -29,6 +29,8 @@ interface Contact {
   type: string | null;
   discountRate: number | null;
   closingDay: number | null;
+  paymentMonthOffset: number | null;
+  paymentDay: number | null;
   createdAt: string;
   _count: { deals: number; tasks: number };
 }
@@ -155,6 +157,8 @@ export default function ContactsPage() {
                       type: c.type,
                       discountRate: c.discountRate,
                       closingDay: c.closingDay,
+                      paymentMonthOffset: c.paymentMonthOffset,
+                      paymentDay: c.paymentDay,
                     }}
                     onSaved={loadContacts}
                     variant="icon"

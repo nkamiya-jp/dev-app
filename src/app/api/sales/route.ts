@@ -1,74 +1,112 @@
 import { prisma } from "@/lib/db";
-import { salesMonth } from "@/lib/sales-month";
+import { salesMonth, paymentMonth } from "@/lib/sales-month";
 
 export const dynamic = "force-dynamic";
 
+interface Agg {
+  id: string;
+  name: string;
+  company?: string | null;
+  code?: string | null;
+  series?: string | null;
+  total: number;
+  months: Record<string, number>;
+}
+
+function ensure(map: Map<string, Agg>, key: string, base: Omit<Agg, "total" | "months">): Agg {
+  if (!map.has(key)) map.set(key, { ...base, total: 0, months: {} });
+  return map.get(key)!;
+}
+
 // GET /api/sales
-// 受注を締日ベースで月次集計。顧客軸・商品軸の両方を返す
+// 受注を「売上月（締日ベース）」と「着金予定月（支払サイトベース）」の2軸で集計。
+// それぞれ顧客軸・商品軸を返す。
 export async function GET() {
   const orders = await prisma.order.findMany({
     where: { status: { not: "cancelled" } },
     include: {
-      contact: { select: { id: true, name: true, company: true, closingDay: true } },
+      contact: { select: { id: true, name: true, company: true, closingDay: true, paymentMonthOffset: true } },
       items: {
         include: { product: { select: { id: true, name: true, code: true, series: true } } },
       },
     },
   });
 
-  // 月の集合
-  const monthsSet = new Set<string>();
+  const salesMonthsSet = new Set<string>();
+  const payMonthsSet = new Set<string>();
 
-  // 顧客軸: contactId → { name, months: { ym: amount } }
-  const byCustomer = new Map<string, { id: string; name: string; company: string | null; total: number; months: Record<string, number> }>();
-  // 商品軸: productId → { name, months: { ym: amount } }
-  const byProduct = new Map<string, { id: string; name: string; code: string | null; series: string | null; total: number; months: Record<string, number> }>();
+  // 売上ベース
+  const salesByCustomer = new Map<string, Agg>();
+  const salesByProduct = new Map<string, Agg>();
+  // 着金予定ベース
+  const payByCustomer = new Map<string, Agg>();
+  const payByProduct = new Map<string, Agg>();
 
   for (const o of orders) {
-    const ym = salesMonth(o.orderDate, o.contact.closingDay);
-    monthsSet.add(ym);
+    const sYm = salesMonth(o.orderDate, o.contact.closingDay);
+    const pYm = paymentMonth(sYm, o.contact.paymentMonthOffset);
+    salesMonthsSet.add(sYm);
+    payMonthsSet.add(pYm);
 
-    // 受注合計（明細の単価×数量）
     const orderTotal = o.items.reduce((s, it) => s + (it.unitPrice ?? 0) * it.quantity, 0);
 
-    // 顧客軸
-    if (!byCustomer.has(o.contact.id)) {
-      byCustomer.set(o.contact.id, { id: o.contact.id, name: o.contact.name, company: o.contact.company, total: 0, months: {} });
-    }
-    const cust = byCustomer.get(o.contact.id)!;
-    cust.months[ym] = (cust.months[ym] ?? 0) + orderTotal;
-    cust.total += orderTotal;
+    // 顧客軸（売上＆着金）
+    const custBase = { id: o.contact.id, name: o.contact.name, company: o.contact.company };
+    const sCust = ensure(salesByCustomer, o.contact.id, custBase);
+    sCust.months[sYm] = (sCust.months[sYm] ?? 0) + orderTotal;
+    sCust.total += orderTotal;
+    const pCust = ensure(payByCustomer, o.contact.id, custBase);
+    pCust.months[pYm] = (pCust.months[pYm] ?? 0) + orderTotal;
+    pCust.total += orderTotal;
 
-    // 商品軸
+    // 商品軸（売上＆着金）
     for (const it of o.items) {
       const amount = (it.unitPrice ?? 0) * it.quantity;
-      const pid = it.product.id;
-      if (!byProduct.has(pid)) {
-        byProduct.set(pid, { id: pid, name: it.product.name, code: it.product.code, series: it.product.series, total: 0, months: {} });
-      }
-      const prod = byProduct.get(pid)!;
-      prod.months[ym] = (prod.months[ym] ?? 0) + amount;
-      prod.total += amount;
+      const prodBase = { id: it.product.id, name: it.product.name, code: it.product.code, series: it.product.series };
+      const sProd = ensure(salesByProduct, it.product.id, prodBase);
+      sProd.months[sYm] = (sProd.months[sYm] ?? 0) + amount;
+      sProd.total += amount;
+      const pProd = ensure(payByProduct, it.product.id, prodBase);
+      pProd.months[pYm] = (pProd.months[pYm] ?? 0) + amount;
+      pProd.total += amount;
     }
   }
 
-  // 月ラベル（新しい順）。データが無ければ直近6ヶ月
-  let months = [...monthsSet].sort().reverse();
-  if (months.length === 0) {
+  function fallbackMonths(set: Set<string>): string[] {
+    const arr = [...set].sort().reverse();
+    if (arr.length > 0) return arr;
     const now = new Date();
     let y = now.getFullYear(), m = now.getMonth() + 1;
-    for (let i = 0; i < 6; i++) {
-      months.push(`${y}-${String(m).padStart(2, "0")}`);
-      m -= 1; if (m < 1) { m = 12; y -= 1; }
-    }
+    const out: string[] = [];
+    for (let i = 0; i < 6; i++) { out.push(`${y}-${String(m).padStart(2, "0")}`); m -= 1; if (m < 1) { m = 12; y -= 1; } }
+    return out;
+  }
+  function totalsOf(list: Agg[]): Record<string, number> {
+    const t: Record<string, number> = {};
+    for (const c of list) for (const [ym, v] of Object.entries(c.months)) t[ym] = (t[ym] ?? 0) + v;
+    return t;
   }
 
-  const customers = [...byCustomer.values()].sort((a, b) => b.total - a.total);
-  const products = [...byProduct.values()].sort((a, b) => b.total - a.total);
+  const salesCustomers = [...salesByCustomer.values()].sort((a, b) => b.total - a.total);
+  const salesProducts = [...salesByProduct.values()].sort((a, b) => b.total - a.total);
+  const payCustomers = [...payByCustomer.values()].sort((a, b) => b.total - a.total);
+  const payProducts = [...payByProduct.values()].sort((a, b) => b.total - a.total);
 
-  // 月別合計
-  const monthTotals: Record<string, number> = {};
-  for (const c of customers) for (const [ym, v] of Object.entries(c.months)) monthTotals[ym] = (monthTotals[ym] ?? 0) + v;
-
-  return Response.json({ months, customers, products, monthTotals, generatedAt: new Date().toISOString() });
+  return Response.json({
+    // 売上ベース
+    sales: {
+      months: fallbackMonths(salesMonthsSet),
+      customers: salesCustomers,
+      products: salesProducts,
+      monthTotals: totalsOf(salesCustomers),
+    },
+    // 着金予定ベース
+    payment: {
+      months: fallbackMonths(payMonthsSet),
+      customers: payCustomers,
+      products: payProducts,
+      monthTotals: totalsOf(payCustomers),
+    },
+    generatedAt: new Date().toISOString(),
+  });
 }

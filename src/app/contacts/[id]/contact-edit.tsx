@@ -26,6 +26,8 @@ interface Contact {
   type: string | null;
   discountRate: number | null;
   closingDay: number | null;
+  paymentMonthOffset: number | null;
+  paymentDay: number | null;
 }
 
 export function ContactEditButton({
@@ -67,6 +69,8 @@ export function ContactEditButton({
       type: form.get("type") || null,
       discountRate: form.get("discountRate") ? Number(form.get("discountRate")) : null,
       closingDay: form.get("closingDay") ? Number(form.get("closingDay")) : null,
+      paymentMonthOffset: form.get("paymentMonthOffset") ? Number(form.get("paymentMonthOffset")) : null,
+      paymentDay: form.get("paymentDay") ? Number(form.get("paymentDay")) : null,
     };
 
     await fetch(`/api/contacts/${contact.id}`, {
@@ -167,6 +171,37 @@ export function ContactEditButton({
               例: 20日締め → 21日〜翌月20日の受注を翌月の売上として集計
             </p>
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">支払サイト（着金予定の計算）</label>
+              <select
+                name="paymentMonthOffset"
+                defaultValue={contact.paymentMonthOffset != null ? String(contact.paymentMonthOffset) : ""}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">翌月（デフォルト）</option>
+                <option value="1">翌月</option>
+                <option value="2">翌々月</option>
+                <option value="3">3ヶ月後</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">入金日</label>
+              <select
+                name="paymentDay"
+                defaultValue={contact.paymentDay != null ? String(contact.paymentDay) : ""}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">末日</option>
+                {[5, 10, 15, 20, 25].map((d) => (
+                  <option key={d} value={d}>{d}日</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400 -mt-1">
+            例: 締め翌月末払い → 7月締め分は8月末に着金予定
+          </p>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "保存中..." : "保存"}
           </Button>
