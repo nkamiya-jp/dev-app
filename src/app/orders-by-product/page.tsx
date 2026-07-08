@@ -41,10 +41,42 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** インライン数値入力セル。空=0。フォーカスアウト or Enter で保存。 */
+function NumCell({
+  value,
+  onSave,
+  className = "",
+}: {
+  value: number;
+  onSave: (v: number) => void;
+  className?: string;
+}) {
+  const [text, setText] = useState(value ? String(value) : "");
+  useEffect(() => { setText(value ? String(value) : ""); }, [value]);
+
+  function commit() {
+    const n = Number(text) || 0;
+    if (n !== value) onSave(n);
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={text}
+      onChange={(e) => setText(e.target.value.replace(/[^\d]/g, ""))}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      className={`w-full bg-transparent text-right outline-none focus:bg-white focus:ring-1 focus:ring-blue-400 rounded px-1 py-0.5 ${className}`}
+    />
+  );
+}
+
 export default function OrdersByProductPage() {
   const [productId, setProductId] = useState("");
   const [month, setMonth] = useState(currentMonth());
   const [data, setData] = useState<Resp | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
@@ -55,6 +87,37 @@ export default function OrdersByProductPage() {
   }, [productId, month]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 楽観更新 + 保存
+  const saveCell = useCallback(
+    async (itemId: string, kind: "monthly" | "weekly", key: string, val: number) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map((r) => {
+            if (r.itemId !== itemId) return r;
+            if (kind === "monthly") return { ...r, monthlyPlans: { ...r.monthlyPlans, [key]: val } };
+            return { ...r, weeklyPlans: { ...r.weeklyPlans, [key]: val } };
+          }),
+        };
+      });
+      setSaving(true);
+      try {
+        await fetch(`/api/orders/by-product`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            itemId,
+            [kind === "monthly" ? "monthlyPlans" : "weeklyPlans"]: { [key]: val },
+          }),
+        });
+      } finally {
+        setSaving(false);
+      }
+    },
+    []
+  );
 
   if (!data) return <div className="p-6 text-gray-400">読み込み中...</div>;
 
@@ -95,9 +158,10 @@ export default function OrdersByProductPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 print:hidden">
         <div>
           <h2 className="text-2xl font-bold">商品別 出荷管理</h2>
-          <p className="text-xs text-gray-500 mt-1">商品ごとに受注を並べ、月別対応・出荷済・週別を管理</p>
+          <p className="text-xs text-gray-500 mt-1">商品ごとに受注を並べ、月別対応数・週別対応数を入力（自動保存）</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {saving && <span className="text-xs text-gray-400">保存中…</span>}
           <select
             value={productId}
             onChange={(e) => setProductId(e.target.value)}
@@ -113,7 +177,7 @@ export default function OrdersByProductPage() {
             value={month}
             onChange={(e) => setMonth(e.target.value)}
             className="border rounded-md px-3 py-2 text-sm"
-            title="週バケツの表示月"
+            title="表示月（月別列・週バケツの基準月）"
           />
           {productId && (
             <>
@@ -160,26 +224,39 @@ export default function OrdersByProductPage() {
                 {rows.length === 0 ? (
                   <tr><td colSpan={months.length + weeks.length + 5} className="text-center text-gray-400 py-8">この商品の受注はありません</td></tr>
                 ) : (
-                  rows.map((r) => (
-                    <tr key={r.itemId} className={`hover:bg-gray-50 ${r.remainQty <= 0 ? "bg-gray-50/60 text-gray-400" : ""}`}>
-                      <td className="px-2 py-1.5 border-r">{fmtDate(r.orderDate)}</td>
-                      <td className="px-2 py-1.5 border-r">
-                        {r.contactId ? (
-                          <Link href={`/contacts/${r.contactId}`} className="text-blue-600 hover:underline">{r.contactName}</Link>
-                        ) : r.contactName}
-                        {r.company && <span className="text-[10px] text-gray-400 ml-1">{r.company}</span>}
-                      </td>
-                      <td className="px-2 py-1.5 text-right font-medium border-r">{r.quantity.toLocaleString()}</td>
-                      {months.map((m) => (
-                        <td key={m} className="px-2 py-1.5 text-right border-r bg-blue-50/20">{r.monthlyPlans[m] ? r.monthlyPlans[m].toLocaleString() : ""}</td>
-                      ))}
-                      <td className="px-2 py-1.5 text-right border-r">{r.shippedQty ? r.shippedQty.toLocaleString() : ""}</td>
-                      <td className="px-2 py-1.5 border-r text-gray-500">{r.shipStr}</td>
-                      {weeks.map((w) => (
-                        <td key={w.monday} className="px-2 py-1.5 text-right border-r bg-amber-50/20">{r.weeklyPlans[w.monday] ? r.weeklyPlans[w.monday].toLocaleString() : ""}</td>
-                      ))}
-                    </tr>
-                  ))
+                  rows.map((r) => {
+                    const done = r.remainQty <= 0;
+                    return (
+                      <tr key={r.itemId} className={`hover:bg-gray-50 ${done ? "bg-gray-50/60 text-gray-400" : ""}`}>
+                        <td className="px-2 py-1.5 border-r">{fmtDate(r.orderDate)}</td>
+                        <td className="px-2 py-1.5 border-r">
+                          {r.contactId ? (
+                            <Link href={`/contacts/${r.contactId}`} className="text-blue-600 hover:underline">{r.contactName}</Link>
+                          ) : r.contactName}
+                          {r.company && <span className="text-[10px] text-gray-400 ml-1">{r.company}</span>}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-medium border-r">{r.quantity.toLocaleString()}</td>
+                        {months.map((m) => (
+                          <td key={m} className="px-1 py-0.5 border-r bg-blue-50/20 print:px-2 print:py-1.5 print:text-right">
+                            <span className="hidden print:inline">{r.monthlyPlans[m] ? r.monthlyPlans[m].toLocaleString() : ""}</span>
+                            <span className="print:hidden">
+                              <NumCell value={r.monthlyPlans[m] || 0} onSave={(v) => saveCell(r.itemId, "monthly", m, v)} />
+                            </span>
+                          </td>
+                        ))}
+                        <td className="px-2 py-1.5 text-right border-r">{r.shippedQty ? r.shippedQty.toLocaleString() : ""}</td>
+                        <td className="px-2 py-1.5 border-r text-gray-500">{r.shipStr}</td>
+                        {weeks.map((w) => (
+                          <td key={w.monday} className="px-1 py-0.5 border-r bg-amber-50/20 print:px-2 print:py-1.5 print:text-right">
+                            <span className="hidden print:inline">{r.weeklyPlans[w.monday] ? r.weeklyPlans[w.monday].toLocaleString() : ""}</span>
+                            <span className="print:hidden">
+                              <NumCell value={r.weeklyPlans[w.monday] || 0} onSave={(v) => saveCell(r.itemId, "weekly", w.monday, v)} />
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
               {rows.length > 0 && (
@@ -205,7 +282,7 @@ export default function OrdersByProductPage() {
 
       {productId && (
         <p className="text-xs text-gray-400 print:hidden">
-          ※ {months.length ? `${months.map((m) => formatMonthLabel(m)).join("・")}の月別対応数、` : ""}週バケツは選択月（{formatMonthLabel(month)}）の平日週。灰色行=出荷完了。
+          ※ 月別対応（{months.map((m) => formatMonthLabel(m)).join("・")}）と週別（{formatMonthLabel(month)}の平日週）は青・橙のセルに直接入力→自動保存。出荷済・出荷日は出荷実績から自動表示。灰色行=出荷完了。
         </p>
       )}
     </div>

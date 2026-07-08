@@ -4,6 +4,16 @@ import { getWeeksOfMonth } from "@/lib/week-utils";
 
 export const dynamic = "force-dynamic";
 
+// "YYYY-MM" を n ヶ月ずらす
+function shiftMonth(ym: string, n: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  let yy = y;
+  let mm = m + n;
+  while (mm > 12) { mm -= 12; yy += 1; }
+  while (mm < 1) { mm += 12; yy -= 1; }
+  return `${yy}-${String(mm).padStart(2, "0")}`;
+}
+
 // GET /api/orders/by-product?productId=X&month=YYYY-MM
 // 指定商品の受注を「出荷管理表」形式で返す（1行=1受注明細）
 export async function GET(request: NextRequest) {
@@ -22,6 +32,10 @@ export async function GET(request: NextRequest) {
   }
 
   const weeks = month && /^\d{4}-\d{2}$/.test(month) ? getWeeksOfMonth(month) : [];
+
+  // 月別対応列は「選択月の前月・当月・翌月」を固定表示（見本の 6/7/8月 に相当）
+  const baseMonth = month && /^\d{4}-\d{2}$/.test(month) ? month : null;
+  const months = baseMonth ? [shiftMonth(baseMonth, -1), baseMonth, shiftMonth(baseMonth, 1)] : [];
 
   // 該当商品の受注明細（キャンセル以外）
   const items = await prisma.orderItem.findMany({
@@ -50,15 +64,11 @@ export async function GET(request: NextRequest) {
     shipByOrder.get(s.orderId)!.push({ shipDate: s.shipDate, quantity: s.quantity });
   }
 
-  const monthsSet = new Set<string>();
-
   const rows = items.map((it) => {
     let monthlyPlans: Record<string, number> = {};
     let weeklyPlans: Record<string, number> = {};
     try { if (it.monthlyPlans) monthlyPlans = JSON.parse(it.monthlyPlans); } catch {}
     try { if (it.weeklyPlans) weeklyPlans = JSON.parse(it.weeklyPlans); } catch {}
-    for (const k of Object.keys(monthlyPlans)) if (monthlyPlans[k]) monthsSet.add(k);
-
     // 出荷日(個数) 文字列（"6/25 200 7/3 100"）
     const ships = shipByOrder.get(it.order.id) ?? [];
     const shipStr = ships
@@ -89,7 +99,46 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const months = [...monthsSet].sort();
-
   return Response.json({ products, productId, months, weeks, rows });
+}
+
+// PATCH /api/orders/by-product  { itemId, monthlyPlans?, weeklyPlans? }
+// 月別対応数・週別対応数を保存（部分更新: 送られたキーだけ既存にマージ）
+export async function PATCH(request: NextRequest) {
+  const body = await request.json().catch(() => null);
+  if (!body || !body.itemId) {
+    return Response.json({ error: "itemId required" }, { status: 400 });
+  }
+  const item = await prisma.orderItem.findUnique({
+    where: { id: body.itemId },
+    select: { monthlyPlans: true, weeklyPlans: true },
+  });
+  if (!item) return Response.json({ error: "not found" }, { status: 404 });
+
+  const data: { monthlyPlans?: string; weeklyPlans?: string } = {};
+
+  if (body.monthlyPlans && typeof body.monthlyPlans === "object") {
+    let cur: Record<string, number> = {};
+    try { if (item.monthlyPlans) cur = JSON.parse(item.monthlyPlans); } catch {}
+    for (const [k, v] of Object.entries(body.monthlyPlans)) {
+      const n = Number(v);
+      if (!n || n <= 0) delete cur[k];
+      else cur[k] = n;
+    }
+    data.monthlyPlans = JSON.stringify(cur);
+  }
+
+  if (body.weeklyPlans && typeof body.weeklyPlans === "object") {
+    let cur: Record<string, number> = {};
+    try { if (item.weeklyPlans) cur = JSON.parse(item.weeklyPlans); } catch {}
+    for (const [k, v] of Object.entries(body.weeklyPlans)) {
+      const n = Number(v);
+      if (!n || n <= 0) delete cur[k];
+      else cur[k] = n;
+    }
+    data.weeklyPlans = JSON.stringify(cur);
+  }
+
+  await prisma.orderItem.update({ where: { id: body.itemId }, data });
+  return Response.json({ ok: true });
 }
