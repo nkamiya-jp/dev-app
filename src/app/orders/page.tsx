@@ -15,7 +15,7 @@ import {
 import { ORDER_STATUSES, ORDER_STATUS_BG, getOrderStatusLabel, getOrderStatusColor } from "@/lib/order-status";
 import { getContactTypeColor, getContactTypeLabel } from "@/lib/contact-meta";
 import Link from "next/link";
-import { Plus, ChevronDown, ChevronRight, Search, Trash2, Pencil } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, Search, Trash2, Pencil, Copy } from "lucide-react";
 
 interface OrderItem {
   id: string;
@@ -154,6 +154,15 @@ export default function OrdersPage() {
       body: JSON.stringify({ id: orderId, status }),
     });
     load();
+  }
+
+  async function duplicateOrder(orderId: string) {
+    const res = await fetch(`/api/orders/${orderId}/duplicate`, { method: "POST" });
+    const json = await res.json();
+    await load();
+    if (json?.id) {
+      setExpanded((prev) => new Set(prev).add(json.id));
+    }
   }
 
   async function deleteOrder(orderId: string, label: string) {
@@ -392,8 +401,14 @@ export default function OrdersPage() {
                     {/* 明細追加フォーム */}
                     <AddItemForm products={products} onAdd={(p, q, u) => addItem(order.id, p, q, u)} />
 
-                    {/* 受注削除 */}
-                    <div className="flex justify-end pt-2 border-t">
+                    {/* 受注 複製・削除 */}
+                    <div className="flex justify-end gap-2 pt-2 border-t">
+                      <button
+                        onClick={() => duplicateOrder(order.id)}
+                        className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-blue-700 hover:bg-white border rounded px-2 py-1"
+                      >
+                        <Copy className="size-3.5" /> この受注を複製
+                      </button>
                       <button
                         onClick={() => deleteOrder(order.id, `${order.contact.name} / ${new Date(order.orderDate).toLocaleDateString("ja-JP")}`)}
                         className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded px-2 py-1"
