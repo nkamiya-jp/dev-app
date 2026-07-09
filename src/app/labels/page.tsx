@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { Barcode } from "@/components/barcode";
 
-interface OrderItem {
-  itemId: string;
-  orderId: string;
+interface ShipmentLabel {
+  shipmentId: string;
+  orderId: string | null;
   productId: string | null;
   productName: string;
   shortName: string | null;
@@ -16,10 +16,9 @@ interface OrderItem {
   contactName: string;
   company: string | null;
   quantity: number;
-  shippedQty: number;
-  remainQty: number;
-  orderDate: string;
-  dueDate: string | null;
+  shipDate: string;
+  status: string;
+  note: string | null;
 }
 interface ProductOpt {
   id: string;
@@ -28,7 +27,13 @@ interface ProductOpt {
   shortName: string | null;
   fnsku: string | null;
 }
-interface Resp { orderItems: OrderItem[]; products: ProductOpt[]; }
+interface Resp { shipments: ShipmentLabel[]; products: ProductOpt[]; }
+
+const SHIP_STATUS_LABEL: Record<string, string> = {
+  scheduled: "予定",
+  shipped: "出荷",
+  delivered: "配送済",
+};
 
 type Mode = "packing" | "amazon";
 
@@ -57,8 +62,9 @@ export default function LabelsPage() {
   const [w, setW] = useState(40);
   const [h, setH] = useState(30);
 
-  // 梱包カード: 選択した明細
+  // 梱包カード: 選択した出荷
   const [selItems, setSelItems] = useState<Set<string>>(new Set());
+  const [includeDelivered, setIncludeDelivered] = useState(false);
   // Amazon: 商品ごとの枚数
   const [copies, setCopies] = useState<Record<string, number>>({});
 
@@ -73,9 +79,9 @@ export default function LabelsPage() {
   }, []);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/labels`);
+    const res = await fetch(`/api/labels${includeDelivered ? "?all=1" : ""}`);
     setData(await res.json());
-  }, []);
+  }, [includeDelivered]);
   useEffect(() => { load(); }, [load]);
 
   function applyPreset(id: string) {
@@ -91,11 +97,11 @@ export default function LabelsPage() {
     try { localStorage.setItem(SIZE_KEY, JSON.stringify({ w: nw, h: nh, presetId: "custom" })); } catch {}
   }
 
-  const items = data?.orderItems ?? [];
+  const items = data?.shipments ?? [];
   const products = useMemo(() => (data?.products ?? []).filter((p) => mode !== "amazon" || p.fnsku), [data, mode]);
 
   // 印刷対象ラベルを組み立て
-  const packingLabels = items.filter((it) => selItems.has(it.itemId));
+  const packingLabels = items.filter((it) => selItems.has(it.shipmentId));
   const amazonLabels: { product: ProductOpt; index: number }[] = [];
   for (const p of products) {
     const n = copies[p.id] || 0;
@@ -111,7 +117,7 @@ export default function LabelsPage() {
       return next;
     });
   }
-  function selectAll() { setSelItems(new Set(items.map((i) => i.itemId))); }
+  function selectAll() { setSelItems(new Set(items.map((i) => i.shipmentId))); }
   function clearAll() { setSelItems(new Set()); }
 
   if (!data) return <div className="p-6 text-gray-400">読み込み中...</div>;
@@ -177,21 +183,26 @@ export default function LabelsPage() {
 
         {mode === "packing" ? (
           <div className="text-sm">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
               <button onClick={selectAll} className="text-blue-600 hover:underline">全選択</button>
               <button onClick={clearAll} className="text-blue-600 hover:underline">選択解除</button>
-              <span className="text-gray-400 text-xs">未出荷の受注明細 {items.length}件（{selItems.size}件選択）</span>
+              <span className="text-gray-400 text-xs">出荷 {items.length}件（{selItems.size}件選択）</span>
+              <label className="flex items-center gap-1.5 text-gray-600 ml-auto cursor-pointer text-xs">
+                <input type="checkbox" checked={includeDelivered} onChange={(e) => setIncludeDelivered(e.target.checked)} />
+                配送済も表示
+              </label>
             </div>
             <div className="max-h-72 overflow-y-auto border rounded-md divide-y">
               {items.length === 0 ? (
-                <div className="p-4 text-gray-400 text-center">未出荷の受注がありません</div>
+                <div className="p-4 text-gray-400 text-center">対象の出荷がありません。出荷ページで登録してください。</div>
               ) : items.map((it) => (
-                <label key={it.itemId} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                  <input type="checkbox" checked={selItems.has(it.itemId)} onChange={() => toggleItem(it.itemId)} />
-                  <span className="font-medium min-w-[140px]">{it.shortName || it.productName}</span>
-                  <span className="text-gray-500">{it.contactName}</span>
-                  <span className="ml-auto tabular-nums">×{it.remainQty.toLocaleString()}</span>
-                  <span className="text-gray-400 text-xs w-12 text-right">{fmtDate(it.dueDate) || fmtDate(it.orderDate)}</span>
+                <label key={it.shipmentId} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox" checked={selItems.has(it.shipmentId)} onChange={() => toggleItem(it.shipmentId)} />
+                  <span className="text-gray-400 text-xs w-10">{fmtDate(it.shipDate)}</span>
+                  <span className="font-medium min-w-[130px]">{it.shortName || it.productName}</span>
+                  <span className="text-gray-500 truncate">{it.contactName}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{SHIP_STATUS_LABEL[it.status] || it.status}</span>
+                  <span className="ml-auto tabular-nums font-medium">×{it.quantity.toLocaleString()}</span>
                 </label>
               ))}
             </div>
@@ -238,18 +249,18 @@ export default function LabelsPage() {
       <div className="label-print-area flex flex-wrap gap-2 print:gap-0 print:block">
         {mode === "packing" && packingLabels.map((it) => (
           <div
-            key={it.itemId}
+            key={it.shipmentId}
             className="label-page bg-white border border-gray-300 print:border-0 overflow-hidden flex flex-col justify-between"
             style={{ width: `${w}mm`, height: `${h}mm`, padding: "2mm" }}
           >
             <div className="flex items-start justify-between gap-1">
               <span className="font-bold leading-tight" style={{ fontSize: "3.4mm" }}>{it.shortName || it.productName}</span>
             </div>
-            <div className="font-bold leading-none" style={{ fontSize: "7mm" }}>×{it.remainQty.toLocaleString()}</div>
+            <div className="font-bold leading-none" style={{ fontSize: "7mm" }}>×{it.quantity.toLocaleString()}</div>
             <div style={{ fontSize: "2.6mm" }} className="leading-tight">
               <div className="truncate">出荷先: {it.contactName}</div>
               <div className="flex justify-between text-gray-600">
-                <span>納期: {fmtDate(it.dueDate) || "-"}</span>
+                <span>出荷日: {fmtDate(it.shipDate) || "-"}</span>
                 <span className="font-mono">{it.productCode}</span>
               </div>
             </div>
