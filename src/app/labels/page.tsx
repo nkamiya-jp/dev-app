@@ -32,13 +32,16 @@ interface Resp { orderItems: OrderItem[]; products: ProductOpt[]; }
 
 type Mode = "packing" | "amazon";
 
+// TD-2130N: 感熱300dpi・メディア幅19〜63mm・印字幅56mm。横(ロール幅)は56mm以内。
+// rayfook 再剥離ラベルの定番寸法に合わせたプリセット。
 const SIZE_PRESETS = [
-  { id: "40x30", label: "40 × 30mm（Amazon定番）", w: 40, h: 30 },
-  { id: "45x35", label: "45 × 35mm", w: 45, h: 35 },
-  { id: "62x40", label: "Brother 62 × 40mm", w: 62, h: 40 },
-  { id: "29x90", label: "Brother 29 × 90mm（縦長）", w: 29, h: 90 },
+  { id: "40x30", label: "40 × 30mm（Amazon・再剥離 定番）", w: 40, h: 30 },
+  { id: "50x30", label: "50 × 30mm", w: 50, h: 30 },
+  { id: "56x40", label: "56 × 40mm（TD-2130N 最大幅）", w: 56, h: 40 },
+  { id: "50x80", label: "50 × 80mm（縦長・作業カード向き）", w: 50, h: 80 },
   { id: "custom", label: "カスタム（mm指定）", w: 0, h: 0 },
 ];
+const MAX_PRINT_WIDTH_MM = 56; // TD-2130N 印字幅上限
 const SIZE_KEY = "labels-size";
 
 function fmtDate(iso: string | null) {
@@ -220,9 +223,16 @@ export default function LabelsPage() {
       </Card>
 
       {/* プレビュー見出し */}
-      <p className="text-sm text-gray-500 no-print">
-        プレビュー（実寸 {w}×{h}mm・{printCount}枚）— 印刷時はラベラーを選び、用紙サイズが {w}×{h}mm になっているか確認してください。
-      </p>
+      <div className="no-print space-y-1">
+        <p className="text-sm text-gray-500">
+          プレビュー（実寸 {w}×{h}mm・{printCount}枚）— 印刷時はラベラー（TD-2130N等）を選び、用紙サイズが {w}×{h}mm になっているか確認してください。
+        </p>
+        {w > MAX_PRINT_WIDTH_MM && (
+          <p className="text-sm text-amber-600">
+            ⚠ 横 {w}mm は TD-2130N の印字幅（{MAX_PRINT_WIDTH_MM}mm）を超えています。横は {MAX_PRINT_WIDTH_MM}mm 以内にしてください。
+          </p>
+        )}
+      </div>
 
       {/* ラベル本体（画面プレビュー＝枠あり / 印刷＝1枚1ページ） */}
       <div className="label-print-area flex flex-wrap gap-2 print:gap-0 print:block">
