@@ -16,6 +16,7 @@ import { ORDER_STATUSES, ORDER_STATUS_BG, getOrderStatusLabel, getOrderStatusCol
 import { getContactTypeColor, getContactTypeLabel } from "@/lib/contact-meta";
 import Link from "next/link";
 import { Plus, ChevronDown, ChevronRight, Search, Trash2, Pencil, Copy } from "lucide-react";
+import { Celebration } from "@/components/celebration";
 
 interface OrderItem {
   id: string;
@@ -58,6 +59,7 @@ export default function OrdersPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
+  const [celebration, setCelebration] = useState<{ sub: string } | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -147,12 +149,19 @@ export default function OrdersPage() {
     load();
   }
 
-  async function changeStatus(orderId: string, status: string) {
+  async function changeStatus(order: Order, status: string) {
     await fetch("/api/orders", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: orderId, status }),
+      body: JSON.stringify({ id: order.id, status }),
     });
+    // 「完了」にした瞬間だけお祝いを表示（他ステータスへは出さない）
+    if (status === "completed" && order.status !== "completed") {
+      const totalQ = order.items.reduce((s, it) => s + it.quantity, 0);
+      setCelebration({
+        sub: `${order.contact.name}${order.contact.company ? `（${order.contact.company}）` : ""} / ${order.items.length}品・計${totalQ.toLocaleString()}個`,
+      });
+    }
     load();
   }
 
@@ -357,7 +366,7 @@ export default function OrdersPage() {
                       {ORDER_STATUSES.filter((s) => s.id !== order.status).map((s) => (
                         <button
                           key={s.id}
-                          onClick={() => changeStatus(order.id, s.id)}
+                          onClick={() => changeStatus(order, s.id)}
                           className={`px-2 py-1 rounded-full border hover:opacity-80 ${s.color}`}
                         >
                           {s.label}
@@ -423,6 +432,11 @@ export default function OrdersPage() {
           );
         })}
       </div>
+
+      {/* 納品完了お祝い */}
+      {celebration && (
+        <Celebration sub={celebration.sub} onClose={() => setCelebration(null)} />
+      )}
 
       {/* 受注ヘッダー編集ダイアログ */}
       <Dialog open={!!editOrder} onOpenChange={(o) => !o && setEditOrder(null)}>
