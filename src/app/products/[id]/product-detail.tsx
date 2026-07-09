@@ -87,6 +87,8 @@ interface Product {
   leadText: string | null;
   tags: string | null;
   description: string | null;
+  shortName: string | null;
+  fnsku: string | null;
   active: boolean;
   costSteps: CostStep[];
   materials: Material[];
@@ -1082,6 +1084,8 @@ function BasicEditForm({
   const [leadText, setLeadText] = useState(product.leadText || "");
   const [tags, setTags] = useState(product.tags || "");
   const [description, setDescription] = useState(product.description || "");
+  const [shortName, setShortName] = useState(product.shortName || "");
+  const [fnsku, setFnsku] = useState(product.fnsku || "");
   const [active, setActive] = useState(product.active);
 
   return (
@@ -1104,6 +1108,8 @@ function BasicEditForm({
           leadText: leadText || null,
           tags: tags || null,
           description: description || null,
+          shortName: shortName || null,
+          fnsku: fnsku || null,
           active,
         });
       }}
@@ -1183,6 +1189,16 @@ function BasicEditForm({
       <div>
         <label className="text-xs text-gray-500">タグ（カンマ区切り）</label>
         <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="例: がま口,西陣,財布,金襴" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-500">略称（ラベル/カード用）</label>
+          <Input value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="例: 西2.6" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">Amazon FNSKU（バーコード用）</label>
+          <Input value={fnsku} onChange={(e) => setFnsku(e.target.value)} placeholder="例: X00ABC1234" />
+        </div>
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />

@@ -80,6 +80,8 @@ export async function PUT(
       ...(data.leadText !== undefined && { leadText: data.leadText || null }),
       ...(data.tags !== undefined && { tags: data.tags || null }),
       ...(data.description !== undefined && { description: data.description || null }),
+      ...(data.shortName !== undefined && { shortName: data.shortName || null }),
+      ...(data.fnsku !== undefined && { fnsku: data.fnsku || null }),
       ...(data.active !== undefined && { active: data.active }),
     },
   });

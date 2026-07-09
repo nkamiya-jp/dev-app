@@ -27,6 +27,7 @@ import {
   ChevronDown,
   Coins,
   ClipboardList,
+  Tags,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,6 +61,7 @@ const navSections = [
     items: [
       { href: "/orders", label: "受注", icon: ShoppingCart },
       { href: "/orders-by-product", label: "商品別出荷管理", icon: ClipboardList },
+      { href: "/labels", label: "ラベル印刷", icon: Tags },
       { href: "/sales", label: "月次売上", icon: Coins },
       { href: "/forecast", label: "需要予測", icon: TrendingUp },
       { href: "/shipping-plan", label: "出荷計画", icon: CalendarDays },

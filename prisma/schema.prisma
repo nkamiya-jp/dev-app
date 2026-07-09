@@ -110,6 +110,8 @@ model Product {
   leadText        String?      // リード文（短いキャッチコピー）
   tags            String?      // 検索用タグ（カンマ区切り 例: がま口,西陣,財布）
   description     String?      // 商品説明文
+  shortName       String?      // 略称（梱包カードなど省スペース表示用）
+  fnsku           String?      // Amazon FNSKU（商品ラベル用バーコード, 例 X00ABC1234）
   active          Boolean      @default(true)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
