@@ -15,7 +15,7 @@ import {
 import { ORDER_STATUSES, ORDER_STATUS_BG, getOrderStatusLabel, getOrderStatusColor } from "@/lib/order-status";
 import { getContactTypeColor, getContactTypeLabel } from "@/lib/contact-meta";
 import Link from "next/link";
-import { Plus, ChevronDown, ChevronRight, Search, Trash2 } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, Search, Trash2, Pencil } from "lucide-react";
 
 interface OrderItem {
   id: string;
@@ -57,6 +57,7 @@ export default function OrdersPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -115,6 +116,34 @@ export default function OrdersPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: itemId }),
     });
+    load();
+  }
+
+  async function updateItem(itemId: string, patch: { quantity?: number; unitPrice?: number | null }) {
+    await fetch("/api/orders/items", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: itemId, ...patch }),
+    });
+    load();
+  }
+
+  async function handleEditOrder(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editOrder) return;
+    const form = new FormData(e.currentTarget);
+    await fetch("/api/orders", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editOrder.id,
+        contactId: form.get("contactId"),
+        orderDate: form.get("orderDate"),
+        dueDate: form.get("dueDate") || null,
+        note: form.get("note") || null,
+      }),
+    });
+    setEditOrder(null);
     load();
   }
 
@@ -303,6 +332,16 @@ export default function OrdersPage() {
 
                 {isExpanded && (
                   <div className="border-t bg-gray-50/50 p-4 space-y-3">
+                    {/* 受注ヘッダー編集 */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => setEditOrder(order)}
+                        className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-blue-700 hover:bg-white border rounded px-2 py-1"
+                      >
+                        <Pencil className="size-3.5" /> 受注内容を編集（顧客・日付・備考）
+                      </button>
+                    </div>
+
                     {/* ステータス変更 */}
                     <div className="flex items-center gap-2 text-xs">
                       <span className="text-gray-500">ステータス変更:</span>
@@ -337,37 +376,14 @@ export default function OrdersPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y">
-                            {order.items.map((it) => {
-                              const remain = it.quantity - it.shippedQty;
-                              const subtotal = (it.unitPrice || 0) * it.quantity;
-                              return (
-                                <tr key={it.id}>
-                                  <td className="px-3 py-2">
-                                    <div className="font-mono text-xs text-gray-500">{it.product.code}</div>
-                                    <div>{it.product.name}</div>
-                                  </td>
-                                  <td className="px-3 py-2 text-right">{it.quantity}</td>
-                                  <td className="px-3 py-2 text-right text-green-600">{it.shippedQty}</td>
-                                  <td className={`px-3 py-2 text-right font-medium ${remain > 0 ? "text-orange-600" : "text-gray-400"}`}>
-                                    {remain}
-                                  </td>
-                                  <td className="px-3 py-2 text-right text-gray-500">
-                                    {it.unitPrice ? `${it.unitPrice.toLocaleString()}円` : "-"}
-                                  </td>
-                                  <td className="px-3 py-2 text-right font-medium">
-                                    {subtotal.toLocaleString()}円
-                                  </td>
-                                  <td className="px-3 py-2 text-right">
-                                    <button
-                                      onClick={() => removeItem(it.id)}
-                                      className="text-xs text-red-600 hover:underline"
-                                    >
-                                      削除
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                            {order.items.map((it) => (
+                              <OrderItemRow
+                                key={it.id}
+                                item={it}
+                                onUpdate={(patch) => updateItem(it.id, patch)}
+                                onRemove={() => removeItem(it.id)}
+                              />
+                            ))}
                           </tbody>
                         </table>
                       </div>
@@ -392,7 +408,126 @@ export default function OrdersPage() {
           );
         })}
       </div>
+
+      {/* 受注ヘッダー編集ダイアログ */}
+      <Dialog open={!!editOrder} onOpenChange={(o) => !o && setEditOrder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>受注内容を編集</DialogTitle>
+          </DialogHeader>
+          {editOrder && (
+            <form onSubmit={handleEditOrder} className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500">顧客 *</label>
+                <select
+                  name="contactId"
+                  required
+                  defaultValue={editOrder.contactId}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                >
+                  {contacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.company ? ` (${c.company})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500">注文日 *</label>
+                  <Input name="orderDate" type="date" required defaultValue={editOrder.orderDate.slice(0, 10)} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">納期</label>
+                  <Input name="dueDate" type="date" defaultValue={editOrder.dueDate ? editOrder.dueDate.slice(0, 10) : ""} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">備考</label>
+                <textarea name="note" rows={2} defaultValue={editOrder.note || ""} className="w-full border rounded-md px-3 py-2 text-sm resize-y" />
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" className="flex-1">保存</Button>
+                <Button type="button" variant="outline" onClick={() => setEditOrder(null)}>キャンセル</Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+// ─── 明細行（数量・単価をインライン編集） ───
+function OrderItemRow({
+  item,
+  onUpdate,
+  onRemove,
+}: {
+  item: OrderItem;
+  onUpdate: (patch: { quantity?: number; unitPrice?: number | null }) => void;
+  onRemove: () => void;
+}) {
+  const [qty, setQty] = useState(String(item.quantity));
+  const [price, setPrice] = useState(item.unitPrice != null ? String(item.unitPrice) : "");
+
+  useEffect(() => { setQty(String(item.quantity)); }, [item.quantity]);
+  useEffect(() => { setPrice(item.unitPrice != null ? String(item.unitPrice) : ""); }, [item.unitPrice]);
+
+  const remain = item.quantity - item.shippedQty;
+  const subtotal = (item.unitPrice || 0) * item.quantity;
+
+  function commitQty() {
+    const n = Number(qty);
+    if (!qty || n <= 0) { setQty(String(item.quantity)); return; }
+    if (n !== item.quantity) onUpdate({ quantity: n });
+  }
+  function commitPrice() {
+    const n = price === "" ? null : Number(price);
+    if (n !== item.unitPrice) onUpdate({ unitPrice: n });
+  }
+
+  return (
+    <tr>
+      <td className="px-3 py-2">
+        <div className="font-mono text-xs text-gray-500">{item.product.code}</div>
+        <div>{item.product.name}</div>
+      </td>
+      <td className="px-3 py-2 text-right">
+        <input
+          type="text"
+          inputMode="numeric"
+          value={qty}
+          onChange={(e) => setQty(e.target.value.replace(/[^\d]/g, ""))}
+          onBlur={commitQty}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          className="w-16 border rounded px-2 py-1 text-right focus:ring-1 focus:ring-blue-400 outline-none"
+        />
+      </td>
+      <td className="px-3 py-2 text-right text-green-600">{item.shippedQty}</td>
+      <td className={`px-3 py-2 text-right font-medium ${remain > 0 ? "text-orange-600" : "text-gray-400"}`}>
+        {remain}
+      </td>
+      <td className="px-3 py-2 text-right">
+        <span className="inline-flex items-center gap-0.5">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={price}
+            onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))}
+            onBlur={commitPrice}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+            placeholder="-"
+            className="w-20 border rounded px-2 py-1 text-right focus:ring-1 focus:ring-blue-400 outline-none"
+          />
+          <span className="text-xs text-gray-400">円</span>
+        </span>
+      </td>
+      <td className="px-3 py-2 text-right font-medium">{subtotal.toLocaleString()}円</td>
+      <td className="px-3 py-2 text-right">
+        <button onClick={onRemove} className="text-xs text-red-600 hover:underline">削除</button>
+      </td>
+    </tr>
   );
 }
 
