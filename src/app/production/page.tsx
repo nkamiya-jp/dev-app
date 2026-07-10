@@ -19,6 +19,7 @@ import {
 } from "@/lib/production-status";
 import { Plus, Search, Hammer, Users, Package as PackageIcon, Trash2 } from "lucide-react";
 import { ProductionAchievement } from "@/components/production-achievement";
+import { ProductionNeeded } from "@/components/production-needed";
 import { PRODUCTION_STAGES, stageIndex } from "@/lib/production-stages";
 
 interface Assignment {
@@ -423,6 +424,15 @@ export default function ProductionPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 要製造（納品が必要な商品）— 対応者未割当も表示 */}
+      <ProductionNeeded
+        reloadKey={achvKey}
+        onAssign={(pid) => {
+          const p = products.find((x) => x.id === pid);
+          if (p) setQuickAddProduct(p);
+        }}
+      />
 
       {/* 受注 vs 製造 達成状況 */}
       <ProductionAchievement reloadKey={achvKey} />
