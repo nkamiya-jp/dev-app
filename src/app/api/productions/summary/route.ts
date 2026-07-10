@@ -3,14 +3,18 @@ import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/productions/summary
-// 商品ごとに「受注数」と「製造数」を突き合わせ、達成状況を返す。
-// - ordered   : 受注数合計（キャンセル以外）
+// GET /api/productions/summary?month=YYYY-MM
+// 商品ごとに「必要納品数（その月）」と「製造数」を突き合わせ、達成状況を返す。
+// - month 指定あり: required = その月の月別対応数(monthlyPlans[month]) 合計
+// - month 指定なし: required = 受注数合計（キャンセル以外、全期間）
 // - requested : 製造依頼数合計（Production.quantity）
 // - completed : 完成数合計（ProductionAssignment.deliveredQty）
-// - remaining : 不足数 = max(0, ordered - completed)
-// - rate      : 達成率 = completed / ordered
-export async function GET(_request: NextRequest) {
+// - remaining : 不足数 = max(0, required - completed)
+// - rate      : 達成率 = completed / required
+export async function GET(request: NextRequest) {
+  const month = request.nextUrl.searchParams.get("month"); // YYYY-MM（任意）
+  const useMonth = !!(month && /^\d{4}-\d{2}$/.test(month));
+
   const products = await prisma.product.findMany({
     where: { active: true },
     orderBy: [{ series: "asc" }, { sortOrder: "asc" }, { code: "asc" }],
@@ -19,7 +23,7 @@ export async function GET(_request: NextRequest) {
 
   const orderItems = await prisma.orderItem.findMany({
     where: { order: { status: { not: "cancelled" } } },
-    select: { productId: true, quantity: true, shippedQty: true },
+    select: { productId: true, quantity: true, shippedQty: true, monthlyPlans: true },
   });
 
   const productions = await prisma.production.findMany({
@@ -33,7 +37,17 @@ export async function GET(_request: NextRequest) {
   const ordered = new Map<string, number>();
   const shipped = new Map<string, number>();
   for (const it of orderItems) {
-    ordered.set(it.productId, (ordered.get(it.productId) ?? 0) + it.quantity);
+    let need = it.quantity; // month未指定は受注数
+    if (useMonth) {
+      need = 0;
+      try {
+        if (it.monthlyPlans) {
+          const plans = JSON.parse(it.monthlyPlans) as Record<string, number>;
+          need = Number(plans[month!]) || 0;
+        }
+      } catch {}
+    }
+    ordered.set(it.productId, (ordered.get(it.productId) ?? 0) + need);
     shipped.set(it.productId, (shipped.get(it.productId) ?? 0) + it.shippedQty);
   }
 
