@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { stageToStatus, stageDateField, stageIndex } from "@/lib/production-stages";
 
 export const dynamic = "force-dynamic";
 
@@ -26,18 +27,44 @@ export async function PUT(request: NextRequest) {
   });
   if (!before) return Response.json({ error: "Not found" }, { status: 404 });
 
+  // 工程(stage)の更新: 日付スタンプ・status同期・納品数の既定を組み立てる
+  const stageData: Record<string, unknown> = {};
+  if (rest.stage) {
+    const now = new Date();
+    stageData.stage = rest.stage;
+    stageData.status = stageToStatus(rest.stage); // 在庫/集計と連動
+    const df = stageDateField(rest.stage);
+    if (df && df !== "deliveredDate") {
+      // 該当工程の日付を記録（未設定なら now）
+      stageData[df] = (before as Record<string, unknown>)[df] ?? now;
+    }
+    const idx = stageIndex(rest.stage);
+    const deliveredIdx = stageIndex("delivered");
+    if (idx >= deliveredIdx) {
+      // 納品以降に到達 → 納品日と納品数を確定
+      stageData.deliveredDate = rest.deliveredDate ? new Date(rest.deliveredDate) : before.deliveredDate ?? now;
+      if (rest.deliveredQty !== undefined) stageData.deliveredQty = Number(rest.deliveredQty);
+      else if (before.deliveredQty === 0) stageData.deliveredQty = before.quantity; // 既定は割当数
+    } else {
+      // 納品より前に戻した → 納品実績をクリア（在庫・集計から外す）
+      stageData.deliveredQty = 0;
+      stageData.deliveredDate = null;
+    }
+  }
+
   const assignment = await prisma.productionAssignment.update({
     where: { id },
     data: {
       ...(rest.workerId && { workerId: rest.workerId }),
       ...(rest.step !== undefined && { step: rest.step || null }),
       ...(rest.quantity !== undefined && { quantity: Number(rest.quantity) }),
-      ...(rest.deliveredQty !== undefined && { deliveredQty: Number(rest.deliveredQty) }),
-      ...(rest.deliveredDate !== undefined && {
+      ...(rest.deliveredQty !== undefined && !rest.stage && { deliveredQty: Number(rest.deliveredQty) }),
+      ...(rest.deliveredDate !== undefined && !rest.stage && {
         deliveredDate: rest.deliveredDate ? new Date(rest.deliveredDate) : null,
       }),
-      ...(rest.status && { status: rest.status }),
+      ...(rest.status && !rest.stage && { status: rest.status }),
       ...(rest.note !== undefined && { note: rest.note || null }),
+      ...stageData,
     },
   });
 

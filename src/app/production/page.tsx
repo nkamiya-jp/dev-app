@@ -19,6 +19,7 @@ import {
 } from "@/lib/production-status";
 import { Plus, Search, Hammer, Users, Package as PackageIcon, Trash2 } from "lucide-react";
 import { ProductionAchievement } from "@/components/production-achievement";
+import { PRODUCTION_STAGES, stageIndex } from "@/lib/production-stages";
 
 interface Assignment {
   id: string;
@@ -28,6 +29,12 @@ interface Assignment {
   deliveredQty: number;
   deliveredDate: string | null;
   status: string;
+  stage: string;
+  cutDate: string | null;
+  materialDate: string | null;
+  handoverDate: string | null;
+  inspectedDate: string | null;
+  createdAt: string;
   note: string | null;
   worker: { id: string; name: string; color: string };
 }
@@ -154,6 +161,16 @@ export default function ProductionPage() {
     load();
   }
 
+  // 工程(stage)を進める/戻す。納品工程はダイアログで数量入力するため呼び出し側で分岐。
+  async function advanceStage(id: string, stage: string) {
+    await fetch("/api/productions/assignments", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, stage }),
+    });
+    load();
+  }
+
   async function handleDeliver(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!deliverTarget) return;
@@ -165,7 +182,7 @@ export default function ProductionPage() {
         id: deliverTarget.assignment.id,
         deliveredQty: Number(form.get("deliveredQty")),
         deliveredDate: form.get("deliveredDate") || new Date().toISOString().split("T")[0],
-        status: "delivered",
+        stage: "delivered",
       }),
     });
     setDeliverTarget(null);
@@ -416,6 +433,7 @@ export default function ProductionPage() {
           products={products}
           inventory={inventory}
           onStatusChange={changeAssignmentStatus}
+          onStage={advanceStage}
           onDeliver={(a, p) => setDeliverTarget({ assignment: a, production: p })}
           onQuickAdd={setQuickAddProduct}
         />
@@ -840,11 +858,79 @@ function WorkerView({
   );
 }
 
+// 6工程パイプラインのステッパー（対応者ごと）
+function StageStepper({
+  a,
+  p,
+  onStage,
+  onDeliver,
+}: {
+  a: Assignment;
+  p: Production;
+  onStage: (id: string, stage: string) => void;
+  onDeliver: (a: Assignment, p: Production) => void;
+}) {
+  const curIdx = stageIndex(a.stage);
+  const dateOf: Record<string, string | null> = {
+    assigned: a.createdAt,
+    cut: a.cutDate,
+    material: a.materialDate,
+    handover: a.handoverDate,
+    delivered: a.deliveredDate,
+    inspected: a.inspectedDate,
+  };
+  function fmt(d: string | null) {
+    if (!d) return "";
+    const dt = new Date(d);
+    return `${dt.getMonth() + 1}/${dt.getDate()}`;
+  }
+  return (
+    <div className="flex items-stretch gap-1 flex-wrap">
+      {PRODUCTION_STAGES.map((s, i) => {
+        const done = i <= curIdx;
+        const isCurrent = i === curIdx;
+        const isNext = i === curIdx + 1;
+        const clickable = i !== curIdx; // 現在地以外はクリックで移動（前後）
+        const handle = () => {
+          if (s.id === "delivered") onDeliver(a, p);
+          else onStage(a.id, s.id);
+        };
+        return (
+          <div key={s.id} className="flex items-center">
+            <button
+              onClick={clickable ? handle : undefined}
+              disabled={!clickable}
+              title={done ? `${s.label} ${fmt(dateOf[s.id])}` : `${s.label}へ進む`}
+              className={[
+                "px-2 py-1 rounded text-[11px] leading-tight border text-center min-w-[46px]",
+                done
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : isNext
+                  ? "bg-white text-blue-700 border-blue-300 hover:bg-blue-50"
+                  : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50",
+                isCurrent ? "ring-2 ring-blue-300" : "",
+                clickable ? "cursor-pointer" : "cursor-default",
+              ].join(" ")}
+            >
+              <span className="block">{s.short}</span>
+              <span className="block text-[9px] opacity-80">{done ? fmt(dateOf[s.id]) || "✓" : ""}</span>
+            </button>
+            {i < PRODUCTION_STAGES.length - 1 && (
+              <span className={`w-2 h-px ${i < curIdx ? "bg-blue-400" : "bg-gray-200"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ProductView({
   productions,
   products,
   inventory,
   onStatusChange,
+  onStage,
   onDeliver,
   onQuickAdd,
 }: {
@@ -852,6 +938,7 @@ function ProductView({
   products: Product[];
   inventory: InventoryRow[];
   onStatusChange: (id: string, status: string) => void;
+  onStage: (id: string, stage: string) => void;
   onDeliver: (a: Assignment, p: Production) => void;
   onQuickAdd: (product: Product) => void;
 }) {
@@ -936,61 +1023,35 @@ function ProductView({
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="text-left px-4 py-2 font-medium text-gray-500">対応者</th>
-                    <th className="text-right px-4 py-2 font-medium text-gray-500">お渡し数</th>
-                    <th className="text-right px-4 py-2 font-medium text-gray-500">納品済</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-500">内職依頼日</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-500">納品予定日</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-500">状況</th>
-                    <th className="px-4 py-2"></th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-500 w-20">数量</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">納期</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">工程（クリックで進む・日付記録）</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {rows.map(({ assignment: a, production: p }) => {
                     const isOverdue =
-                      a.status !== "delivered" && p.dueDate && new Date(p.dueDate) < new Date();
+                      a.stage !== "inspected" && p.dueDate && new Date(p.dueDate) < new Date();
                     return (
                       <tr key={a.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-2 align-top">
                           <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: a.worker.color }} />
                             <span className="font-medium">{a.worker.name}</span>
                             {a.step && <span className="text-xs text-gray-500">[{a.step}]</span>}
                           </div>
                         </td>
-                        <td className="px-4 py-2 text-right font-medium">{a.quantity}</td>
-                        <td className="px-4 py-2 text-right text-green-600">
-                          {a.deliveredQty > 0 ? a.deliveredQty : "-"}
+                        <td className="px-4 py-2 text-right align-top">
+                          <span className="font-medium">{a.quantity}</span>
+                          {a.deliveredQty > 0 && (
+                            <span className="block text-[11px] text-green-600">納{a.deliveredQty}</span>
+                          )}
                         </td>
-                        <td className="px-4 py-2 text-gray-600 text-xs">
-                          {new Date(p.requestDate).toLocaleDateString("ja-JP")}
-                        </td>
-                        <td className={`px-4 py-2 text-xs ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                        <td className={`px-4 py-2 text-xs align-top ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
                           {p.dueDate ? new Date(p.dueDate).toLocaleDateString("ja-JP") : "-"}
                         </td>
                         <td className="px-4 py-2">
-                          <Badge className={`text-xs ${getProductionStatusColor(a.status)}`}>
-                            {getProductionStatusLabel(a.status)}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          {a.status !== "delivered" && (
-                            <div className="flex gap-1 justify-end">
-                              {a.status === "requested" && (
-                                <button
-                                  onClick={() => onStatusChange(a.id, "in_progress")}
-                                  className="text-xs px-2 py-1 rounded border bg-blue-50 hover:bg-blue-100 text-blue-700"
-                                >
-                                  開始
-                                </button>
-                              )}
-                              <button
-                                onClick={() => onDeliver(a, p)}
-                                className="text-xs px-2 py-1 rounded border bg-green-50 hover:bg-green-100 text-green-700"
-                              >
-                                納品
-                              </button>
-                            </div>
-                          )}
+                          <StageStepper a={a} p={p} onStage={onStage} onDeliver={onDeliver} />
                         </td>
                       </tr>
                     );

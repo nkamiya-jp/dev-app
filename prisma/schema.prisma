@@ -242,7 +242,13 @@ model ProductionAssignment {
   quantity      Int        // この内職への割当数
   deliveredQty  Int        @default(0)
   deliveredDate DateTime?
-  status        String     @default("requested")  // requested | in_progress | delivered
+  status        String     @default("requested")  // requested | in_progress | delivered（stageから同期）
+  // 6工程パイプライン（対応者ごと）: assigned→cut→material→handover→delivered→inspected
+  stage         String     @default("assigned")
+  cutDate       DateTime?  // 裁断 完了日
+  materialDate  DateTime?  // 資材準備 完了日
+  handoverDate  DateTime?  // お渡し 日
+  inspectedDate DateTime?  // 検品 完了日
   note          String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
