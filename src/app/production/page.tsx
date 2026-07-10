@@ -18,6 +18,7 @@ import {
   getProductionStatusColor,
 } from "@/lib/production-status";
 import { Plus, Search, Hammer, Users, Package as PackageIcon, Trash2 } from "lucide-react";
+import { ProductionAchievement } from "@/components/production-achievement";
 
 interface Assignment {
   id: string;
@@ -76,6 +77,10 @@ export default function ProductionPage() {
   const [deliverTarget, setDeliverTarget] = useState<{ assignment: Assignment; production: Production } | null>(null);
   const [assignTarget, setAssignTarget] = useState<Production | null>(null);
   const [quickAddProduct, setQuickAddProduct] = useState<Product | null>(null);
+  const [achvKey, setAchvKey] = useState(0);
+
+  // 製造データが変わったら達成状況パネルを再取得
+  useEffect(() => { setAchvKey((k) => k + 1); }, [productions]);
 
   // 新規依頼ダイアログの工程行
   const [newRows, setNewRows] = useState<{ workerId: string; step: string; quantity: string }[]>([
@@ -401,6 +406,9 @@ export default function ProductionPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 受注 vs 製造 達成状況 */}
+      <ProductionAchievement reloadKey={achvKey} />
 
       {view === "product" ? (
         <ProductView
