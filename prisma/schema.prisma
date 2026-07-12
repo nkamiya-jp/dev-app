@@ -242,6 +242,7 @@ model ProductionAssignment {
   workerId      String
   worker        Member     @relation(fields: [workerId], references: [id])
   step          String?    // 工程名（裁断/縫製/仕上げ など、任意）
+  requestDate   DateTime?  // この担当への依頼日（未設定=製造依頼日にフォールバック）
   quantity      Int        // この内職への割当数
   deliveredQty  Int        @default(0)
   deliveredDate DateTime?

@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
       workerId: data.workerId,
       step: data.step || null,
       quantity: Number(data.quantity),
+      requestDate: data.requestDate ? new Date(data.requestDate) : new Date(),
       note: data.note || null,
     },
   });

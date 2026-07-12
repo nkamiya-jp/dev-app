@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
           workerId: a.workerId,
           step: a.step || null,
           quantity: Number(a.quantity),
+          requestDate: new Date(data.requestDate), // 初期割当は製造依頼日
           note: a.note || null,
         })),
       },
