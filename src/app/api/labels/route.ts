@@ -40,5 +40,23 @@ export async function GET(request: NextRequest) {
     select: { id: true, code: true, name: true, shortName: true, fnsku: true },
   });
 
-  return Response.json({ shipments, products });
+  // 裁断カード用: 未納品の製造依頼（既定=裁断がまだ／納品済でないもの）
+  const prods = await prisma.production.findMany({
+    where: includeDelivered ? {} : { status: { not: "delivered" }, cutDate: null },
+    include: { product: { select: { id: true, code: true, name: true, shortName: true } } },
+    orderBy: [{ requestDate: "desc" }],
+  });
+  const cuttingCards = prods.map((p) => ({
+    productionId: p.id,
+    productId: p.productId,
+    productName: p.product?.name ?? "(商品なし)",
+    shortName: p.product?.shortName ?? null,
+    productCode: p.product?.code ?? "",
+    quantity: p.quantity,
+    requestDate: p.requestDate,
+    dueDate: p.dueDate,
+    cutDone: !!p.cutDate,
+  }));
+
+  return Response.json({ shipments, products, cuttingCards });
 }

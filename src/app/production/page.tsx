@@ -20,7 +20,6 @@ import {
 import { Plus, Search, Hammer, Users, Package as PackageIcon, Trash2 } from "lucide-react";
 import { ProductionAchievement } from "@/components/production-achievement";
 import { ProductionNeeded } from "@/components/production-needed";
-import { PRODUCTION_STAGES, stageIndex } from "@/lib/production-stages";
 
 interface Assignment {
   id: string;
@@ -47,6 +46,8 @@ interface Production {
   requestDate: string;
   dueDate: string | null;
   status: string;
+  cutDate: string | null;
+  materialDate: string | null;
   note: string | null;
   product: { id: string; code: string; name: string; series: string | null; workerCost: number | null };
   assignments: Assignment[];
@@ -168,6 +169,19 @@ export default function ProductionPage() {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, stage }),
+    });
+    load();
+  }
+
+  // 製造依頼の社内工程（裁断・資材準備）をトグル。値なしで完了(=当日)、null でクリア。
+  async function setProdStep(productionId: string, field: "cutDate" | "materialDate", done: boolean) {
+    await fetch("/api/productions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: productionId,
+        [field]: done ? new Date().toISOString().split("T")[0] : null,
+      }),
     });
     load();
   }
@@ -443,8 +457,10 @@ export default function ProductionPage() {
           products={products}
           inventory={inventory}
           onStatusChange={changeAssignmentStatus}
-          onStage={advanceStage}
+          onProdStep={setProdStep}
           onDeliver={(a, p) => setDeliverTarget({ assignment: a, production: p })}
+          onAddAssignment={setAssignTarget}
+          onRemoveAssignment={removeAssignment}
           onQuickAdd={setQuickAddProduct}
         />
       ) : filtered.length === 0 ? (
@@ -868,69 +884,115 @@ function WorkerView({
   );
 }
 
-// 6工程パイプラインのステッパー（対応者ごと）
-function StageStepper({
-  a,
-  p,
-  onStage,
-  onDeliver,
-}: {
-  a: Assignment;
-  p: Production;
-  onStage: (id: string, stage: string) => void;
-  onDeliver: (a: Assignment, p: Production) => void;
-}) {
-  const curIdx = stageIndex(a.stage);
-  const dateOf: Record<string, string | null> = {
-    assigned: a.createdAt,
-    cut: a.cutDate,
-    material: a.materialDate,
-    handover: a.handoverDate,
-    delivered: a.deliveredDate,
-    inspected: a.inspectedDate,
-  };
-  function fmt(d: string | null) {
-    if (!d) return "";
-    const dt = new Date(d);
-    return `${dt.getMonth() + 1}/${dt.getDate()}`;
-  }
+function fmtMD(d: string | null) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return `${dt.getMonth() + 1}/${dt.getDate()}`;
+}
+
+// 社内工程トグル（裁断・資材準備）: クリックで完了/解除
+function StepToggle({ label, date, onToggle }: { label: string; date: string | null; onToggle: (done: boolean) => void }) {
+  const done = !!date;
   return (
-    <div className="flex items-stretch gap-1 flex-wrap">
-      {PRODUCTION_STAGES.map((s, i) => {
-        const done = i <= curIdx;
-        const isCurrent = i === curIdx;
-        const isNext = i === curIdx + 1;
-        const clickable = i !== curIdx; // 現在地以外はクリックで移動（前後）
-        const handle = () => {
-          if (s.id === "delivered") onDeliver(a, p);
-          else onStage(a.id, s.id);
-        };
-        return (
-          <div key={s.id} className="flex items-center">
-            <button
-              onClick={clickable ? handle : undefined}
-              disabled={!clickable}
-              title={done ? `${s.label} ${fmt(dateOf[s.id])}` : `${s.label}へ進む`}
-              className={[
-                "px-2 py-1 rounded text-[11px] leading-tight border text-center min-w-[46px]",
-                done
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : isNext
-                  ? "bg-white text-blue-700 border-blue-300 hover:bg-blue-50"
-                  : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50",
-                isCurrent ? "ring-2 ring-blue-300" : "",
-                clickable ? "cursor-pointer" : "cursor-default",
-              ].join(" ")}
-            >
-              <span className="block">{s.short}</span>
-              <span className="block text-[9px] opacity-80">{done ? fmt(dateOf[s.id]) || "✓" : ""}</span>
-            </button>
-            {i < PRODUCTION_STAGES.length - 1 && (
-              <span className={`w-2 h-px ${i < curIdx ? "bg-blue-400" : "bg-gray-200"}`} />
-            )}
-          </div>
-        );
-      })}
+    <button
+      onClick={() => onToggle(!done)}
+      title={done ? `${label} 完了 ${fmtMD(date)}（クリックで取消）` : `${label} を完了にする`}
+      className={[
+        "px-2 py-1 rounded text-xs border leading-tight",
+        done ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50",
+      ].join(" ")}
+    >
+      {done ? `${label} ✓ ${fmtMD(date)}` : label}
+    </button>
+  );
+}
+
+// 製造依頼ブロック: 裁断・資材準備（社内）→ 制作担当者（内職1〜2名）→ 納品
+function ProductionBlock({
+  p,
+  onProdStep,
+  onDeliver,
+  onAddAssignment,
+  onRemoveAssignment,
+  onStatusChange,
+}: {
+  p: Production;
+  onProdStep: (productionId: string, field: "cutDate" | "materialDate", done: boolean) => void;
+  onDeliver: (a: Assignment, p: Production) => void;
+  onAddAssignment: (p: Production) => void;
+  onRemoveAssignment: (id: string) => void;
+  onStatusChange: (id: string, status: string) => void;
+}) {
+  const isOverdue = p.status !== "delivered" && p.dueDate && new Date(p.dueDate) < new Date();
+  return (
+    <div className="px-4 py-3">
+      {/* 依頼ヘッダー: 数量 / 依頼日 / 納期 + 社内工程 */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-sm">数 <b className="text-base">{p.quantity.toLocaleString()}</b></span>
+        <span className="text-xs text-gray-500">依頼 {fmtMD(p.requestDate)}</span>
+        <span className={`text-xs ${isOverdue ? "text-red-600 font-medium" : "text-gray-500"}`}>
+          納期 {p.dueDate ? new Date(p.dueDate).toLocaleDateString("ja-JP") : "-"}
+        </span>
+        <div className="flex items-center gap-2 ml-1">
+          <StepToggle label="裁断" date={p.cutDate} onToggle={(d) => onProdStep(p.id, "cutDate", d)} />
+          <StepToggle label="資材準備" date={p.materialDate} onToggle={(d) => onProdStep(p.id, "materialDate", d)} />
+        </div>
+        <button
+          onClick={() => onAddAssignment(p)}
+          className="ml-auto text-xs px-2 py-1 rounded border text-gray-600 hover:bg-gray-50"
+        >
+          <Plus className="size-3 inline -mt-0.5" /> 制作担当者
+        </button>
+      </div>
+
+      {/* 制作担当者（内職）*/}
+      <div className="mt-2 ml-1 border-l-2 border-gray-200 pl-3 space-y-1.5">
+        {p.assignments.length === 0 ? (
+          <p className="text-xs text-gray-400">制作担当者 未割当（右上「制作担当者」で追加）</p>
+        ) : (
+          p.assignments.map((a) => (
+            <div key={a.id} className="flex items-center gap-3 text-sm">
+              <span className="flex items-center gap-1.5 min-w-[90px]">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: a.worker.color }} />
+                <span className="font-medium">{a.worker.name}</span>
+              </span>
+              <span className="tabular-nums w-16">{a.quantity.toLocaleString()}個</span>
+              {a.status === "delivered" ? (
+                <span className="text-xs text-green-600">納品済 {fmtMD(a.deliveredDate)}（{a.deliveredQty}個）</span>
+              ) : (
+                <>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${a.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
+                    {a.status === "in_progress" ? "制作中" : "未着手"}
+                  </span>
+                  <div className="ml-auto flex items-center gap-1">
+                    {a.status === "requested" && (
+                      <button
+                        onClick={() => onStatusChange(a.id, "in_progress")}
+                        className="text-xs px-2 py-1 rounded border bg-blue-50 hover:bg-blue-100 text-blue-700"
+                      >
+                        制作開始
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onDeliver(a, p)}
+                      className="text-xs px-2 py-1 rounded border bg-green-50 hover:bg-green-100 text-green-700"
+                    >
+                      納品
+                    </button>
+                    <button
+                      onClick={() => onRemoveAssignment(a.id)}
+                      className="text-xs px-1.5 py-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                      title="この担当を削除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -940,16 +1002,20 @@ function ProductView({
   products,
   inventory,
   onStatusChange,
-  onStage,
+  onProdStep,
   onDeliver,
+  onAddAssignment,
+  onRemoveAssignment,
   onQuickAdd,
 }: {
   productions: Production[];
   products: Product[];
   inventory: InventoryRow[];
   onStatusChange: (id: string, status: string) => void;
-  onStage: (id: string, stage: string) => void;
+  onProdStep: (productionId: string, field: "cutDate" | "materialDate", done: boolean) => void;
   onDeliver: (a: Assignment, p: Production) => void;
+  onAddAssignment: (p: Production) => void;
+  onRemoveAssignment: (id: string) => void;
   onQuickAdd: (product: Product) => void;
 }) {
   const stockMap = new Map(inventory.map((i) => [i.id, i.stock]));
@@ -985,19 +1051,17 @@ function ProductView({
 
       {[...groups.entries()].map(([productId, { product, productions }]) => {
         const carryOver = stockMap.get(productId) ?? 0;
-        // 全Productionの全Assignmentをフラット化
-        const rows = productions.flatMap((p) =>
-          p.assignments.map((a) => ({ assignment: a, production: p }))
+        const prodSorted = [...productions].sort(
+          (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
         );
-        rows.sort((a, b) =>
-          new Date(b.production.requestDate).getTime() - new Date(a.production.requestDate).getTime()
-        );
-        const totalRequested = rows
-          .filter((r) => r.assignment.status !== "delivered")
-          .reduce((s, r) => s + r.assignment.quantity, 0);
-        const totalDelivered = rows
-          .filter((r) => r.assignment.status === "delivered")
-          .reduce((s, r) => s + r.assignment.deliveredQty, 0);
+        const totalRequested = productions
+          .flatMap((p) => p.assignments)
+          .filter((a) => a.status !== "delivered")
+          .reduce((s, a) => s + a.quantity, 0);
+        const totalDelivered = productions
+          .flatMap((p) => p.assignments)
+          .filter((a) => a.status === "delivered")
+          .reduce((s, a) => s + a.deliveredQty, 0);
 
         return (
           <Card key={productId} className="bg-white shadow-sm">
@@ -1020,54 +1084,26 @@ function ProductView({
                     <p className="text-xs text-gray-500">納品済合計</p>
                     <p className="text-xl font-bold text-green-600">{totalDelivered.toLocaleString()}</p>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => onQuickAdd(product as Product)}
-                  >
+                  <Button type="button" size="sm" onClick={() => onQuickAdd(product as Product)}>
                     <Plus className="size-4 mr-1" /> 依頼を追加
                   </Button>
                 </div>
               </div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-4 py-2 font-medium text-gray-500">対応者</th>
-                    <th className="text-right px-4 py-2 font-medium text-gray-500 w-20">数量</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-500">納期</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-500">工程（クリックで進む・日付記録）</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rows.map(({ assignment: a, production: p }) => {
-                    const isOverdue =
-                      a.stage !== "inspected" && p.dueDate && new Date(p.dueDate) < new Date();
-                    return (
-                      <tr key={a.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 align-top">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: a.worker.color }} />
-                            <span className="font-medium">{a.worker.name}</span>
-                            {a.step && <span className="text-xs text-gray-500">[{a.step}]</span>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 text-right align-top">
-                          <span className="font-medium">{a.quantity}</span>
-                          {a.deliveredQty > 0 && (
-                            <span className="block text-[11px] text-green-600">納{a.deliveredQty}</span>
-                          )}
-                        </td>
-                        <td className={`px-4 py-2 text-xs align-top ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
-                          {p.dueDate ? new Date(p.dueDate).toLocaleDateString("ja-JP") : "-"}
-                        </td>
-                        <td className="px-4 py-2">
-                          <StageStepper a={a} p={p} onStage={onStage} onDeliver={onDeliver} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+
+              {/* 製造依頼ごとのブロック: 裁断・資材準備（社内）→ 制作担当者（内職）→ 納品 */}
+              <div className="divide-y">
+                {prodSorted.map((p) => (
+                  <ProductionBlock
+                    key={p.id}
+                    p={p}
+                    onProdStep={onProdStep}
+                    onDeliver={onDeliver}
+                    onAddAssignment={onAddAssignment}
+                    onRemoveAssignment={onRemoveAssignment}
+                    onStatusChange={onStatusChange}
+                  />
+                ))}
+              </div>
             </CardContent>
           </Card>
         );

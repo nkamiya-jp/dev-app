@@ -78,6 +78,8 @@ export async function PUT(request: NextRequest) {
       ...(rest.requestDate && { requestDate: new Date(rest.requestDate) }),
       ...(rest.dueDate !== undefined && { dueDate: rest.dueDate ? new Date(rest.dueDate) : null }),
       ...(rest.status && { status: rest.status }),
+      ...(rest.cutDate !== undefined && { cutDate: rest.cutDate ? new Date(rest.cutDate) : null }),
+      ...(rest.materialDate !== undefined && { materialDate: rest.materialDate ? new Date(rest.materialDate) : null }),
       ...(rest.note !== undefined && { note: rest.note || null }),
     },
   });

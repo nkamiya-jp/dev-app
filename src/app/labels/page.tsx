@@ -27,7 +27,18 @@ interface ProductOpt {
   shortName: string | null;
   fnsku: string | null;
 }
-interface Resp { shipments: ShipmentLabel[]; products: ProductOpt[]; }
+interface CuttingCard {
+  productionId: string;
+  productId: string;
+  productName: string;
+  shortName: string | null;
+  productCode: string;
+  quantity: number;
+  requestDate: string;
+  dueDate: string | null;
+  cutDone: boolean;
+}
+interface Resp { shipments: ShipmentLabel[]; products: ProductOpt[]; cuttingCards: CuttingCard[]; }
 
 const SHIP_STATUS_LABEL: Record<string, string> = {
   scheduled: "予定",
@@ -35,7 +46,7 @@ const SHIP_STATUS_LABEL: Record<string, string> = {
   delivered: "配送済",
 };
 
-type Mode = "packing" | "amazon";
+type Mode = "packing" | "amazon" | "cutting";
 
 // TD-2130N: 感熱300dpi・メディア幅19〜63mm・印字幅56mm。横(ロール幅)は56mm以内。
 // rayfook 再剥離ラベルの定番寸法に合わせたプリセット。
@@ -67,6 +78,8 @@ export default function LabelsPage() {
   const [includeDelivered, setIncludeDelivered] = useState(false);
   // Amazon: 商品ごとの枚数
   const [copies, setCopies] = useState<Record<string, number>>({});
+  // 裁断カード: 選択した製造依頼
+  const [selCut, setSelCut] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -100,6 +113,8 @@ export default function LabelsPage() {
   const items = data?.shipments ?? [];
   const products = useMemo(() => (data?.products ?? []).filter((p) => mode !== "amazon" || p.fnsku), [data, mode]);
 
+  const cutCards = data?.cuttingCards ?? [];
+
   // 印刷対象ラベルを組み立て
   const packingLabels = items.filter((it) => selItems.has(it.shipmentId));
   const amazonLabels: { product: ProductOpt; index: number }[] = [];
@@ -107,8 +122,9 @@ export default function LabelsPage() {
     const n = copies[p.id] || 0;
     for (let i = 0; i < n; i++) amazonLabels.push({ product: p, index: i });
   }
+  const cuttingLabels = cutCards.filter((c) => selCut.has(c.productionId));
 
-  const printCount = mode === "packing" ? packingLabels.length : amazonLabels.length;
+  const printCount = mode === "packing" ? packingLabels.length : mode === "amazon" ? amazonLabels.length : cuttingLabels.length;
 
   function toggleItem(id: string) {
     setSelItems((prev) => {
@@ -119,6 +135,16 @@ export default function LabelsPage() {
   }
   function selectAll() { setSelItems(new Set(items.map((i) => i.shipmentId))); }
   function clearAll() { setSelItems(new Set()); }
+
+  function toggleCut(id: string) {
+    setSelCut((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function selectAllCut() { setSelCut(new Set(cutCards.map((c) => c.productionId))); }
+  function clearAllCut() { setSelCut(new Set()); }
 
   if (!data) return <div className="p-6 text-gray-400">読み込み中...</div>;
 
@@ -145,7 +171,7 @@ export default function LabelsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
         <div>
           <h2 className="text-2xl font-bold">ラベル印刷</h2>
-          <p className="text-xs text-gray-500 mt-1">梱包作業カード・Amazonバーコードをラベラー（ラベルプリンター）で出力</p>
+          <p className="text-xs text-gray-500 mt-1">梱包作業カード・裁断カード・Amazonバーコードをラベラー（ラベルプリンター）で出力</p>
         </div>
         <Button onClick={() => window.print()} disabled={printCount === 0}>
           <Printer className="size-4 mr-1" /> 印刷（{printCount}枚）
@@ -161,8 +187,12 @@ export default function LabelsPage() {
               className={`px-3 py-1.5 ${mode === "packing" ? "bg-blue-600 text-white" : "bg-white text-gray-600"}`}
             >梱包作業カード</button>
             <button
+              onClick={() => setMode("cutting")}
+              className={`px-3 py-1.5 border-l ${mode === "cutting" ? "bg-blue-600 text-white" : "bg-white text-gray-600"}`}
+            >裁断カード</button>
+            <button
               onClick={() => setMode("amazon")}
-              className={`px-3 py-1.5 ${mode === "amazon" ? "bg-blue-600 text-white" : "bg-white text-gray-600"}`}
+              className={`px-3 py-1.5 border-l ${mode === "amazon" ? "bg-blue-600 text-white" : "bg-white text-gray-600"}`}
             >Amazonバーコード</button>
           </div>
 
@@ -203,6 +233,31 @@ export default function LabelsPage() {
                   <span className="text-gray-500 truncate">{it.contactName}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{SHIP_STATUS_LABEL[it.status] || it.status}</span>
                   <span className="ml-auto tabular-nums font-medium">×{it.quantity.toLocaleString()}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : mode === "cutting" ? (
+          <div className="text-sm">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <button onClick={selectAllCut} className="text-blue-600 hover:underline">全選択</button>
+              <button onClick={clearAllCut} className="text-blue-600 hover:underline">選択解除</button>
+              <span className="text-gray-400 text-xs">未裁断の製造依頼 {cutCards.length}件（{selCut.size}件選択）</span>
+              <label className="flex items-center gap-1.5 text-gray-600 ml-auto cursor-pointer text-xs">
+                <input type="checkbox" checked={includeDelivered} onChange={(e) => setIncludeDelivered(e.target.checked)} />
+                裁断済・納品済も表示
+              </label>
+            </div>
+            <div className="max-h-72 overflow-y-auto border rounded-md divide-y">
+              {cutCards.length === 0 ? (
+                <div className="p-4 text-gray-400 text-center">対象の製造依頼がありません。製造ページで依頼を登録してください。</div>
+              ) : cutCards.map((c) => (
+                <label key={c.productionId} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox" checked={selCut.has(c.productionId)} onChange={() => toggleCut(c.productionId)} />
+                  <span className="text-gray-400 text-xs w-10">{fmtDate(c.requestDate)}</span>
+                  <span className="font-medium min-w-[130px]">{c.shortName || c.productName}</span>
+                  {c.cutDone && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">裁断済</span>}
+                  <span className="ml-auto tabular-nums font-medium">×{c.quantity.toLocaleString()}</span>
                 </label>
               ))}
             </div>
@@ -267,6 +322,25 @@ export default function LabelsPage() {
           </div>
         ))}
 
+        {mode === "cutting" && cuttingLabels.map((c) => (
+          <div
+            key={c.productionId}
+            className="label-page bg-white border border-gray-300 print:border-0 overflow-hidden flex flex-col justify-between"
+            style={{ width: `${w}mm`, height: `${h}mm`, padding: "2mm" }}
+          >
+            <div className="flex items-center justify-between" style={{ fontSize: "2.6mm" }}>
+              <span className="text-gray-600">裁断</span>
+              <span className="text-gray-600">依頼 {fmtDate(c.requestDate)}</span>
+            </div>
+            <div className="font-bold leading-tight" style={{ fontSize: "3.6mm" }}>{c.shortName || c.productName}</div>
+            <div className="font-bold leading-none" style={{ fontSize: "7mm" }}>{c.quantity.toLocaleString()}<span style={{ fontSize: "3mm" }}>個</span></div>
+            <div className="flex justify-between text-gray-600" style={{ fontSize: "2.4mm" }}>
+              <span>納期: {fmtDate(c.dueDate) || "-"}</span>
+              <span className="font-mono">{c.productCode}</span>
+            </div>
+          </div>
+        ))}
+
         {mode === "amazon" && amazonLabels.map(({ product, index }) => (
           <div
             key={`${product.id}-${index}`}
@@ -285,7 +359,7 @@ export default function LabelsPage() {
 
         {printCount === 0 && (
           <div className="text-gray-400 text-sm no-print">
-            {mode === "packing" ? "上で印刷する受注明細を選択してください。" : "上で印刷枚数を入力してください。"}
+            {mode === "packing" ? "上で印刷する出荷を選択してください。" : mode === "cutting" ? "上で印刷する製造依頼を選択してください。" : "上で印刷枚数を入力してください。"}
           </div>
         )}
       </div>

@@ -226,6 +226,9 @@ model Production {
   requestDate     DateTime
   dueDate         DateTime?
   status          String   @default("requested")  // requested | in_progress | delivered
+  // 社内工程（担当者なし・依頼単位）
+  cutDate         DateTime?  // 裁断 完了日
+  materialDate    DateTime?  // 資材準備 完了日
   note            String?
   assignments     ProductionAssignment[]
   createdAt       DateTime @default(now())
