@@ -29,7 +29,7 @@ function currentMonth() {
 export function ProductionAchievement({ reloadKey }: { reloadKey?: number }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [onlyShort, setOnlyShort] = useState(false); // 不足があるものだけ
   const [month, setMonth] = useState(currentMonth());
   const [scope, setScope] = useState<"month" | "all">("month"); // 月次 / 全期間

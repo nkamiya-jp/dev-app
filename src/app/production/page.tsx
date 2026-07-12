@@ -410,34 +410,12 @@ export default function ProductionPage() {
       </div>
 
       {/* サマリー */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-white shadow-sm border-l-4 border-l-blue-500">
-          <CardContent className="p-4">
-            <p className="text-sm text-gray-500">依頼中・制作中</p>
-            <p className="text-2xl font-bold">{totalRequested.toLocaleString()}</p>
-            <p className="text-xs text-gray-400 mt-1">{inProgressCount}工程 制作中</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white shadow-sm border-l-4 border-l-green-500">
-          <CardContent className="p-4">
-            <p className="text-sm text-gray-500">納品済み</p>
-            <p className="text-2xl font-bold">{totalDelivered.toLocaleString()}</p>
-          </CardContent>
-        </Card>
-        <Card className={`bg-white shadow-sm border-l-4 ${overdueCount > 0 ? "border-l-red-500" : "border-l-gray-300"}`}>
-          <CardContent className="p-4">
-            <p className="text-sm text-gray-500">納期超過</p>
-            <p className={`text-2xl font-bold ${overdueCount > 0 ? "text-red-600" : ""}`}>{overdueCount}</p>
-            <p className="text-xs text-gray-400 mt-1">件</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white shadow-sm border-l-4 border-l-purple-500">
-          <CardContent className="p-4">
-            <p className="text-sm text-gray-500">稼働中の内職</p>
-            <p className="text-2xl font-bold">{activeWorkerIds.size}</p>
-            <p className="text-xs text-gray-400 mt-1">/ {workers.length}名</p>
-          </CardContent>
-        </Card>
+      {/* サマリー（小さくまとめ表示） */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-500 px-1">
+        <span>依頼中・制作中 <b className="text-sm text-gray-800">{totalRequested.toLocaleString()}</b><span className="text-gray-400 ml-1">（{inProgressCount}工程制作中）</span></span>
+        <span>納品済み <b className="text-sm text-green-700">{totalDelivered.toLocaleString()}</b></span>
+        <span>納期超過 <b className={`text-sm ${overdueCount > 0 ? "text-red-600" : "text-gray-800"}`}>{overdueCount}</b> 件</span>
+        <span>稼働中の内職 <b className="text-sm text-gray-800">{activeWorkerIds.size}</b> / {workers.length}名</span>
       </div>
 
       {/* 要製造（納品が必要な商品）— 対応者未割当も表示 */}
@@ -1044,6 +1022,12 @@ function ProductView({
     else groups.set(p.productId, { product: p.product, productions: [p] });
   }
 
+  // 商品カードの並び = 商品マスタ順（series → sortOrder → code）。
+  const productOrder = new Map(products.map((p, i) => [p.id, i]));
+  const orderedGroups = [...groups.entries()].sort(
+    ([a], [b]) => (productOrder.get(a) ?? 9999) - (productOrder.get(b) ?? 9999)
+  );
+
   // データのない商品も「+追加」できるようにリストに含める（オプショナル）
   // → 今回はデータのある商品のみ表示し、ヘッダーに「商品を選んで依頼」ボタン
 
@@ -1065,7 +1049,7 @@ function ProductView({
         </Card>
       )}
 
-      {[...groups.entries()].map(([productId, { product, productions }]) => {
+      {orderedGroups.map(([productId, { product, productions }]) => {
         const carryOver = stockMap.get(productId) ?? 0;
         const prodSorted = [...productions].sort(
           (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()

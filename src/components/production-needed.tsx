@@ -30,7 +30,7 @@ export function ProductionNeeded({
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [onlyToMake, setOnlyToMake] = useState(true);
 
   const load = useCallback(async () => {
