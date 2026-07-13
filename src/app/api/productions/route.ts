@@ -14,10 +14,12 @@ export async function GET(request: NextRequest) {
   const status = request.nextUrl.searchParams.get("status");
   const productId = request.nextUrl.searchParams.get("productId");
   const workerId = request.nextUrl.searchParams.get("workerId");
+  const month = request.nextUrl.searchParams.get("month"); // 対象月 "YYYY-MM"
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
   if (productId) where.productId = productId;
+  if (month && /^\d{4}-\d{2}$/.test(month)) where.targetMonth = month;
   if (workerId) {
     where.assignments = { some: { workerId } };
   }
@@ -42,6 +44,10 @@ export async function POST(request: NextRequest) {
   const data = await request.json();
   const assignments: AssignmentInput[] = data.assignments || [];
 
+  // 対象月: 指定なければ 納期→依頼日 の月から
+  const baseDate = data.dueDate || data.requestDate;
+  const targetMonth = data.targetMonth || (baseDate ? String(baseDate).slice(0, 7) : null);
+
   const production = await prisma.production.create({
     data: {
       productId: data.productId,
@@ -49,6 +55,7 @@ export async function POST(request: NextRequest) {
       requestDate: new Date(data.requestDate),
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
       status: data.status || "requested",
+      targetMonth,
       note: data.note || null,
       assignments: {
         create: assignments.map((a) => ({
@@ -79,6 +86,8 @@ export async function PUT(request: NextRequest) {
       ...(rest.requestDate && { requestDate: new Date(rest.requestDate) }),
       ...(rest.dueDate !== undefined && { dueDate: rest.dueDate ? new Date(rest.dueDate) : null }),
       ...(rest.status && { status: rest.status }),
+      ...(rest.targetMonth !== undefined && { targetMonth: rest.targetMonth || null }),
+      ...(rest.provisional !== undefined && { provisional: !!rest.provisional }),
       ...(rest.cutDate !== undefined && { cutDate: rest.cutDate ? new Date(rest.cutDate) : null }),
       ...(rest.materialDate !== undefined && { materialDate: rest.materialDate ? new Date(rest.materialDate) : null }),
       ...(rest.note !== undefined && { note: rest.note || null }),

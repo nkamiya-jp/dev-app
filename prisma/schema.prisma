@@ -226,6 +226,8 @@ model Production {
   requestDate     DateTime
   dueDate         DateTime?
   status          String   @default("requested")  // requested | in_progress | delivered
+  targetMonth     String?  // 対象月 "YYYY-MM"（月次表示・複製の基準）
+  provisional     Boolean  @default(false)  // 仮制作（複製直後の下書き。集計・在庫から除外）
   // 社内工程（担当者なし・依頼単位）
   cutDate         DateTime?  // 裁断 完了日
   materialDate    DateTime?  // 資材準備 完了日

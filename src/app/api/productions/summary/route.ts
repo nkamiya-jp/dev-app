@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
   });
 
   const productions = await prisma.production.findMany({
+    where: { provisional: false }, // 仮制作は集計から除外
     select: {
       productId: true,
       quantity: true,

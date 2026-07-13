@@ -17,9 +17,10 @@ import {
   getProductionStatusLabel,
   getProductionStatusColor,
 } from "@/lib/production-status";
-import { Plus, Search, Hammer, Users, Package as PackageIcon, Trash2 } from "lucide-react";
+import { Plus, Search, Hammer, Users, Package as PackageIcon, Trash2, Copy } from "lucide-react";
 import { ProductionAchievement } from "@/components/production-achievement";
 import { ProductionNeeded } from "@/components/production-needed";
+import { addMonths } from "@/lib/month-shift";
 
 interface Assignment {
   id: string;
@@ -47,6 +48,8 @@ interface Production {
   requestDate: string;
   dueDate: string | null;
   status: string;
+  targetMonth: string | null;
+  provisional: boolean;
   cutDate: string | null;
   materialDate: string | null;
   note: string | null;
@@ -83,6 +86,7 @@ export default function ProductionPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState(""); // 対象月フィルタ（""=全月）
   const [view, setView] = useState<"list" | "worker" | "product">("product");
   const [deliverTarget, setDeliverTarget] = useState<{ assignment: Assignment; production: Production } | null>(null);
   const [assignTarget, setAssignTarget] = useState<Production | null>(null);
@@ -223,7 +227,47 @@ export default function ProductionPage() {
     load();
   }
 
+  // 製造依頼のメモ更新
+  async function updateNote(productionId: string, note: string) {
+    await fetch("/api/productions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: productionId, note }),
+    });
+    load();
+  }
+
+  // 仮制作を確定（provisional=false）
+  async function confirmProvisional(productionId: string) {
+    await fetch("/api/productions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: productionId, provisional: false }),
+    });
+    load();
+  }
+
+  // 商品の対象月の依頼群を翌月へ複製（仮制作）
+  async function duplicateMonth(productId: string, fromMonth: string, toMonth: string) {
+    const res = await fetch("/api/productions/duplicate-month", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId, fromMonth, toMonth }),
+    });
+    const json = await res.json();
+    if (json.created === 0) {
+      alert(`${fromMonth} の製造依頼がないため複製できませんでした。`);
+      return;
+    }
+    setMonthFilter(toMonth); // 複製先の月へ切替
+    load();
+  }
+
+  // 対象月の選択肢（新しい順）
+  const availableMonths = [...new Set(productions.map((p) => p.targetMonth).filter(Boolean) as string[])].sort().reverse();
+
   const filtered = productions.filter((p) => {
+    if (monthFilter && p.targetMonth !== monthFilter) return false;
     if (statusFilter && p.status !== statusFilter) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -236,19 +280,20 @@ export default function ProductionPage() {
     return true;
   });
 
-  // サマリー
-  const totalRequested = productions.filter((p) => p.status !== "delivered")
+  // サマリー（仮制作は集計から除外）
+  const realProductions = productions.filter((p) => !p.provisional);
+  const totalRequested = realProductions.filter((p) => p.status !== "delivered")
     .reduce((s, p) => s + p.quantity, 0);
-  const totalDelivered = productions.flatMap((p) => p.assignments)
+  const totalDelivered = realProductions.flatMap((p) => p.assignments)
     .filter((a) => a.status === "delivered")
     .reduce((s, a) => s + a.deliveredQty, 0);
-  const inProgressCount = productions.flatMap((p) => p.assignments).filter((a) => a.status === "in_progress").length;
-  const overdueCount = productions.filter((p) => {
+  const inProgressCount = realProductions.flatMap((p) => p.assignments).filter((a) => a.status === "in_progress").length;
+  const overdueCount = realProductions.filter((p) => {
     if (p.status === "delivered" || !p.dueDate) return false;
     return new Date(p.dueDate) < new Date();
   }).length;
   const activeWorkerIds = new Set(
-    productions.flatMap((p) => p.assignments).filter((a) => a.status !== "delivered").map((a) => a.workerId)
+    realProductions.flatMap((p) => p.assignments).filter((a) => a.status !== "delivered").map((a) => a.workerId)
   );
 
   return (
@@ -265,6 +310,17 @@ export default function ProductionPage() {
               className="pl-9 w-full sm:w-56"
             />
           </div>
+          <select
+            value={monthFilter}
+            onChange={(e) => setMonthFilter(e.target.value)}
+            className="border rounded-md px-3 py-2 text-sm"
+            title="対象月"
+          >
+            <option value="">全月</option>
+            {availableMonths.map((m) => (
+              <option key={m} value={m}>{m.replace("-", "年")}月</option>
+            ))}
+          </select>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -441,6 +497,10 @@ export default function ProductionPage() {
           onAddAssignment={setAssignTarget}
           onRemoveAssignment={removeAssignment}
           onQuickAdd={setQuickAddProduct}
+          onNote={updateNote}
+          onConfirmProvisional={confirmProvisional}
+          onDuplicateMonth={duplicateMonth}
+          monthFilter={monthFilter}
         />
       ) : filtered.length === 0 ? (
         <Card className="bg-white shadow-sm">
@@ -869,6 +929,41 @@ function fmtMD(d: string | null) {
   return `${dt.getMonth() + 1}/${dt.getDate()}`;
 }
 
+// 数量メモ: あれば表示・クリックで編集、なければ小さな＋のみ
+function MemoCell({ note, onSave }: { note: string | null; onSave: (t: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(note ?? "");
+  useEffect(() => { setText(note ?? ""); }, [note]);
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => { setEditing(false); if ((text || "") !== (note ?? "")) onSave(text); }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") { setText(note ?? ""); setEditing(false); }
+        }}
+        placeholder="メモ"
+        className="w-24 border rounded px-1 py-0.5 text-[11px] text-right"
+      />
+    );
+  }
+  if (note) {
+    return (
+      <button onClick={() => setEditing(true)} title={note}
+        className="block w-full text-right text-[11px] text-amber-700 hover:underline truncate max-w-[120px] ml-auto">
+        📝 {note}
+      </button>
+    );
+  }
+  return (
+    <button onClick={() => setEditing(true)}
+      className="block w-full text-right text-[10px] text-gray-300 hover:text-gray-500">＋メモ</button>
+  );
+}
+
 // 社内工程トグル（裁断・資材準備）: クリックで完了/解除
 function StepToggle({ label, date, onToggle }: { label: string; date: string | null; onToggle: (done: boolean) => void }) {
   const done = !!date;
@@ -940,6 +1035,8 @@ function ProductionRow({
   onAddAssignment,
   onRemoveAssignment,
   onStatusChange,
+  onNote,
+  onConfirmProvisional,
 }: {
   p: Production;
   onProdStep: (productionId: string, field: "cutDate" | "materialDate", done: boolean) => void;
@@ -947,20 +1044,36 @@ function ProductionRow({
   onAddAssignment: (p: Production) => void;
   onRemoveAssignment: (id: string) => void;
   onStatusChange: (id: string, status: string) => void;
+  onNote: (productionId: string, note: string) => void;
+  onConfirmProvisional: (productionId: string) => void;
 }) {
   const isOverdue = p.status !== "delivered" && p.dueDate && new Date(p.dueDate) < new Date();
   const cellProps = { p, onDeliver, onRemoveAssignment, onStatusChange };
   return (
-    <tr className="hover:bg-gray-50 align-top">
+    <tr className={`hover:bg-gray-50 align-top ${p.provisional ? "bg-amber-50/40" : ""}`}>
       {/* 依頼日 / 納期 */}
       <td className="px-3 py-2 border-r whitespace-nowrap">
-        <div className="font-medium">{fmtMD(p.requestDate)}</div>
+        <div className="flex items-center gap-1">
+          {p.provisional && <span className="text-[10px] px-1 rounded bg-amber-200 text-amber-800">仮</span>}
+          <span className="font-medium">{fmtMD(p.requestDate)}</span>
+        </div>
         <div className={`text-[11px] ${isOverdue ? "text-red-600 font-medium" : "text-gray-400"}`}>
           納期 {p.dueDate ? fmtMD(p.dueDate) : "-"}
         </div>
+        {p.provisional && (
+          <button
+            onClick={() => onConfirmProvisional(p.id)}
+            className="mt-1 text-[10px] px-1.5 py-0.5 rounded border bg-white text-amber-700 hover:bg-amber-50"
+          >
+            確定する
+          </button>
+        )}
       </td>
-      {/* 数量 */}
-      <td className="px-3 py-2 text-right border-r font-medium tabular-nums">{p.quantity.toLocaleString()}</td>
+      {/* 数量 + メモ */}
+      <td className="px-3 py-2 text-right border-r">
+        <div className="font-medium tabular-nums">{p.quantity.toLocaleString()}</div>
+        <MemoCell note={p.note} onSave={(t) => onNote(p.id, t)} />
+      </td>
       {/* 裁断 */}
       <td className="px-2 py-2 text-center border-r">
         <StepToggle label="裁断" date={p.cutDate} onToggle={(d) => onProdStep(p.id, "cutDate", d)} />
@@ -1003,6 +1116,10 @@ function ProductView({
   onAddAssignment,
   onRemoveAssignment,
   onQuickAdd,
+  onNote,
+  onConfirmProvisional,
+  onDuplicateMonth,
+  monthFilter,
 }: {
   productions: Production[];
   products: Product[];
@@ -1013,6 +1130,10 @@ function ProductView({
   onAddAssignment: (p: Production) => void;
   onRemoveAssignment: (id: string) => void;
   onQuickAdd: (product: Product) => void;
+  onNote: (productionId: string, note: string) => void;
+  onConfirmProvisional: (productionId: string) => void;
+  onDuplicateMonth: (productId: string, fromMonth: string, toMonth: string) => void;
+  monthFilter: string;
 }) {
   const stockMap = new Map(inventory.map((i) => [i.id, i.stock]));
 
@@ -1086,6 +1207,17 @@ function ProductView({
                     <p className="text-xs text-gray-500">納品済合計</p>
                     <p className="text-xl font-bold text-green-600">{totalDelivered.toLocaleString()}</p>
                   </div>
+                  {monthFilter && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onDuplicateMonth(product.id, monthFilter, addMonths(monthFilter, 1))}
+                      title={`${monthFilter} の依頼を翌月へ複製（仮制作）`}
+                    >
+                      <Copy className="size-4 mr-1" /> 翌月へ複製
+                    </Button>
+                  )}
                   <Button type="button" size="sm" onClick={() => onQuickAdd(product as Product)}>
                     <Plus className="size-4 mr-1" /> 依頼を追加
                   </Button>
@@ -1114,6 +1246,8 @@ function ProductView({
                         onAddAssignment={onAddAssignment}
                         onRemoveAssignment={onRemoveAssignment}
                         onStatusChange={onStatusChange}
+                        onNote={onNote}
+                        onConfirmProvisional={onConfirmProvisional}
                       />
                     ))}
                   </tbody>
