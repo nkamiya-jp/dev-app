@@ -949,8 +949,6 @@ function ProductionRow({
   onStatusChange: (id: string, status: string) => void;
 }) {
   const isOverdue = p.status !== "delivered" && p.dueDate && new Date(p.dueDate) < new Date();
-  const a1 = p.assignments[0];
-  const a2 = p.assignments[1];
   const cellProps = { p, onDeliver, onRemoveAssignment, onStatusChange };
   return (
     <tr className="hover:bg-gray-50 align-top">
@@ -971,21 +969,25 @@ function ProductionRow({
       <td className="px-2 py-2 text-center border-r">
         <StepToggle label="資材" date={p.materialDate} onToggle={(d) => onProdStep(p.id, "materialDate", d)} />
       </td>
-      {/* 工程1 */}
-      <td className="px-3 py-2 border-r bg-blue-50/20">
-        {a1 ? <WorkerCell a={a1} {...cellProps} /> : (
-          <button onClick={() => onAddAssignment(p)} className="text-xs px-2 py-1 rounded border text-gray-500 hover:bg-white">
-            <Plus className="size-3 inline -mt-0.5" /> 担当を割当
+      {/* 制作担当者（工程1〜N を縦に積む・人数可変） */}
+      <td className="px-3 py-2 bg-blue-50/20">
+        <div className="flex flex-col gap-1.5">
+          {p.assignments.length === 0 && (
+            <span className="text-gray-300 text-xs">未割当</span>
+          )}
+          {p.assignments.map((a, i) => (
+            <div key={a.id} className="flex items-start gap-2">
+              <span className="text-[10px] text-gray-400 mt-0.5 shrink-0 w-8">工程{i + 1}</span>
+              <WorkerCell a={a} {...cellProps} />
+            </div>
+          ))}
+          <button
+            onClick={() => onAddAssignment(p)}
+            className="self-start text-xs px-2 py-1 rounded border text-gray-500 hover:bg-white"
+          >
+            <Plus className="size-3 inline -mt-0.5" /> 担当者を追加
           </button>
-        )}
-      </td>
-      {/* 工程2 */}
-      <td className="px-3 py-2 bg-blue-50/10">
-        {a2 ? <WorkerCell a={a2} {...cellProps} /> : a1 ? (
-          <button onClick={() => onAddAssignment(p)} className="text-xs px-2 py-1 rounded border text-gray-400 hover:bg-white">
-            <Plus className="size-3 inline -mt-0.5" /> 2人目
-          </button>
-        ) : <span className="text-gray-300 text-xs">—</span>}
+        </div>
       </td>
     </tr>
   );
@@ -1099,8 +1101,7 @@ function ProductView({
                       <th className="text-right px-3 py-2 font-medium border-r">数</th>
                       <th className="text-center px-2 py-2 font-medium border-r">裁断</th>
                       <th className="text-center px-2 py-2 font-medium border-r">資材準備</th>
-                      <th className="text-left px-3 py-2 font-medium border-r bg-blue-50/40">工程1（対応者・納品）</th>
-                      <th className="text-left px-3 py-2 font-medium bg-blue-50/20">工程2（対応者・納品）</th>
+                      <th className="text-left px-3 py-2 font-medium bg-blue-50/30">制作担当者（工程・対応者・依頼日・納品）</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
