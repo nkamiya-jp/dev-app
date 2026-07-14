@@ -50,6 +50,40 @@ export async function GET(request: NextRequest) {
     orderBy: [{ order: { orderDate: "asc" } }],
   });
 
+  // 在庫（現在）
+  const inventories = await prisma.inventory.findMany({
+    where: { productId: { in: productIds } },
+    select: { productId: true, stock: true },
+  });
+  const stockMap = new Map(inventories.map((i) => [i.productId, i.stock]));
+
+  // 製造入荷予定（未納品・非仮制作の残数を対象月ごとに集計）
+  const prods = await prisma.production.findMany({
+    where: {
+      productId: { in: productIds },
+      provisional: false,
+      status: { not: "delivered" },
+      ...(months.length ? { targetMonth: { in: months } } : {}),
+    },
+    select: {
+      productId: true,
+      quantity: true,
+      targetMonth: true,
+      assignments: { select: { deliveredQty: true } },
+    },
+  });
+  // prodInByProduct[productId][month] = 入荷予定数
+  const prodInByProduct = new Map<string, Record<string, number>>();
+  for (const p of prods) {
+    if (!p.targetMonth) continue;
+    const delivered = p.assignments.reduce((s, a) => s + a.deliveredQty, 0);
+    const remain = Math.max(0, p.quantity - delivered);
+    if (remain <= 0) continue;
+    const rec = prodInByProduct.get(p.productId) ?? {};
+    rec[p.targetMonth] = (rec[p.targetMonth] ?? 0) + remain;
+    prodInByProduct.set(p.productId, rec);
+  }
+
   // 出荷実績を (productId, orderId) 単位で集める
   const shipments = await prisma.shipment.findMany({
     where: { productId: { in: productIds } },
@@ -107,6 +141,9 @@ export async function GET(request: NextRequest) {
     const its = itemsByProduct.get(p.id) ?? [];
     const rows = its.map((it) => buildRow(it, p.id));
     const openQty = rows.reduce((s, r) => s + Math.max(0, r.remainQty), 0);
+    const prodByMonth: Record<string, number> = {};
+    const rec = prodInByProduct.get(p.id) ?? {};
+    for (const m of months) prodByMonth[m] = rec[m] ?? 0;
     return {
       productId: p.id,
       code: p.code,
@@ -114,6 +151,8 @@ export async function GET(request: NextRequest) {
       series: p.series,
       orderCount: rows.length,
       openQty, // 未出荷合計（アクティブ判定用）
+      stock: stockMap.get(p.id) ?? 0,
+      prodByMonth, // 対象3ヶ月の製造入荷予定
       rows,
     };
   });

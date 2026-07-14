@@ -30,6 +30,8 @@ interface Group {
   series: string | null;
   orderCount: number;
   openQty: number;
+  stock: number;
+  prodByMonth: Record<string, number>;
   rows: Row[];
 }
 interface Resp {
@@ -244,6 +246,21 @@ export default function OrdersByProductPage() {
           const weekTotals: Record<string, number> = {};
           for (const w of weeks) weekTotals[w.monday] = g.rows.reduce((s, r) => s + (r.weeklyPlans[w.monday] || 0), 0);
 
+          // 在庫残見込 = 在庫 + 累積(製造入荷予定 − 出荷予定)
+          const monthBal: Record<string, number> = {};
+          let bal = g.stock;
+          for (const m of months) {
+            bal += (g.prodByMonth[m] || 0) - (monthTotals[m] || 0);
+            monthBal[m] = bal;
+          }
+          // 週別残見込（選択月）: 選択月の月初残 + 当月製造入荷 − 累積週別出荷
+          let weekStart = g.stock;
+          for (const m of months) { if (m < month) weekStart += (g.prodByMonth[m] || 0) - (monthTotals[m] || 0); }
+          weekStart += g.prodByMonth[month] || 0;
+          const weekBal: Record<string, number> = {};
+          let wb = weekStart;
+          for (const w of weeks) { wb -= (weekTotals[w.monday] || 0); weekBal[w.monday] = wb; }
+
           return (
             <Card key={g.productId} className="bg-white shadow-sm overflow-hidden">
               {/* 商品ヘッダー */}
@@ -353,6 +370,36 @@ export default function OrdersByProductPage() {
                           <td className="border-r"></td>
                           {weeks.map((w) => (
                             <td key={w.monday} className="px-2 py-2 text-right border-r">{weekTotals[w.monday] ? weekTotals[w.monday].toLocaleString() : ""}</td>
+                          ))}
+                        </tr>
+                        {/* 製造入荷予定 */}
+                        <tr className="bg-blue-50/40 text-blue-700">
+                          <td className="px-2 py-1.5 border-r" colSpan={2}>製造入荷予定</td>
+                          <td className="border-r"></td>
+                          {months.map((m) => (
+                            <td key={m} className="px-2 py-1.5 text-right border-r tabular-nums">{g.prodByMonth[m] ? `+${g.prodByMonth[m].toLocaleString()}` : ""}</td>
+                          ))}
+                          <td className="border-r"></td>
+                          <td className="border-r"></td>
+                          {weeks.map((w) => <td key={w.monday} className="border-r"></td>)}
+                        </tr>
+                        {/* 在庫残見込（マイナス＝不足＝赤） */}
+                        <tr className="bg-gray-50 font-medium">
+                          <td className="px-2 py-1.5 border-r" colSpan={2}>
+                            在庫残見込 <span className="text-gray-400 font-normal">（現在庫 {g.stock.toLocaleString()}）</span>
+                          </td>
+                          <td className="border-r"></td>
+                          {months.map((m) => (
+                            <td key={m} className={`px-2 py-1.5 text-right border-r tabular-nums ${monthBal[m] < 0 ? "text-red-600 font-bold" : "text-gray-700"}`}>
+                              {monthBal[m].toLocaleString()}
+                            </td>
+                          ))}
+                          <td className="border-r"></td>
+                          <td className="border-r"></td>
+                          {weeks.map((w) => (
+                            <td key={w.monday} className={`px-2 py-1.5 text-right border-r tabular-nums ${weekBal[w.monday] < 0 ? "text-red-600 font-bold" : "text-gray-600"}`}>
+                              {weekBal[w.monday].toLocaleString()}
+                            </td>
                           ))}
                         </tr>
                       </tfoot>
