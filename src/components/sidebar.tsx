@@ -57,16 +57,21 @@ const navSections = [
     ],
   },
   {
-    label: "製造・出荷 (MFG)",
+    label: "受注・出荷",
     items: [
       { href: "/orders", label: "受注", icon: ShoppingCart },
       { href: "/orders-by-product", label: "商品別出荷管理", icon: ClipboardList },
+      { href: "/shipping-plan", label: "出荷計画", icon: CalendarDays },
+      { href: "/shipments", label: "出荷", icon: Truck },
       { href: "/labels", label: "ラベル印刷", icon: Tags },
       { href: "/sales", label: "月次売上", icon: Coins },
-      { href: "/forecast", label: "需要予測", icon: TrendingUp },
-      { href: "/shipping-plan", label: "出荷計画", icon: CalendarDays },
+    ],
+  },
+  {
+    label: "製造 (MFG)",
+    items: [
       { href: "/production", label: "製造", icon: Hammer },
-      { href: "/shipments", label: "出荷", icon: Truck },
+      { href: "/forecast", label: "需要予測", icon: TrendingUp },
       { href: "/inventory", label: "在庫", icon: Boxes },
     ],
   },
