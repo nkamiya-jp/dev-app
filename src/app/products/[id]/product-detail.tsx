@@ -89,6 +89,7 @@ interface Product {
   description: string | null;
   shortName: string | null;
   fnsku: string | null;
+  hasNonwoven: boolean;
   active: boolean;
   costSteps: CostStep[];
   materials: Material[];
@@ -1086,6 +1087,7 @@ function BasicEditForm({
   const [description, setDescription] = useState(product.description || "");
   const [shortName, setShortName] = useState(product.shortName || "");
   const [fnsku, setFnsku] = useState(product.fnsku || "");
+  const [hasNonwoven, setHasNonwoven] = useState(product.hasNonwoven);
   const [active, setActive] = useState(product.active);
 
   return (
@@ -1110,6 +1112,7 @@ function BasicEditForm({
           description: description || null,
           shortName: shortName || null,
           fnsku: fnsku || null,
+          hasNonwoven,
           active,
         });
       }}
@@ -1200,6 +1203,10 @@ function BasicEditForm({
           <Input value={fnsku} onChange={(e) => setFnsku(e.target.value)} placeholder="例: X00ABC1234" />
         </div>
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={hasNonwoven} onChange={(e) => setHasNonwoven(e.target.checked)} />
+        不織あり（西陣織＋不織布の2層）
+      </label>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
         有効（取扱中）

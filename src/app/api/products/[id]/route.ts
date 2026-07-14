@@ -82,6 +82,7 @@ export async function PUT(
       ...(data.description !== undefined && { description: data.description || null }),
       ...(data.shortName !== undefined && { shortName: data.shortName || null }),
       ...(data.fnsku !== undefined && { fnsku: data.fnsku || null }),
+      ...(data.hasNonwoven !== undefined && { hasNonwoven: !!data.hasNonwoven }),
       ...(data.active !== undefined && { active: data.active }),
     },
   });

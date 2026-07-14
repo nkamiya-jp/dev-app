@@ -112,6 +112,7 @@ model Product {
   description     String?      // 商品説明文
   shortName       String?      // 略称（梱包カードなど省スペース表示用）
   fnsku           String?      // Amazon FNSKU（商品ラベル用バーコード, 例 X00ABC1234）
+  hasNonwoven     Boolean      @default(false)  // 西陣織で不織布を使うか（有/無）
   active          Boolean      @default(true)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
