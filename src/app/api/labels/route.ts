@@ -43,7 +43,13 @@ export async function GET(request: NextRequest) {
   // 裁断カード用: 未納品の製造依頼（既定=裁断がまだ／納品済でないもの）
   const prods = await prisma.production.findMany({
     where: includeDelivered ? {} : { status: { not: "delivered" }, cutDate: null },
-    include: { product: { select: { id: true, code: true, name: true, shortName: true } } },
+    include: {
+      product: { select: { id: true, code: true, name: true, shortName: true } },
+      assignments: {
+        include: { worker: { select: { name: true } } },
+        orderBy: { createdAt: "asc" },
+      },
+    },
     orderBy: [{ requestDate: "desc" }],
   });
   const cuttingCards = prods.map((p) => ({
@@ -56,6 +62,12 @@ export async function GET(request: NextRequest) {
     requestDate: p.requestDate,
     dueDate: p.dueDate,
     cutDone: !!p.cutDate,
+    // 依頼先（制作担当者）とその依頼日
+    workers: p.assignments.map((a) => ({
+      name: a.worker?.name ?? "?",
+      quantity: a.quantity,
+      requestDate: a.requestDate ?? p.requestDate,
+    })),
   }));
 
   return Response.json({ shipments, products, cuttingCards });

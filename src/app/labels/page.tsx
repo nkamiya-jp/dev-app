@@ -37,6 +37,7 @@ interface CuttingCard {
   requestDate: string;
   dueDate: string | null;
   cutDone: boolean;
+  workers: { name: string; quantity: number; requestDate: string }[];
 }
 interface Resp { shipments: ShipmentLabel[]; products: ProductOpt[]; cuttingCards: CuttingCard[]; }
 
@@ -332,8 +333,21 @@ export default function LabelsPage() {
               <span className="text-gray-600">裁断</span>
               <span className="text-gray-600">依頼 {fmtDate(c.requestDate)}</span>
             </div>
-            <div className="font-bold leading-tight" style={{ fontSize: "3.6mm" }}>{c.shortName || c.productName}</div>
-            <div className="font-bold leading-none" style={{ fontSize: "7mm" }}>{c.quantity.toLocaleString()}<span style={{ fontSize: "3mm" }}>個</span></div>
+            <div className="font-bold leading-tight" style={{ fontSize: "3.4mm" }}>{c.shortName || c.productName}</div>
+            <div className="font-bold leading-none" style={{ fontSize: "6mm" }}>{c.quantity.toLocaleString()}<span style={{ fontSize: "2.8mm" }}>個</span></div>
+            {/* 依頼先（制作担当者）とその日付 */}
+            <div className="leading-tight" style={{ fontSize: "2.6mm" }}>
+              {c.workers.length === 0 ? (
+                <div className="text-gray-400">依頼先: 未割当</div>
+              ) : (
+                c.workers.map((wk, i) => (
+                  <div key={i} className="flex justify-between">
+                    <span className="truncate">依頼先: {wk.name}{c.workers.length > 1 ? `（${wk.quantity}）` : ""}</span>
+                    <span className="text-gray-600">{fmtDate(wk.requestDate)}</span>
+                  </div>
+                ))
+              )}
+            </div>
             <div className="flex justify-between text-gray-600" style={{ fontSize: "2.4mm" }}>
               <span>納期: {fmtDate(c.dueDate) || "-"}</span>
               <span className="font-mono">{c.productCode}</span>
