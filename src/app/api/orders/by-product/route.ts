@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   // 商品一覧
   const products = await prisma.product.findMany({
     where: { active: true, ...(productId ? { id: productId } : {}) },
-    orderBy: [{ series: "asc" }, { sortOrder: "asc" }, { code: "asc" }],
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
     select: { id: true, code: true, name: true, series: true },
   });
 

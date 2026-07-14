@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Printer, ChevronDown } from "lucide-react";
+import { Download, Printer, ChevronDown, ChevronUp } from "lucide-react";
 import { formatMonthLabel } from "@/lib/sales-month";
 
 interface Week { monday: string; label: string; }
@@ -108,6 +108,17 @@ export default function OrdersByProductPage() {
       return next;
     });
   }
+
+  // 商品の表示順（全画面共通の sortOrder）を、表示中の隣の商品と入れ替える
+  const reorderProduct = useCallback(async (id: string, targetId: string | undefined) => {
+    if (!targetId) return;
+    await fetch("/api/products/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, targetId, withinSeries: false }),
+    });
+    load();
+  }, [load]);
   function expandAll() {
     const next = new Set<string>();
     setCollapsed(next);
@@ -222,8 +233,10 @@ export default function OrdersByProductPage() {
           <p>{hideEmpty ? "受注のある商品がありません" : "商品がありません"}</p>
         </Card>
       ) : (
-        visibleGroups.map((g) => {
+        visibleGroups.map((g, gi) => {
           const isCollapsed = collapsed.has(g.productId);
+          const prevId = visibleGroups[gi - 1]?.productId;
+          const nextId = visibleGroups[gi + 1]?.productId;
           const totalQty = g.rows.reduce((s, r) => s + r.quantity, 0);
           const totalShipped = g.rows.reduce((s, r) => s + r.shippedQty, 0);
           const monthTotals: Record<string, number> = {};
@@ -234,21 +247,42 @@ export default function OrdersByProductPage() {
           return (
             <Card key={g.productId} className="bg-white shadow-sm overflow-hidden">
               {/* 商品ヘッダー */}
-              <button
-                onClick={() => toggleCollapse(g.productId)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 border-b print:cursor-default"
-              >
-                <ChevronDown className={`size-4 text-gray-400 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
-                <span className="font-bold">{g.name}</span>
-                <span className="text-xs text-gray-400">{g.code}</span>
-                <span className="ml-auto flex items-center gap-3 text-xs text-gray-500">
-                  <span>受注 {g.orderCount}件</span>
-                  <span>注文計 {totalQty.toLocaleString()}</span>
-                  {g.openQty > 0
-                    ? <span className="text-amber-600 font-medium">未出荷 {g.openQty.toLocaleString()}</span>
-                    : g.orderCount > 0 && <span className="text-green-600">完了</span>}
-                </span>
-              </button>
+              <div className="w-full flex items-center gap-3 px-4 py-3 border-b hover:bg-gray-50">
+                {/* 並べ替え ↑↓ */}
+                <div className="flex flex-col print:hidden">
+                  <button
+                    onClick={() => reorderProduct(g.productId, prevId)}
+                    disabled={!prevId}
+                    className="text-gray-400 hover:text-blue-600 disabled:opacity-20 leading-none"
+                    title="上へ"
+                  >
+                    <ChevronUp className="size-3.5" />
+                  </button>
+                  <button
+                    onClick={() => reorderProduct(g.productId, nextId)}
+                    disabled={!nextId}
+                    className="text-gray-400 hover:text-blue-600 disabled:opacity-20 leading-none"
+                    title="下へ"
+                  >
+                    <ChevronDown className="size-3.5" />
+                  </button>
+                </div>
+                <button
+                  onClick={() => toggleCollapse(g.productId)}
+                  className="flex items-center gap-3 flex-1 text-left print:cursor-default"
+                >
+                  <ChevronDown className={`size-4 text-gray-400 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                  <span className="font-bold">{g.name}</span>
+                  <span className="text-xs text-gray-400">{g.code}</span>
+                  <span className="ml-auto flex items-center gap-3 text-xs text-gray-500">
+                    <span>受注 {g.orderCount}件</span>
+                    <span>注文計 {totalQty.toLocaleString()}</span>
+                    {g.openQty > 0
+                      ? <span className="text-amber-600 font-medium">未出荷 {g.openQty.toLocaleString()}</span>
+                      : g.orderCount > 0 && <span className="text-green-600">完了</span>}
+                  </span>
+                </button>
+              </div>
 
               {!isCollapsed && (
                 <div className="overflow-x-auto">

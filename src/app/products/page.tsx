@@ -97,7 +97,7 @@ export default function ProductsPage() {
     await fetch("/api/products/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, direction, withinSeries: true }),
+      body: JSON.stringify({ id, direction, withinSeries: false }),
     });
     load();
   }
@@ -107,7 +107,7 @@ export default function ProductsPage() {
     await fetch("/api/products/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, targetId, withinSeries: true }),
+      body: JSON.stringify({ id, targetId, withinSeries: false }),
     });
     load();
   }
