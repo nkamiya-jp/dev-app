@@ -53,8 +53,17 @@ interface Production {
   cutDate: string | null;
   materialDate: string | null;
   note: string | null;
-  product: { id: string; code: string; name: string; series: string | null; workerCost: number | null };
+  product: { id: string; code: string; name: string; series: string | null; workerCost: number | null; hasNonwoven?: boolean };
   assignments: Assignment[];
+}
+
+// 製造カテゴリ: 有=西陣+不織 / 無=西陣+不織なし / 友禅 / 別注(その他) / その他(伊勢など)
+const PROD_CATEGORY_ORDER = ["有", "無", "友禅", "別注", "その他"] as const;
+function prodCategory(product: { series: string | null; hasNonwoven?: boolean }): string {
+  if (product.series === "yuzen") return "友禅";
+  if (product.series === "nishijin") return product.hasNonwoven ? "有" : "無";
+  if (product.series === "other") return "別注";
+  return "その他";
 }
 
 interface Worker {
@@ -1151,6 +1160,21 @@ function ProductView({
     ([a], [b]) => (productOrder.get(a) ?? 9999) - (productOrder.get(b) ?? 9999)
   );
 
+  // カテゴリ（有/無/友禅/別注/その他）でグループ化。中はマスタ順を維持。
+  const byCategory = new Map<string, typeof orderedGroups>();
+  for (const entry of orderedGroups) {
+    const cat = prodCategory(entry[1].product);
+    if (!byCategory.has(cat)) byCategory.set(cat, []);
+    byCategory.get(cat)!.push(entry);
+  }
+  const catColor: Record<string, string> = {
+    有: "bg-purple-100 text-purple-700",
+    無: "bg-indigo-100 text-indigo-700",
+    友禅: "bg-pink-100 text-pink-700",
+    別注: "bg-amber-100 text-amber-700",
+    その他: "bg-gray-100 text-gray-600",
+  };
+
   // データのない商品も「+追加」できるようにリストに含める（オプショナル）
   // → 今回はデータのある商品のみ表示し、ヘッダーに「商品を選んで依頼」ボタン
 
@@ -1172,7 +1196,14 @@ function ProductView({
         </Card>
       )}
 
-      {orderedGroups.map(([productId, { product, productions }]) => {
+      {PROD_CATEGORY_ORDER.filter((cat) => (byCategory.get(cat)?.length ?? 0) > 0).map((cat) => (
+        <div key={cat} className="space-y-4">
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-bold px-2 py-0.5 rounded ${catColor[cat] ?? "bg-gray-100 text-gray-600"}`}>{cat}</span>
+            <span className="text-xs text-gray-400">{byCategory.get(cat)!.length}商品</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+          {byCategory.get(cat)!.map(([productId, { product, productions }]) => {
         const carryOver = stockMap.get(productId) ?? 0;
         const prodSorted = [...productions].sort(
           (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
@@ -1256,7 +1287,9 @@ function ProductView({
             </CardContent>
           </Card>
         );
-      })}
+          })}
+        </div>
+      ))}
     </div>
   );
 }

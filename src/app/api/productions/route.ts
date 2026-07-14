@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   const productions = await prisma.production.findMany({
     where,
     include: {
-      product: { select: { id: true, code: true, name: true, series: true, workerCost: true } },
+      product: { select: { id: true, code: true, name: true, series: true, workerCost: true, hasNonwoven: true } },
       assignments: {
         include: {
           worker: { select: { id: true, name: true, color: true } },
