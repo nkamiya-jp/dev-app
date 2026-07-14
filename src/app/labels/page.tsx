@@ -329,28 +329,21 @@ export default function LabelsPage() {
             className="label-page bg-white border border-gray-300 print:border-0 overflow-hidden flex flex-col justify-between"
             style={{ width: `${w}mm`, height: `${h}mm`, padding: "2mm" }}
           >
-            <div className="flex items-center justify-between" style={{ fontSize: "2.6mm" }}>
-              <span className="text-gray-600">裁断</span>
-              <span className="text-gray-600">依頼 {fmtDate(c.requestDate)}</span>
-            </div>
-            <div className="font-bold leading-tight" style={{ fontSize: "3.4mm" }}>{c.shortName || c.productName}</div>
-            <div className="font-bold leading-none" style={{ fontSize: "6mm" }}>{c.quantity.toLocaleString()}<span style={{ fontSize: "2.8mm" }}>個</span></div>
-            {/* 依頼先（制作担当者）とその日付 */}
-            <div className="leading-tight" style={{ fontSize: "2.6mm" }}>
+            <div className="text-gray-500" style={{ fontSize: "2.4mm" }}>裁断</div>
+            <div className="font-bold leading-tight" style={{ fontSize: "4mm" }}>{c.productName}</div>
+            <div className="font-bold leading-none" style={{ fontSize: "7mm" }}>{c.quantity.toLocaleString()}<span style={{ fontSize: "3mm" }}>個</span></div>
+            {/* 依頼先（制作担当者）と依頼日のみ */}
+            <div className="leading-tight" style={{ fontSize: "3mm" }}>
               {c.workers.length === 0 ? (
                 <div className="text-gray-400">依頼先: 未割当</div>
               ) : (
                 c.workers.map((wk, i) => (
-                  <div key={i} className="flex justify-between">
+                  <div key={i} className="flex justify-between gap-1">
                     <span className="truncate">依頼先: {wk.name}{c.workers.length > 1 ? `（${wk.quantity}）` : ""}</span>
                     <span className="text-gray-600">{fmtDate(wk.requestDate)}</span>
                   </div>
                 ))
               )}
-            </div>
-            <div className="flex justify-between text-gray-600" style={{ fontSize: "2.4mm" }}>
-              <span>納期: {fmtDate(c.dueDate) || "-"}</span>
-              <span className="font-mono">{c.productCode}</span>
             </div>
           </div>
         ))}
