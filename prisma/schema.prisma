@@ -36,6 +36,7 @@ model Contact {
   activities     Activity[]
   orders         Order[]
   shipments      Shipment[]
+  customerPrices CustomerPrice[]
 }
 
 model Deal {
@@ -124,6 +125,23 @@ model Product {
   forecasts       ProductForecast[]
   costSteps       ProductCostStep[]
   materials       ProductMaterial[]
+  customerPrices  CustomerPrice[]
+}
+
+// 顧客の取扱商品＋個別卸価格。行が存在する = その顧客が取り扱う商品。
+// price が null なら「取扱いあり・価格は自動（上代×掛率）」、値ありなら個別価格で上書き。
+model CustomerPrice {
+  id        String   @id @default(cuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price     Int?     // 個別卸価格（税抜、円）。null=自動計算
+  note      String?  // 個別価格の理由メモ
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([contactId, productId])
+  @@index([contactId])
 }
 
 model ProductCostStep {
@@ -369,4 +387,68 @@ model Task {
   completed     Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// ===== EC販売ダッシュボード (B2C/EC: Shopify/Amazon/Creema/NEXCO 等) =====
+// B2Bの受注(Order)とは別系統。チャネル×月×SKU×柄 で売上・数量を集計する。
+
+model EcChannel {
+  id        String   @id @default(cuid())
+  name      String   @unique // 京都芸美堂 / NEXCO / AmazonUS / AmazonJP / Creema
+  kind      String?  // shopify | amazon | creema | consignment | other
+  color     String   @default("#3b82f6")
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  sales     EcSale[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EcSku {
+  id        String      @id @default(cuid())
+  code      String      @unique
+  name      String
+  series    String?     // 西陣 / 友禅 / 伊勢 / その他
+  productId String?     // 既存Product(B2B)への任意リンク
+  active    Boolean     @default(true)
+  sortOrder Int         @default(0)
+  patterns  EcPattern[]
+  sales     EcSale[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model EcPattern {
+  id        String   @id @default(cuid())
+  skuId     String
+  sku       EcSku    @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  name      String   // 柄名(カラバリ)
+  code      String?  // チャネル側SKU等の識別子(将来の取込用)
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  sales     EcSale[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([skuId, name])
+}
+
+model EcSale {
+  id        String     @id @default(cuid())
+  channelId String
+  channel   EcChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  skuId     String
+  sku       EcSku      @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  patternId String?
+  pattern   EcPattern? @relation(fields: [patternId], references: [id], onDelete: SetNull)
+  yearMonth String     // "2026-05"
+  quantity  Int        @default(0)
+  revenue   Int        @default(0) // 売上(円, 税込/税抜は運用で統一)
+  note      String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([yearMonth])
+  @@index([channelId])
+  @@index([skuId])
 }

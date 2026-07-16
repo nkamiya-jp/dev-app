@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Camera, Archive, Download, Printer, ChevronUp, ChevronDown, LayoutGrid, User } from "lucide-react";
+import { Camera, Archive, Download, Printer, ChevronUp, ChevronDown, LayoutGrid, User, X } from "lucide-react";
 import { getContactTypeMeta, getContactTypeLabel, getContactTypeColor } from "@/lib/contact-meta";
 
 interface MatrixRow {
@@ -82,6 +82,8 @@ export default function PriceListPage() {
   const [saveNote, setSaveNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [reordering, setReordering] = useState(false);
+  // 顧客の取扱商品＋個別価格（productId → { price:自動ならnull, note }）
+  const [custPrices, setCustPrices] = useState<Record<string, { price: number | null; note: string | null }>>({});
 
   const load = useCallback(async () => {
     const [pl, s, c] = await Promise.all([
@@ -97,6 +99,65 @@ export default function PriceListPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // 顧客選択時に取扱商品を読み込み
+  useEffect(() => {
+    if (mode !== "customer" || !selectedContactId) {
+      setCustPrices({});
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/customer-prices?contactId=${selectedContactId}`)
+      .then((r) => r.json())
+      .then((rows) => {
+        if (cancelled) return;
+        const m: Record<string, { price: number | null; note: string | null }> = {};
+        if (Array.isArray(rows)) {
+          rows.forEach((x: { productId: string; price: number | null; note: string | null }) => {
+            m[x.productId] = { price: x.price ?? null, note: x.note ?? null };
+          });
+        }
+        setCustPrices(m);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, selectedContactId]);
+
+  // 取扱商品を追加
+  async function addHandledProduct(productId: string) {
+    if (!selectedContactId) return;
+    setCustPrices((p) => ({ ...p, [productId]: { price: null, note: null } }));
+    await fetch("/api/customer-prices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId: selectedContactId, productId }),
+    });
+  }
+
+  // 個別価格を設定（null=自動に戻す）
+  async function setHandledPrice(productId: string, price: number | null) {
+    if (!selectedContactId) return;
+    setCustPrices((p) => ({ ...p, [productId]: { price, note: p[productId]?.note ?? null } }));
+    await fetch("/api/customer-prices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId: selectedContactId, productId, price }),
+    });
+  }
+
+  // 取扱商品から削除
+  async function removeHandledProduct(productId: string) {
+    if (!selectedContactId) return;
+    setCustPrices((p) => {
+      const n = { ...p };
+      delete n[productId];
+      return n;
+    });
+    await fetch(`/api/customer-prices?contactId=${selectedContactId}&productId=${productId}`, {
+      method: "DELETE",
+    });
+  }
 
   async function saveSnapshot() {
     if (!saveName.trim()) {
@@ -167,20 +228,25 @@ export default function PriceListPage() {
     let header: string[];
     let rows: string[][];
     if (mode === "customer" && selectedContact && contactRate != null) {
-      header = ["コード", "商品名", "原価", "上代", "基本額(卸)", "原価率(卸)", "原価率(上代)"];
-      rows = visibleItems.map((it) => {
-        const wholesale = Math.round(it.retailPrice * contactRate / 100);
-        const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
-        return [
-          it.code || "",
-          it.name,
-          String(it.cost),
-          String(it.retailPrice),
-          String(wholesale),
-          `${crWholesale.toFixed(1)}%`,
-          `${it.costRatioVsRetail.toFixed(1)}%`,
-        ];
-      });
+      header = ["コード", "商品名", "原価", "上代", "卸価格", "個別/自動", "原価率(卸)", "原価率(上代)"];
+      rows = visibleItems
+        .filter((it) => it.productId in custPrices)
+        .map((it) => {
+          const auto = Math.round(it.retailPrice * contactRate / 100);
+          const override = custPrices[it.productId]?.price ?? null;
+          const wholesale = override ?? auto;
+          const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
+          return [
+            it.code || "",
+            it.name,
+            String(it.cost),
+            String(it.retailPrice),
+            String(wholesale),
+            override != null ? "個別" : "自動",
+            `${crWholesale.toFixed(1)}%`,
+            `${it.costRatioVsRetail.toFixed(1)}%`,
+          ];
+        });
     } else {
       header = ["コード", "商品名", "シリーズ", "原価", "上代", "原価率(上代)", ...visibleRows.map((r) => `${r.typeLabel} ${r.ratePct}%`)];
       rows = visibleItems.map((it) => [
@@ -373,6 +439,11 @@ export default function PriceListPage() {
           selectedContact={selectedContact}
           contactRate={contactRate}
           items={visibleItems}
+          allItems={data.items}
+          custPrices={custPrices}
+          onAddProduct={addHandledProduct}
+          onSetPrice={setHandledPrice}
+          onRemoveProduct={removeHandledProduct}
         />
       )}
 
@@ -473,6 +544,11 @@ function CustomerPriceTable({
   selectedContact,
   contactRate,
   items,
+  allItems,
+  custPrices,
+  onAddProduct,
+  onSetPrice,
+  onRemoveProduct,
 }: {
   contacts: Contact[];
   selectedContactId: string;
@@ -480,7 +556,17 @@ function CustomerPriceTable({
   selectedContact: Contact | null;
   contactRate: number | null;
   items: PriceItem[];
+  allItems: PriceItem[];
+  custPrices: Record<string, { price: number | null; note: string | null }>;
+  onAddProduct: (productId: string) => void;
+  onSetPrice: (productId: string, price: number | null) => void;
+  onRemoveProduct: (productId: string) => void;
 }) {
+  // 取扱商品のみ表示（シリーズ絞り込み後の items から）
+  const handled = items.filter((it) => it.productId in custPrices);
+  // 追加候補 = まだ取扱いに入っていない全商品
+  const addable = allItems.filter((it) => !(it.productId in custPrices));
+
   return (
     <>
       <div className="bg-white border rounded-md p-3 print:hidden flex items-center gap-3 flex-wrap">
@@ -518,7 +604,7 @@ function CustomerPriceTable({
         <Card className="bg-white shadow-sm">
           <CardContent className="py-12 text-center text-gray-400">
             <User className="size-10 mx-auto mb-3 text-gray-300" />
-            <p>顧客を選択すると、その掛率での価格表が表示されます</p>
+            <p>顧客を選択すると、取扱商品の価格表が表示されます</p>
           </CardContent>
         </Card>
       ) : contactRate == null ? (
@@ -535,10 +621,35 @@ function CustomerPriceTable({
           {/* 印刷用ヘッダ */}
           <div className="hidden print:block px-4 pt-4">
             <h1 className="text-lg font-bold">
-              {selectedContact.name} 御中 価格表（掛率 {contactRate}%）
+              {selectedContact.name} 御中 価格表
             </h1>
             <p className="text-xs text-gray-500">{new Date().toLocaleDateString("ja-JP")} 時点</p>
           </div>
+
+          {/* 取扱商品を追加 */}
+          <div className="px-3 py-2 border-b bg-gray-50/60 print:hidden flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-500">取扱商品を追加:</span>
+            <select
+              value=""
+              onChange={(e) => { if (e.target.value) onAddProduct(e.target.value); }}
+              className="border rounded-md px-2 py-1.5 text-sm min-w-[220px] bg-white"
+            >
+              <option value="">＋ 商品を選んで追加...</option>
+              {addable.map((it) => (
+                <option key={it.productId} value={it.productId}>
+                  {it.name}{it.code ? `（${it.code}）` : ""}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-gray-400">取扱 {handled.length} 商品</span>
+          </div>
+
+          {handled.length === 0 ? (
+            <CardContent className="py-12 text-center text-gray-400">
+              <p>取扱商品がありません</p>
+              <p className="text-xs mt-1">上の「＋ 商品を選んで追加」から登録してください</p>
+            </CardContent>
+          ) : (
           <CardContent className="p-0 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
@@ -546,15 +657,18 @@ function CustomerPriceTable({
                   <th className="text-left px-3 py-2 font-medium text-gray-500 min-w-[200px]">商品</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24 bg-amber-50">上代</th>
-                  <th className="text-right px-3 py-2 font-medium text-gray-700 w-28 bg-green-50">基本額（卸）</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-700 w-32 bg-green-50">卸価格</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">粗利</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価率(卸)</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価率(上代)</th>
+                  <th className="px-2 py-2 w-8 print:hidden"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {items.map((it) => {
-                  const wholesale = it.retailPrice > 0 ? Math.round(it.retailPrice * contactRate / 100) : 0;
+                {handled.map((it) => {
+                  const auto = it.retailPrice > 0 ? Math.round(it.retailPrice * contactRate / 100) : 0;
+                  const override = custPrices[it.productId]?.price ?? null;
+                  const wholesale = override ?? auto;
                   const profit = wholesale - it.cost;
                   const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
                   return (
@@ -567,8 +681,41 @@ function CustomerPriceTable({
                       </td>
                       <td className="px-3 py-2 text-right text-gray-600">{it.cost.toLocaleString()}円</td>
                       <td className="px-3 py-2 text-right bg-amber-50/30">{it.retailPrice > 0 ? `${it.retailPrice.toLocaleString()}円` : "-"}</td>
-                      <td className="px-3 py-2 text-right font-bold bg-green-50/40">
-                        {wholesale > 0 ? `${wholesale.toLocaleString()}円` : "-"}
+                      <td className="px-3 py-2 text-right bg-green-50/40">
+                        {/* 印刷時は確定値をテキスト表示 */}
+                        <div className="hidden print:block font-bold">{wholesale > 0 ? `${wholesale.toLocaleString()}円` : "-"}</div>
+                        {/* 編集用 */}
+                        <div className="print:hidden flex items-center justify-end gap-1">
+                          <input
+                            key={`${it.productId}_${override ?? ""}`}
+                            type="text"
+                            inputMode="numeric"
+                            defaultValue={override ?? ""}
+                            placeholder={auto > 0 ? auto.toLocaleString() : "0"}
+                            onBlur={(e) => {
+                              const raw = e.target.value.replace(/[^\d]/g, "");
+                              const val = raw === "" ? null : parseInt(raw, 10);
+                              if (val === override) return;
+                              onSetPrice(it.productId, val);
+                            }}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            className="w-20 text-right border rounded px-1 py-0.5 font-bold text-gray-900"
+                          />
+                          <span className="text-gray-400">円</span>
+                        </div>
+                        <div className="print:hidden text-[10px] text-right mt-0.5">
+                          {override != null ? (
+                            <button
+                              onClick={() => onSetPrice(it.productId, null)}
+                              className="text-blue-600 hover:underline"
+                              title="自動計算に戻す"
+                            >
+                              個別 · 自動に戻す
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">自動（上代×{contactRate}%）</span>
+                          )}
+                        </div>
                       </td>
                       <td className={`px-3 py-2 text-right font-medium ${profit >= 0 ? "text-green-600" : "text-red-500"}`}>
                         {wholesale > 0 ? `${profit >= 0 ? "+" : ""}${profit.toLocaleString()}円` : "-"}
@@ -579,12 +726,22 @@ function CustomerPriceTable({
                       <td className="px-3 py-2 text-right text-gray-500">
                         {it.retailPrice > 0 ? `${it.costRatioVsRetail.toFixed(0)}%` : "-"}
                       </td>
+                      <td className="px-2 py-2 text-center print:hidden">
+                        <button
+                          onClick={() => onRemoveProduct(it.productId)}
+                          className="text-gray-300 hover:text-red-500"
+                          title="取扱商品から削除"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </CardContent>
+          )}
         </Card>
       )}
     </>
