@@ -182,14 +182,16 @@ export default function PriceListPage() {
     }
   }
 
-  async function reorder(id: string, direction: "up" | "down") {
+  // id を targetId（画面上の隣の商品）の位置へ移動して商品マスタ順を入れ替える。
+  // 絞り込み中でも「表示上の隣」と入れ替わるよう、direction ではなく targetId を渡す。
+  async function reorderTo(id: string, targetId: string) {
     if (reordering) return;
     setReordering(true);
     try {
       await fetch("/api/products/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, direction }),
+        body: JSON.stringify({ id, targetId }),
       });
       await load();
     } finally {
@@ -380,7 +382,7 @@ export default function PriceListPage() {
                         <td className="px-1 py-1 print:hidden">
                           <div className="flex flex-col">
                             <button
-                              onClick={() => reorder(it.productId, "up")}
+                              onClick={() => reorderTo(it.productId, visibleItems[idx - 1].productId)}
                               disabled={idx === 0 || reordering}
                               className="text-gray-300 hover:text-gray-700 disabled:opacity-30"
                               title="上へ"
@@ -388,7 +390,7 @@ export default function PriceListPage() {
                               <ChevronUp className="size-3.5" />
                             </button>
                             <button
-                              onClick={() => reorder(it.productId, "down")}
+                              onClick={() => reorderTo(it.productId, visibleItems[idx + 1].productId)}
                               disabled={idx === visibleItems.length - 1 || reordering}
                               className="text-gray-300 hover:text-gray-700 disabled:opacity-30"
                               title="下へ"
@@ -444,6 +446,8 @@ export default function PriceListPage() {
           onAddProduct={addHandledProduct}
           onSetPrice={setHandledPrice}
           onRemoveProduct={removeHandledProduct}
+          onReorderTo={reorderTo}
+          reordering={reordering}
         />
       )}
 
@@ -549,6 +553,8 @@ function CustomerPriceTable({
   onAddProduct,
   onSetPrice,
   onRemoveProduct,
+  onReorderTo,
+  reordering,
 }: {
   contacts: Contact[];
   selectedContactId: string;
@@ -561,6 +567,8 @@ function CustomerPriceTable({
   onAddProduct: (productId: string) => void;
   onSetPrice: (productId: string, price: number | null) => void;
   onRemoveProduct: (productId: string) => void;
+  onReorderTo: (id: string, targetId: string) => void;
+  reordering: boolean;
 }) {
   // 取扱商品のみ表示（シリーズ絞り込み後の items から）
   const handled = items.filter((it) => it.productId in custPrices);
@@ -654,6 +662,7 @@ function CustomerPriceTable({
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
+                  <th className="px-1 py-2 w-8 print:hidden"></th>
                   <th className="text-left px-3 py-2 font-medium text-gray-500 min-w-[200px]">商品</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24 bg-amber-50">上代</th>
@@ -665,7 +674,7 @@ function CustomerPriceTable({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {handled.map((it) => {
+                {handled.map((it, idx) => {
                   const auto = it.retailPrice > 0 ? Math.round(it.retailPrice * contactRate / 100) : 0;
                   const override = custPrices[it.productId]?.price ?? null;
                   const wholesale = override ?? auto;
@@ -673,6 +682,26 @@ function CustomerPriceTable({
                   const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
                   return (
                     <tr key={it.productId} className="hover:bg-gray-50">
+                      <td className="px-1 py-1 print:hidden">
+                        <div className="flex flex-col">
+                          <button
+                            onClick={() => onReorderTo(it.productId, handled[idx - 1].productId)}
+                            disabled={idx === 0 || reordering}
+                            className="text-gray-300 hover:text-gray-700 disabled:opacity-30"
+                            title="上へ"
+                          >
+                            <ChevronUp className="size-3.5" />
+                          </button>
+                          <button
+                            onClick={() => onReorderTo(it.productId, handled[idx + 1].productId)}
+                            disabled={idx === handled.length - 1 || reordering}
+                            className="text-gray-300 hover:text-gray-700 disabled:opacity-30"
+                            title="下へ"
+                          >
+                            <ChevronDown className="size-3.5" />
+                          </button>
+                        </div>
+                      </td>
                       <td className="px-3 py-2">
                         <Link href={`/products/${it.productId}`} className="text-blue-600 hover:underline font-medium">
                           {it.name}
