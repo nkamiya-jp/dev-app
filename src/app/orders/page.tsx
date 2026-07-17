@@ -408,7 +408,7 @@ export default function OrdersPage() {
                     )}
 
                     {/* 明細追加フォーム */}
-                    <AddItemForm products={products} onAdd={(p, q, u) => addItem(order.id, p, q, u)} />
+                    <AddItemForm products={products} contactId={order.contactId} onAdd={(p, q, u) => addItem(order.id, p, q, u)} />
 
                     {/* 受注 複製・削除 */}
                     <div className="flex justify-end gap-2 pt-2 border-t">
@@ -560,16 +560,25 @@ function OrderItemRow({
   );
 }
 
+const PRICE_SOURCE_LABEL: Record<string, string> = {
+  individual: "個別価格",
+  auto: "自動（上代×掛率）",
+  standard: "標準卸",
+};
+
 function AddItemForm({
   products,
+  contactId,
   onAdd,
 }: {
   products: Product[];
+  contactId: string;
   onAdd: (productId: string, quantity: number, unitPrice: number | null) => void;
 }) {
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
+  const [priceSource, setPriceSource] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -578,15 +587,29 @@ function AddItemForm({
     setProductId("");
     setQuantity("");
     setUnitPrice("");
+    setPriceSource(null);
   }
 
-  // 商品選択時に卸単価をデフォルト
-  function onProductChange(id: string) {
+  // 商品選択時に、その顧客の実効単価（個別 → 自動 → 標準卸）をセット
+  async function onProductChange(id: string) {
     setProductId(id);
-    const p = products.find((p) => p.id === id);
-    if (p?.wholesalePrice && !unitPrice) {
-      setUnitPrice(String(p.wholesalePrice));
+    setPriceSource(null);
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/customer-prices/effective?contactId=${contactId}&productId=${id}`);
+      if (res.ok) {
+        const d = await res.json();
+        if (d?.price != null) {
+          setUnitPrice(String(d.price));
+          setPriceSource(d.source);
+          return;
+        }
+      }
+    } catch {
+      // 取得失敗時は標準卸にフォールバック
     }
+    const p = products.find((p) => p.id === id);
+    setUnitPrice(p?.wholesalePrice != null ? String(p.wholesalePrice) : "");
   }
 
   return (
@@ -621,9 +644,14 @@ function AddItemForm({
         <Input
           type="number"
           value={unitPrice}
-          onChange={(e) => setUnitPrice(e.target.value)}
+          onChange={(e) => { setUnitPrice(e.target.value); setPriceSource(null); }}
           placeholder="円"
         />
+        {priceSource && (
+          <div className={`text-[10px] mt-0.5 ${priceSource === "individual" ? "text-blue-600" : "text-gray-400"}`}>
+            {PRICE_SOURCE_LABEL[priceSource] ?? priceSource}
+          </div>
+        )}
       </div>
       <Button type="submit" size="sm">
         <Plus className="size-4" />

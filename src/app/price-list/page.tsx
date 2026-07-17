@@ -146,6 +146,17 @@ export default function PriceListPage() {
     });
   }
 
+  // 個別価格のメモ（理由）を設定
+  async function setHandledNote(productId: string, note: string | null) {
+    if (!selectedContactId) return;
+    setCustPrices((p) => ({ ...p, [productId]: { price: p[productId]?.price ?? null, note } }));
+    await fetch("/api/customer-prices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId: selectedContactId, productId, note }),
+    });
+  }
+
   // 取扱商品から削除
   async function removeHandledProduct(productId: string) {
     if (!selectedContactId) return;
@@ -445,6 +456,7 @@ export default function PriceListPage() {
           custPrices={custPrices}
           onAddProduct={addHandledProduct}
           onSetPrice={setHandledPrice}
+          onSetNote={setHandledNote}
           onRemoveProduct={removeHandledProduct}
           onReorderTo={reorderTo}
           reordering={reordering}
@@ -552,6 +564,7 @@ function CustomerPriceTable({
   custPrices,
   onAddProduct,
   onSetPrice,
+  onSetNote,
   onRemoveProduct,
   onReorderTo,
   reordering,
@@ -566,6 +579,7 @@ function CustomerPriceTable({
   custPrices: Record<string, { price: number | null; note: string | null }>;
   onAddProduct: (productId: string) => void;
   onSetPrice: (productId: string, price: number | null) => void;
+  onSetNote: (productId: string, note: string | null) => void;
   onRemoveProduct: (productId: string) => void;
   onReorderTo: (id: string, targetId: string) => void;
   reordering: boolean;
@@ -670,6 +684,7 @@ function CustomerPriceTable({
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">粗利</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価率(卸)</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価率(上代)</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 min-w-[140px] print:hidden">メモ（理由）</th>
                   <th className="px-2 py-2 w-8 print:hidden"></th>
                 </tr>
               </thead>
@@ -754,6 +769,22 @@ function CustomerPriceTable({
                       </td>
                       <td className="px-3 py-2 text-right text-gray-500">
                         {it.retailPrice > 0 ? `${it.costRatioVsRetail.toFixed(0)}%` : "-"}
+                      </td>
+                      <td className="px-3 py-2 print:hidden">
+                        <input
+                          key={`note_${it.productId}_${custPrices[it.productId]?.note ?? ""}`}
+                          type="text"
+                          defaultValue={custPrices[it.productId]?.note ?? ""}
+                          placeholder="例: 長年の取引先価格"
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            const cur = custPrices[it.productId]?.note ?? "";
+                            if (v === cur) return;
+                            onSetNote(it.productId, v === "" ? null : v);
+                          }}
+                          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                          className="w-full border rounded px-1.5 py-0.5 text-xs"
+                        />
                       </td>
                       <td className="px-2 py-2 text-center print:hidden">
                         <button

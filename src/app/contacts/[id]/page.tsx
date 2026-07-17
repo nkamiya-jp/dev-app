@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { getStageLabel, getStageColor } from "@/lib/stages";
 import Link from "next/link";
 import { ContactEditButton } from "./contact-edit";
-import { getContactTypeLabel, getContactTypeColor } from "@/lib/contact-meta";
+import { getContactTypeLabel, getContactTypeColor, getContactTypeMeta } from "@/lib/contact-meta";
+import { CustomerProductsCard } from "./customer-products";
 
 export const dynamic = "force-dynamic";
 
@@ -248,6 +249,11 @@ export default async function ContactDetailPage({
           </Card>
         </div>
       </div>
+
+      <CustomerProductsCard
+        contactId={contact.id}
+        rate={contact.discountRate ?? getContactTypeMeta(contact.type)?.defaultRate ?? null}
+      />
     </div>
   );
 }

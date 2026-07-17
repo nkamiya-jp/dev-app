@@ -14,20 +14,28 @@ export async function GET(request: NextRequest) {
   return Response.json(rows);
 }
 
-// POST /api/customer-prices - 取扱商品を追加 or 個別価格を更新（upsert）
+// POST /api/customer-prices - 取扱商品を追加 or 個別価格/メモを更新（upsert）
 // body: { contactId, productId, price?（null=自動）, note? }
+// price / note は「渡されたキーだけ」更新する（片方だけの更新で他方を消さない）
 export async function POST(request: NextRequest) {
   const data = await request.json();
   const { contactId, productId } = data;
   if (!contactId || !productId) {
     return Response.json({ error: "contactId and productId required" }, { status: 400 });
   }
-  const price = data.price === undefined || data.price === null || data.price === "" ? null : Math.round(Number(data.price));
-  const note = data.note ?? null;
+  const hasPrice = "price" in data;
+  const hasNote = "note" in data;
+  const price = hasPrice
+    ? (data.price === null || data.price === "" ? null : Math.round(Number(data.price)))
+    : null;
+  const note = hasNote ? (data.note || null) : null;
   const row = await prisma.customerPrice.upsert({
     where: { contactId_productId: { contactId, productId } },
     create: { contactId, productId, price, note },
-    update: { price, note },
+    update: {
+      ...(hasPrice && { price }),
+      ...(hasNote && { note }),
+    },
     select: { productId: true, price: true, note: true },
   });
   return Response.json(row);
