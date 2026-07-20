@@ -15,7 +15,7 @@ export async function GET(
       costSteps: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       materials: {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        include: { material: { select: { fabricWidth: true } } },
+        include: { material: { select: { fabricWidth: true, unitPrice: true } } },
       },
       inventory: true,
     },
@@ -40,6 +40,9 @@ export async function GET(
     ...productRaw,
     materials: productRaw.materials.map((m) => ({
       ...m,
+      // マスタ連動の行は単価をマスタから解決（商品側のコピーは表示・計算に使わない）
+      unitPrice: m.material?.unitPrice ?? m.unitPrice,
+      isMasterLinked: m.materialId != null && m.material != null,
       fabricWidth: m.material?.fabricWidth ?? null,
       topCategory: getTopName(m.category),
     })),

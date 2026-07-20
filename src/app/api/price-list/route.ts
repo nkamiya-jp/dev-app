@@ -10,7 +10,7 @@ export async function GET() {
     where: { active: true },
     include: {
       costSteps: true,
-      materials: { include: { material: { select: { fabricWidth: true } } } },
+      materials: { include: { material: { select: { fabricWidth: true, unitPrice: true } } } },
     },
     orderBy: [{ sortOrder: "asc" }, { series: "asc" }, { code: "asc" }],
   });
@@ -52,7 +52,8 @@ export async function GET() {
         id: m.id,
         name: m.name,
         category: m.category,
-        unitPrice: m.unitPrice,
+        // マスタ連動の行はマスタ単価を正とする（商品側のコピーは使わない）
+        unitPrice: m.material?.unitPrice ?? m.unitPrice,
         unitType: m.unitType,
         yieldCount: m.yieldCount,
         usedMeters: m.usedMeters,

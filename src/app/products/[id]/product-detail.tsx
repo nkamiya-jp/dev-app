@@ -1504,10 +1504,12 @@ function MaterialRow({
   const [usedMeters, setUsedMeters] = useState(String(material.usedMeters ?? 1));
 
   const usedM = Number(usedMeters) || 0;
+  // マスタ連動の行は単価をマスタ側で管理する（商品側では編集不可）
+  const isMasterLinked = material.materialId != null;
 
   const dirty =
     name !== material.name ||
-    Number(unitPrice) !== material.unitPrice ||
+    (!isMasterLinked && Number(unitPrice) !== material.unitPrice) ||
     Number(usageCount) !== (material.usageCount ?? 1) ||
     (isFabric && (
       Number(yieldCount) !== (material.yieldCount ?? 1) ||
@@ -1518,7 +1520,7 @@ function MaterialRow({
     if (!dirty) return;
     await onUpdate(material.id, {
       name,
-      unitPrice: Number(unitPrice) || 0,
+      ...(!isMasterLinked && { unitPrice: Number(unitPrice) || 0 }),
       usageCount: Number(usageCount) || 1,
       ...(isFabric && {
         yieldCount: Number(yieldCount) || 1,
@@ -1557,13 +1559,23 @@ function MaterialRow({
       </td>
       <td className="px-3 py-1">
         <div className="flex items-center gap-1">
-          <input
-            type="number"
-            value={unitPrice}
-            onChange={(e) => setUnitPrice(e.target.value)}
-            onKeyDown={handleKey}
-            className="w-full px-2 py-1 text-sm border rounded text-right"
-          />
+          {isMasterLinked ? (
+            // マスタ連動の行は資材マスタの単価を表示（編集はマスタ側で行う）
+            <span
+              className="w-full px-2 py-1 text-sm text-right text-gray-700 bg-gray-50 border border-transparent rounded"
+              title="資材マスタで設定された単価です。変更はマスタ側で行ってください"
+            >
+              {material.unitPrice.toLocaleString()}
+            </span>
+          ) : (
+            <input
+              type="number"
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(e.target.value)}
+              onKeyDown={handleKey}
+              className="w-full px-2 py-1 text-sm border rounded text-right"
+            />
+          )}
           <span className="text-[10px] text-gray-400 whitespace-nowrap">
             円{isFabric ? "/m" : ""}
           </span>

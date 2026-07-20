@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     where: { active: true },
     include: {
       costSteps: true,
-      materials: { include: { material: { select: { fabricWidth: true } } } },
+      materials: { include: { material: { select: { fabricWidth: true, unitPrice: true } } } },
     },
   });
 
@@ -76,7 +76,8 @@ export async function POST(request: NextRequest) {
         id: m.id,
         name: m.name,
         category: m.category,
-        unitPrice: m.unitPrice,
+        // マスタ連動の行はマスタ単価を正とする
+        unitPrice: m.material?.unitPrice ?? m.unitPrice,
         unitType: m.unitType,
         yieldCount: m.yieldCount,
         usedMeters: m.usedMeters,
