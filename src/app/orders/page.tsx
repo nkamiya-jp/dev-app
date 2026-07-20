@@ -45,6 +45,11 @@ interface Contact {
   company: string | null;
 }
 
+// 顧客ごとの実効単価（個別価格 → 上代×掛率 → 標準卸）
+type EffPrice = { price: number | null; source: string };
+type EffItem = { productId: string; price: number | null; source: string };
+type EffByContact = Record<string, Record<string, EffPrice>>;
+
 interface Product {
   id: string;
   code: string;
@@ -63,6 +68,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [effByContact, setEffByContact] = useState<EffByContact>({});
 
   const load = useCallback(async () => {
     const [oRes, cRes, pRes] = await Promise.all([
@@ -78,6 +84,37 @@ export default function OrdersPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // 受注に出てくる顧客ごとに、現在の実効単価（個別→自動→標準卸）を取得。
+  // 既存明細の単価と比べて差分があれば「更新」ボタンを出すのに使う。
+  useEffect(() => {
+    const ids = [...new Set(orders.map((o) => o.contactId))];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      ids.map((id) =>
+        fetch(`/api/customer-prices/effective?contactId=${id}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => [id, d] as const)
+          .catch(() => [id, null] as const)
+      )
+    ).then((pairs) => {
+      if (cancelled) return;
+      const m: EffByContact = {};
+      for (const [id, d] of pairs) {
+        if (!d?.items) continue;
+        const pm: Record<string, EffPrice> = {};
+        for (const x of d.items as EffItem[]) {
+          pm[x.productId] = { price: x.price, source: x.source };
+        }
+        m[id] = pm;
+      }
+      setEffByContact(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orders]);
 
   function toggleExpand(id: string) {
     const next = new Set(expanded);
@@ -127,6 +164,33 @@ export default function OrdersPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: itemId, ...patch }),
     });
+    load();
+  }
+
+  // その受注で「現在の顧客価格と違う」明細を返す
+  function priceDiffItems(order: Order) {
+    const pm = effByContact[order.contactId];
+    if (!pm) return [];
+    return order.items.filter((it) => {
+      const e = pm[it.productId];
+      return e?.price != null && e.price !== it.unitPrice;
+    });
+  }
+
+  // 差分のある明細の単価をまとめて現在の顧客価格に更新
+  async function applyAllPrices(order: Order) {
+    const pm = effByContact[order.contactId];
+    const diffs = priceDiffItems(order);
+    if (diffs.length === 0) return;
+    await Promise.all(
+      diffs.map((it) =>
+        fetch("/api/orders/items", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: it.id, unitPrice: pm[it.productId].price }),
+        })
+      )
+    );
     load();
   }
 
@@ -374,6 +438,21 @@ export default function OrdersPage() {
                       ))}
                     </div>
 
+                    {/* 顧客価格との差分があれば一括更新を案内 */}
+                    {priceDiffItems(order).length > 0 && (
+                      <div className="flex items-center justify-between gap-2 flex-wrap bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-2">
+                        <span className="text-xs text-amber-800">
+                          {priceDiffItems(order).length}件の明細が、現在の顧客価格と異なります
+                        </span>
+                        <button
+                          onClick={() => applyAllPrices(order)}
+                          className="text-xs bg-white border border-amber-300 text-amber-800 rounded px-2 py-1 hover:bg-amber-100"
+                        >
+                          全て現在の価格に更新
+                        </button>
+                      </div>
+                    )}
+
                     {/* 明細リスト */}
                     {order.items.length === 0 ? (
                       <p className="text-sm text-gray-400 text-center py-4">
@@ -398,6 +477,7 @@ export default function OrdersPage() {
                               <OrderItemRow
                                 key={it.id}
                                 item={it}
+                                eff={effByContact[order.contactId]?.[it.productId]}
                                 onUpdate={(patch) => updateItem(it.id, patch)}
                                 onRemove={() => removeItem(it.id)}
                               />
@@ -490,10 +570,12 @@ export default function OrdersPage() {
 // ─── 明細行（数量・単価をインライン編集） ───
 function OrderItemRow({
   item,
+  eff,
   onUpdate,
   onRemove,
 }: {
   item: OrderItem;
+  eff?: EffPrice;
   onUpdate: (patch: { quantity?: number; unitPrice?: number | null }) => void;
   onRemove: () => void;
 }) {
@@ -505,6 +587,8 @@ function OrderItemRow({
 
   const remain = item.quantity - item.shippedQty;
   const subtotal = (item.unitPrice || 0) * item.quantity;
+  // 現在の実効単価と保存済み単価が食い違っていれば更新ボタンを出す
+  const priceDiff = eff?.price != null && eff.price !== item.unitPrice;
 
   function commitQty() {
     const n = Number(qty);
@@ -551,6 +635,17 @@ function OrderItemRow({
           />
           <span className="text-xs text-gray-400">円</span>
         </span>
+        {priceDiff && (
+          <div className="mt-0.5">
+            <button
+              onClick={() => onUpdate({ unitPrice: eff!.price })}
+              className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 hover:bg-amber-100 whitespace-nowrap"
+              title={`現在の${PRICE_SOURCE_LABEL[eff!.source] ?? eff!.source}に更新`}
+            >
+              {eff!.price!.toLocaleString()}円に更新
+            </button>
+          </div>
+        )}
       </td>
       <td className="px-3 py-2 text-right font-medium">{subtotal.toLocaleString()}円</td>
       <td className="px-3 py-2 text-right">
