@@ -40,6 +40,9 @@ export async function POST(request: NextRequest) {
         fabricWidth: r.fabricWidth !== undefined && r.fabricWidth !== "" && r.fabricWidth != null
           ? Math.round(Number(r.fabricWidth))
           : null,
+        fabricLength: r.fabricLength !== undefined && r.fabricLength !== "" && r.fabricLength != null
+          ? Number(r.fabricLength)
+          : null,
       };
       const code = r.code ? String(r.code).trim() : null;
 

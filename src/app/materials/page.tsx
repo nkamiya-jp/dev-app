@@ -36,6 +36,7 @@ interface Material {
   unitPrice: number;
   unitType: string;
   fabricWidth: number | null;
+  fabricLength: number | null;
   active: boolean;
   note: string | null;
   _count: { productMaterials: number };
@@ -268,6 +269,7 @@ export default function MaterialsPage() {
               { key: "unitPrice", label: "単価", example: "1500" },
               { key: "unitType", label: "単位", example: "m" },
               { key: "fabricWidth", label: "生地巾", example: "72" },
+              { key: "fabricLength", label: "尺", example: "30" },
             ]}
           />
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -428,9 +430,12 @@ function MaterialForm({
     material?.unitType || activeCats.find((c) => c.name === (material?.category || activeCats[0]?.name))?.unitType || "piece"
   );
   const [fabricWidth, setFabricWidth] = useState(material?.fabricWidth?.toString() || "");
+  const [fabricLength, setFabricLength] = useState(material?.fabricLength?.toString() || "");
   const [active, setActive] = useState(material?.active ?? true);
   const [note, setNote] = useState(material?.note || "");
-  const isFabric = category === "生地" || category === "fabric";
+  // 生地費カテゴリ（生地費 / 表地 / 裏地 / 芯材）は生地扱い＝巾・尺を設定できる
+  const FABRIC_CATS = new Set(["生地費", "生地", "fabric", "表地", "裏地", "芯材"]);
+  const isFabric = FABRIC_CATS.has(category);
 
   function handleCategoryChange(newCat: string) {
     setCategory(newCat);
@@ -452,6 +457,7 @@ function MaterialForm({
           unitPrice: unitPrice ? Number(unitPrice) : 0,
           unitType,
           fabricWidth: isFabric && fabricWidth ? Number(fabricWidth) : null,
+          fabricLength: isFabric && fabricLength ? Number(fabricLength) : null,
           active,
           note: note || null,
         });
@@ -495,16 +501,28 @@ function MaterialForm({
         </div>
       </div>
       {isFabric && (
-        <div>
-          <label className="text-xs text-gray-500">生地巾（cm）</label>
-          <Input
-            type="number"
-            value={fabricWidth}
-            onChange={(e) => setFabricWidth(e.target.value)}
-            placeholder="例: 72"
-          />
-          <p className="text-xs text-gray-400 mt-1">
-            ※ 商品の裁断寸法と組み合わせて、取れ数を自動計算します
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-gray-500">生地巾（cm）</label>
+            <Input
+              type="number"
+              value={fabricWidth}
+              onChange={(e) => setFabricWidth(e.target.value)}
+              placeholder="例: 72"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">尺（1反の長さ）</label>
+            <Input
+              type="number"
+              step="0.1"
+              value={fabricLength}
+              onChange={(e) => setFabricLength(e.target.value)}
+              placeholder="例: 30"
+            />
+          </div>
+          <p className="col-span-2 text-xs text-gray-400">
+            ※ 生地自体の仕様サイズ。巾×尺で1反の大きさを記録します
           </p>
         </div>
       )}
