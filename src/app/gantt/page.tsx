@@ -3,19 +3,17 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getStageLabel, getStageColor } from "@/lib/stages";
-import { getTaskStatusColor, getTaskStatusLabel } from "@/lib/task-status";
+import { getDevelopmentStatusLabel, getDevelopmentStatusColor } from "@/lib/development-status";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 
-interface Deal {
+interface Project {
   id: string;
   title: string;
-  stage: string;
-  amount: number | null;
-  expectedCloseDate: string | null;
+  status: string;
+  startDate: string | null;
+  releasedDate: string | null;
   createdAt: string;
-  contact: { id: string; name: string; company: string | null };
 }
 
 interface Task {
@@ -26,8 +24,7 @@ interface Task {
   priority: string;
   dueDate: string | null;
   createdAt: string;
-  dealId: string | null;
-  forStage: string | null;
+  developmentId: string | null;
 }
 
 interface Member {
@@ -39,19 +36,19 @@ interface Member {
 type ViewScale = "week" | "month";
 
 export default function GanttPage() {
-  const [deals, setDeals] = useState<Deal[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [scale, setScale] = useState<ViewScale>("week");
 
   const loadData = useCallback(async () => {
-    const [dealsRes, tasksRes, membersRes] = await Promise.all([
-      fetch("/api/deals"),
+    const [projRes, tasksRes, membersRes] = await Promise.all([
+      fetch("/api/developments"),
       fetch("/api/tasks"),
       fetch("/api/members"),
     ]);
-    setDeals(await dealsRes.json());
+    setProjects(await projRes.json());
     setTasks(await tasksRes.json());
     setMembers(await membersRes.json());
   }, []);
@@ -60,17 +57,17 @@ export default function GanttPage() {
     loadData();
   }, [loadData]);
 
-  function toggleExpand(dealId: string) {
+  function toggleExpand(projectId: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(dealId)) next.delete(dealId);
-      else next.add(dealId);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
       return next;
     });
   }
 
   function expandAll() {
-    setExpanded(new Set(deals.map((d) => d.id)));
+    setExpanded(new Set(projects.map((p) => p.id)));
   }
 
   // Calculate date range
@@ -79,14 +76,20 @@ export default function GanttPage() {
     const now = new Date();
     allDates.push(now);
 
-    deals.forEach((d) => {
-      allDates.push(new Date(d.createdAt));
-      if (d.expectedCloseDate) allDates.push(new Date(d.expectedCloseDate));
+    // 表示対象（中止以外のプロジェクトと、それに紐づくタスク）だけで期間を決める。
+    // 他所のタスクまで含めると、誰も見ない過去まで一気に伸びてしまう。
+    const shown = projects.filter((p) => p.status !== "abandoned");
+    const shownIds = new Set(shown.map((p) => p.id));
+    shown.forEach((p) => {
+      allDates.push(new Date(p.startDate ?? p.createdAt));
+      if (p.releasedDate) allDates.push(new Date(p.releasedDate));
     });
-    tasks.forEach((t) => {
-      allDates.push(new Date(t.createdAt));
-      if (t.dueDate) allDates.push(new Date(t.dueDate));
-    });
+    tasks
+      .filter((t) => t.developmentId && shownIds.has(t.developmentId))
+      .forEach((t) => {
+        allDates.push(new Date(t.createdAt));
+        if (t.dueDate) allDates.push(new Date(t.dueDate));
+      });
 
     let minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
     let maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
@@ -121,7 +124,7 @@ export default function GanttPage() {
     }
 
     return { startDate: minDate, endDate: maxDate, totalDays, columns: cols };
-  }, [deals, tasks]);
+  }, [projects, tasks]);
 
   function dayOffset(dateStr: string): number {
     const d = new Date(dateStr);
@@ -151,13 +154,17 @@ export default function GanttPage() {
     return headers;
   }, [columns]);
 
-  const activeDeals = deals.filter((d) => d.stage !== "lost");
+  // 中止したプロジェクトは表示しない
+  const activeProjects = projects.filter((p) => p.status !== "abandoned");
 
-  if (deals.length === 0) {
+  if (projects.length === 0) {
     return (
       <div className="space-y-4">
         <h2 className="text-2xl font-bold">ガントチャート</h2>
-        <p className="text-gray-500">案件がありません</p>
+        <p className="text-gray-500">
+          プロジェクトがありません。
+          <Link href="/development" className="text-blue-600 hover:underline ml-1">プロジェクトを作成 →</Link>
+        </p>
       </div>
     );
   }
@@ -189,36 +196,33 @@ export default function GanttPage() {
             <div className="h-8 border-b bg-gray-50" />
             {/* Day header placeholder */}
             <div className="h-8 border-b bg-gray-50 flex items-center px-3">
-              <span className="text-xs font-medium text-gray-500">案件 / タスク</span>
+              <span className="text-xs font-medium text-gray-500">プロジェクト / タスク</span>
             </div>
 
-            {activeDeals.map((deal) => {
-              const dealTasks = tasks.filter((t) => t.dealId === deal.id);
-              const isExpanded = expanded.has(deal.id);
+            {activeProjects.map((project) => {
+              const projectTasks = tasks.filter((t) => t.developmentId === project.id);
+              const isExpanded = expanded.has(project.id);
               return (
-                <div key={deal.id}>
-                  {/* Deal row */}
+                <div key={project.id}>
+                  {/* Project row */}
                   <div
                     className="h-10 border-b flex items-center px-2 gap-1 cursor-pointer hover:bg-gray-50 font-medium text-sm"
-                    onClick={() => toggleExpand(deal.id)}
+                    onClick={() => toggleExpand(project.id)}
                   >
-                    {dealTasks.length > 0 ? (
+                    {projectTasks.length > 0 ? (
                       isExpanded ? <ChevronDown className="size-4 text-gray-400 shrink-0" /> : <ChevronRight className="size-4 text-gray-400 shrink-0" />
                     ) : (
                       <span className="w-4 shrink-0" />
                     )}
-                    <Link href={`/deals/${deal.id}`} className="text-blue-700 hover:underline truncate" onClick={(e) => e.stopPropagation()}>
-                      {deal.title}
+                    <Link href={`/development/${project.id}`} className="text-blue-700 hover:underline truncate" onClick={(e) => e.stopPropagation()}>
+                      {project.title}
                     </Link>
-                    {deal.contact.company && (
-                      <span className="text-xs text-gray-400 shrink-0 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50">{deal.contact.company}</span>
-                    )}
-                    <Badge className={`ml-auto text-xs shrink-0 ${getStageColor(deal.stage)}`}>
-                      {getStageLabel(deal.stage)}
+                    <Badge className={`ml-auto text-xs shrink-0 ${getDevelopmentStatusColor(project.status)}`}>
+                      {getDevelopmentStatusLabel(project.status)}
                     </Badge>
                   </div>
                   {/* Task rows */}
-                  {isExpanded && dealTasks.map((task) => (
+                  {isExpanded && projectTasks.map((task) => (
                     <div key={task.id} className="h-8 border-b flex items-center pl-8 pr-2 gap-2 text-xs text-gray-600">
                       <span className="truncate flex-1">{task.title}</span>
                       {task.assignee && (
@@ -265,23 +269,23 @@ export default function GanttPage() {
             </div>
 
             {/* Rows */}
-            {activeDeals.map((deal) => {
-              const dealTasks = tasks.filter((t) => t.dealId === deal.id);
-              const isExpanded = expanded.has(deal.id);
+            {activeProjects.map((project) => {
+              const projectTasks = tasks.filter((t) => t.developmentId === project.id);
+              const isExpanded = expanded.has(project.id);
 
-              // Deal bar: createdAt → expectedCloseDate (or latest task dueDate)
-              const dealStart = dayOffset(deal.createdAt);
-              let dealEndDate = deal.expectedCloseDate;
-              if (!dealEndDate) {
-                const taskDueDates = dealTasks.filter((t) => t.dueDate).map((t) => new Date(t.dueDate!).getTime());
-                if (taskDueDates.length > 0) dealEndDate = new Date(Math.max(...taskDueDates)).toISOString();
+              // プロジェクトのバー: 開始日 → 完了日（未設定ならタスクの最終期限）
+              const projectStart = dayOffset(project.startDate ?? project.createdAt);
+              let projectEndDate = project.releasedDate;
+              if (!projectEndDate) {
+                const taskDueDates = projectTasks.filter((t) => t.dueDate).map((t) => new Date(t.dueDate!).getTime());
+                if (taskDueDates.length > 0) projectEndDate = new Date(Math.max(...taskDueDates)).toISOString();
               }
-              const dealEnd = dealEndDate ? dayOffset(dealEndDate) : dealStart + 7;
-              const dealWidth = Math.max(dealEnd - dealStart, 1);
+              const projectEnd = projectEndDate ? dayOffset(projectEndDate) : projectStart + 7;
+              const projectWidth = Math.max(projectEnd - projectStart, 1);
 
               return (
-                <div key={deal.id}>
-                  {/* Deal bar */}
+                <div key={project.id}>
+                  {/* Project bar */}
                   <div className="h-10 border-b relative flex items-center" style={{ width: totalDays * cellWidth }}>
                     {/* Background grid */}
                     {columns.map((col, i) => (
@@ -295,15 +299,15 @@ export default function GanttPage() {
                     <div
                       className="absolute h-5 rounded-sm opacity-80"
                       style={{
-                        left: dealStart * cellWidth,
-                        width: dealWidth * cellWidth,
+                        left: projectStart * cellWidth,
+                        width: projectWidth * cellWidth,
                         backgroundColor: "#3b82f6",
                       }}
                     />
                   </div>
 
                   {/* Task bars */}
-                  {isExpanded && dealTasks.map((task) => {
+                  {isExpanded && projectTasks.map((task) => {
                     const taskStart = dayOffset(task.createdAt);
                     const taskEnd = task.dueDate ? dayOffset(task.dueDate) : taskStart + 3;
                     const taskWidth = Math.max(taskEnd - taskStart, 1);
