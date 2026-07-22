@@ -50,7 +50,13 @@ const navSections = [
     items: [
       { href: "/prospects", label: "開拓", icon: Target },
       { href: "/deals", label: "案件", icon: KanbanSquare },
-      { href: "/development", label: "商品開発", icon: Lightbulb },
+    ],
+  },
+  {
+    // 展示会・新商品・改善活動など、営業に限らない全社横断の業務管理
+    label: "プロジェクト",
+    items: [
+      { href: "/development", label: "プロジェクト", icon: Lightbulb },
       { href: "/tasks", label: "タスク", icon: CheckSquare },
       { href: "/gantt", label: "ガントチャート", icon: GanttChart },
       { href: "/notes", label: "メモ", icon: FileText },

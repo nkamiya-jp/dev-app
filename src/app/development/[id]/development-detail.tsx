@@ -193,7 +193,7 @@ export function DevelopmentDetail({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Link href="/development" className="text-gray-500 hover:text-gray-700">← 開発一覧</Link>
+        <Link href="/development" className="text-gray-500 hover:text-gray-700">← プロジェクト一覧</Link>
         <div className="flex items-center gap-2">
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogTrigger className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent">
@@ -201,11 +201,11 @@ export function DevelopmentDetail({ id }: { id: string }) {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>開発を編集</DialogTitle>
+                <DialogTitle>プロジェクトを編集</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleEdit} className="space-y-3 max-h-[70vh] overflow-y-auto">
                 <div>
-                  <label className="text-xs text-gray-500">開発名 *</label>
+                  <label className="text-xs text-gray-500">プロジェクト名 *</label>
                   <Input name="title" required defaultValue={dev.title} />
                 </div>
                 <div>
@@ -231,11 +231,11 @@ export function DevelopmentDetail({ id }: { id: string }) {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">リリース日</label>
+                  <label className="text-xs text-gray-500">完了日</label>
                   <Input name="releasedDate" type="date" defaultValue={dev.releasedDate?.split("T")[0] || ""} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">商品マスタ紐付け（リリース後）</label>
+                  <label className="text-xs text-gray-500">関連商品（任意）</label>
                   <select name="productId" defaultValue={dev.productId || ""} className="w-full border rounded-md px-3 py-2 text-sm">
                     <option value="">未紐付け</option>
                     {products.map((p) => (
@@ -284,7 +284,7 @@ export function DevelopmentDetail({ id }: { id: string }) {
               )}
               {dev.releasedDate && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">リリース日</span>
+                  <span className="text-gray-500">完了日</span>
                   <span>{new Date(dev.releasedDate).toLocaleDateString("ja-JP")}</span>
                 </div>
               )}
@@ -305,7 +305,7 @@ export function DevelopmentDetail({ id }: { id: string }) {
             )}
             {dev.product && (
               <div className="pt-3 border-t">
-                <p className="text-xs text-gray-500 mb-1">リリース済み商品</p>
+                <p className="text-xs text-gray-500 mb-1">関連商品</p>
                 <Link
                   href={`/products`}
                   className="flex items-center gap-2 p-2 border rounded hover:bg-gray-50"

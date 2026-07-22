@@ -83,12 +83,12 @@ export default function DevelopmentPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h2 className="text-2xl font-bold">商品開発</h2>
+        <h2 className="text-2xl font-bold">プロジェクト</h2>
         <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
           <div className="relative flex-1 sm:flex-initial">
             <Search className="absolute left-2.5 top-2.5 size-4 text-gray-400" />
             <Input
-              placeholder="開発名で検索..."
+              placeholder="プロジェクト名で検索..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 w-full sm:w-56"
@@ -106,15 +106,15 @@ export default function DevelopmentPage() {
           </select>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-              <Plus className="size-4 mr-1" /> 開発を始める
+              <Plus className="size-4 mr-1" /> プロジェクトを追加
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>新しい開発プロジェクト</DialogTitle>
+                <DialogTitle>新しいプロジェクト</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleCreate} className="space-y-3">
                 <div>
-                  <label className="text-xs text-gray-500">開発名 *</label>
+                  <label className="text-xs text-gray-500">プロジェクト名 *</label>
                   <Input name="title" required placeholder="例: 新シリーズ春コレクション" />
                 </div>
                 <div>
@@ -146,8 +146,8 @@ export default function DevelopmentPage() {
         <Card className="bg-white shadow-sm">
           <CardContent className="py-12 text-center text-gray-400">
             <Lightbulb className="size-12 mx-auto mb-3 text-gray-300" />
-            <p>開発プロジェクトがありません</p>
-            <p className="text-xs mt-1">右上の「開発を始める」から登録してください</p>
+            <p>プロジェクトがありません</p>
+            <p className="text-xs mt-1">右上の「プロジェクトを追加」から登録してください</p>
           </CardContent>
         </Card>
       ) : (
@@ -188,7 +188,7 @@ export default function DevelopmentPage() {
                     )}
                     {d.product && (
                       <div className="mt-3 pt-3 border-t">
-                        <p className="text-xs text-gray-500">リリース済み商品</p>
+                        <p className="text-xs text-gray-500">関連商品</p>
                         <p className="text-xs font-mono">{d.product.code}</p>
                         <p className="text-xs">{d.product.name}</p>
                       </div>
