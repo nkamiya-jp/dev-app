@@ -117,7 +117,7 @@ export function DevelopmentDetail({ id }: { id: string }) {
   async function handleAddTask(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await fetch("/api/tasks", {
+    const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -130,6 +130,10 @@ export function DevelopmentDetail({ id }: { id: string }) {
         status: "todo",
       }),
     });
+    if (!res.ok) {
+      alert("タスクの追加に失敗しました。時間をおいて再度お試しください。");
+      return;
+    }
     setTaskOpen(false);
     load();
   }
