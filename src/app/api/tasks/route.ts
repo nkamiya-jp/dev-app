@@ -20,11 +20,18 @@ export async function GET(request: NextRequest) {
   return Response.json(tasks);
 }
 
+// "2026-07-24" のような日付文字列を ISO DateTime に揃える
+function normalizeDate(v: unknown): unknown {
+  if (typeof v === "string" && v && !v.includes("T")) {
+    return new Date(v + "T00:00:00.000Z").toISOString();
+  }
+  return v;
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  if (body.dueDate && !body.dueDate.includes("T")) {
-    body.dueDate = new Date(body.dueDate + "T00:00:00.000Z").toISOString();
-  }
+  body.dueDate = normalizeDate(body.dueDate);
+  body.startDate = normalizeDate(body.startDate);
   const task = await prisma.task.create({ data: body });
   return Response.json(task, { status: 201 });
 }
@@ -34,9 +41,8 @@ export async function PUT(request: NextRequest) {
   const { id, ...data } = body;
 
   // Convert date string to ISO DateTime if needed
-  if (data.dueDate && !data.dueDate.includes("T")) {
-    data.dueDate = new Date(data.dueDate + "T00:00:00.000Z").toISOString();
-  }
+  if (data.dueDate !== undefined) data.dueDate = normalizeDate(data.dueDate);
+  if (data.startDate !== undefined) data.startDate = normalizeDate(data.startDate);
 
   // If status is being set to "done", also set completed = true
   if (data.status === "done") {

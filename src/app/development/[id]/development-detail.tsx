@@ -19,7 +19,7 @@ import {
 } from "@/lib/development-status";
 import { TASK_STATUSES, getTaskStatusLabel, getTaskStatusColor } from "@/lib/task-status";
 import Link from "next/link";
-import { Pencil, Plus, Trash2, Package, CheckSquare } from "lucide-react";
+import { Pencil, Plus, Trash2, Package, CheckSquare, Flag } from "lucide-react";
 
 interface Task {
   id: string;
@@ -27,9 +27,18 @@ interface Task {
   description: string | null;
   status: string;
   priority: string;
+  startDate: string | null;
   dueDate: string | null;
   assignee: string | null;
   completed: boolean;
+}
+
+interface Milestone {
+  id: string;
+  title: string;
+  date: string;
+  note: string | null;
+  done: boolean;
 }
 
 interface Development {
@@ -44,6 +53,7 @@ interface Development {
   product: { id: string; code: string; name: string } | null;
   notes: string | null;
   tasks: Task[];
+  milestones: Milestone[];
 }
 
 interface Product {
@@ -65,6 +75,7 @@ export function DevelopmentDetail({ id }: { id: string }) {
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
+  const [msOpen, setMsOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [dRes, pRes, mRes] = await Promise.all([
@@ -126,6 +137,7 @@ export function DevelopmentDetail({ id }: { id: string }) {
         priority: form.get("priority") || "medium",
         dueDate: form.get("dueDate") || null,
         assignee: form.get("assignee") || null,
+        startDate: form.get("startDate") || null,
         developmentId: id,
         status: "todo",
       }),
@@ -152,6 +164,7 @@ export function DevelopmentDetail({ id }: { id: string }) {
         priority: form.get("priority"),
         dueDate: form.get("dueDate") || null,
         assignee: form.get("assignee") || null,
+        startDate: form.get("startDate") || null,
         status: form.get("status"),
       }),
     });
@@ -170,6 +183,41 @@ export function DevelopmentDetail({ id }: { id: string }) {
 
   async function deleteTask(taskId: string) {
     await fetch(`/api/tasks?id=${taskId}`, { method: "DELETE" });
+    load();
+  }
+
+  async function handleAddMilestone(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const res = await fetch("/api/milestones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        developmentId: id,
+        title: form.get("title"),
+        date: form.get("date"),
+        note: form.get("note") || null,
+      }),
+    });
+    if (!res.ok) {
+      alert("マイルストーンの追加に失敗しました。");
+      return;
+    }
+    setMsOpen(false);
+    load();
+  }
+
+  async function toggleMilestone(ms: Milestone) {
+    await fetch("/api/milestones", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: ms.id, done: !ms.done }),
+    });
+    load();
+  }
+
+  async function deleteMilestone(msId: string) {
+    await fetch(`/api/milestones?id=${msId}`, { method: "DELETE" });
     load();
   }
 
@@ -341,8 +389,83 @@ export function DevelopmentDetail({ id }: { id: string }) {
           </CardContent>
         </Card>
 
-        {/* Right: Tasks */}
+        {/* Right: Milestones + Tasks */}
         <div className="md:col-span-2 space-y-4">
+          {/* マイルストーン（タスクではなく、期日そのものが意味を持つ節目） */}
+          <Card className="bg-white shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Flag className="size-5" />
+                マイルストーン（{dev.milestones?.length ?? 0}件）
+              </CardTitle>
+              <Dialog open={msOpen} onOpenChange={setMsOpen}>
+                <DialogTrigger className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent">
+                  <Plus className="size-4 mr-1" /> 追加
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>マイルストーンを追加</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleAddMilestone} className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-500">名称 *</label>
+                      <Input name="title" required placeholder="例: 展示会初日 / サンプル提出" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">日付 *</label>
+                      <Input name="date" type="date" required />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">メモ</label>
+                      <Input name="note" placeholder="（任意）" />
+                    </div>
+                    <Button type="submit" className="w-full">追加</Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </CardHeader>
+            <CardContent>
+              {!dev.milestones || dev.milestones.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">
+                  マイルストーンがありません（展示会初日・締切など、節目の日を登録できます）
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {dev.milestones.map((ms) => {
+                    const d = new Date(ms.date);
+                    const isPast = d < today && !ms.done;
+                    return (
+                      <div key={ms.id} className="flex items-center gap-2 border rounded-md px-3 py-2">
+                        <button
+                          onClick={() => toggleMilestone(ms)}
+                          className={`w-4 h-4 rounded-sm rotate-45 shrink-0 border-2 ${ms.done ? "bg-green-500 border-green-500" : isPast ? "border-red-400" : "border-amber-400"}`}
+                          title={ms.done ? "達成済み" : "未達成"}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm font-medium ${ms.done ? "line-through text-gray-400" : ""}`}>
+                            {ms.title}
+                          </p>
+                          {ms.note && <p className="text-xs text-gray-500">{ms.note}</p>}
+                        </div>
+                        <span className={`text-sm shrink-0 ${ms.done ? "text-gray-400" : isPast ? "text-red-600 font-medium" : "text-gray-700"}`}>
+                          {isPast && "! "}
+                          {d.toLocaleDateString("ja-JP")}
+                        </span>
+                        <button
+                          onClick={() => deleteMilestone(ms.id)}
+                          className="text-gray-300 hover:text-red-500 shrink-0"
+                          title="削除"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg">タスク（{totalTasks}件）</CardTitle>
@@ -371,6 +494,10 @@ export function DevelopmentDetail({ id }: { id: string }) {
                           <option value="medium">中</option>
                           <option value="low">低</option>
                         </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">開始日</label>
+                        <Input name="startDate" type="date" />
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">期限</label>
@@ -501,6 +628,10 @@ export function DevelopmentDetail({ id }: { id: string }) {
                     <option value="medium">中</option>
                     <option value="low">低</option>
                   </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">開始日</label>
+                  <Input name="startDate" type="date" defaultValue={editTask.startDate?.split("T")[0] || ""} />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500">期限</label>

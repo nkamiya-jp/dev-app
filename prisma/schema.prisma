@@ -295,8 +295,24 @@ model Development {
   product      Product? @relation(fields: [productId], references: [id])
   notes        String?
   tasks        Task[]
+  milestones   Milestone[]
   createdAt    DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// プロジェクトの節目（タスクではなく、期日そのものが意味を持つ点）
+// 例: 展示会初日、サンプル提出締切、量産開始
+model Milestone {
+  id            String      @id @default(cuid())
+  developmentId String
+  development   Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  title         String
+  date          DateTime
+  note          String?
+  done          Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  @@index([developmentId])
 }
 
 model Shipment {
@@ -383,6 +399,7 @@ model Task {
   deal          Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
   developmentId String?
   development   Development? @relation(fields: [developmentId], references: [id], onDelete: SetNull)
+  startDate     DateTime?   // 着手予定日（未設定ならガントは期限から逆算）
   dueDate       DateTime?
   priority      String   @default("medium")
   status        String   @default("todo")

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     include: {
       product: { select: { id: true, code: true, name: true } },
       tasks: { select: { id: true, status: true } },
+      milestones: { orderBy: { date: "asc" } },
     },
     orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
   });

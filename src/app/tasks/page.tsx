@@ -20,6 +20,7 @@ interface Task {
   id: string;
   title: string;
   description: string | null;
+  startDate: string | null;
   contactId: string | null;
   contact: { id: string; name: string; company: string | null } | null;
   dealId: string | null;
@@ -102,6 +103,7 @@ export default function TasksPage() {
         developmentId: (form.get("developmentId") as string) || null,
         priority: form.get("priority") || "medium",
         assignee: (form.get("assignee") as string) || null,
+        startDate: form.get("startDate") || null,
         dueDate: form.get("dueDate") || null,
         status: "todo",
       }),
@@ -223,7 +225,16 @@ export default function TasksPage() {
                 <option value="medium">中</option>
                 <option value="high">高</option>
               </select>
-              <Input name="dueDate" type="date" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500">開始日</label>
+                  <Input name="startDate" type="date" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">期限</label>
+                  <Input name="dueDate" type="date" />
+                </div>
+              </div>
               <Button type="submit" className="w-full">作成</Button>
             </form>
           </DialogContent>
@@ -365,10 +376,12 @@ export default function TasksPage() {
                             {task.priority === "high" ? "高" : "低"}
                           </Badge>
                         )}
-                        {task.dueDate && (
+                        {(task.startDate || task.dueDate) && (
                           <span className={`text-[10px] ${isOverdue(task) ? "text-red-600 font-medium" : "text-gray-500"}`}>
                             {isOverdue(task) && "! "}
-                            {new Date(task.dueDate).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
+                            {task.startDate && new Date(task.startDate).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
+                            {task.startDate && task.dueDate && " → "}
+                            {task.dueDate && new Date(task.dueDate).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}
                           </span>
                         )}
                       </div>

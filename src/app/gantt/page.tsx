@@ -7,6 +7,13 @@ import { getDevelopmentStatusLabel, getDevelopmentStatusColor } from "@/lib/deve
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 
+interface Milestone {
+  id: string;
+  title: string;
+  date: string;
+  done: boolean;
+}
+
 interface Project {
   id: string;
   title: string;
@@ -14,6 +21,7 @@ interface Project {
   startDate: string | null;
   releasedDate: string | null;
   createdAt: string;
+  milestones: Milestone[];
 }
 
 interface Task {
@@ -22,6 +30,7 @@ interface Task {
   status: string;
   assignee: string | null;
   priority: string;
+  startDate: string | null;
   dueDate: string | null;
   createdAt: string;
   developmentId: string | null;
@@ -83,11 +92,12 @@ export default function GanttPage() {
     shown.forEach((p) => {
       allDates.push(new Date(p.startDate ?? p.createdAt));
       if (p.releasedDate) allDates.push(new Date(p.releasedDate));
+      (p.milestones ?? []).forEach((m) => allDates.push(new Date(m.date)));
     });
     tasks
       .filter((t) => t.developmentId && shownIds.has(t.developmentId))
       .forEach((t) => {
-        allDates.push(new Date(t.createdAt));
+        allDates.push(new Date(t.startDate ?? t.createdAt));
         if (t.dueDate) allDates.push(new Date(t.dueDate));
       });
 
@@ -239,8 +249,9 @@ export default function GanttPage() {
             })}
           </div>
 
-          {/* Right panel - chart */}
-          <div className="flex-1">
+          {/* Right panel - chart
+              幅を実寸で持たせないと、期間が長いとき横スクロールできず見切れる */}
+          <div className="shrink-0" style={{ width: totalDays * cellWidth }}>
             {/* Month header */}
             <div className="h-8 border-b bg-gray-50 flex">
               {monthHeaders.map((mh, i) => (
@@ -304,11 +315,25 @@ export default function GanttPage() {
                         backgroundColor: "#3b82f6",
                       }}
                     />
+                    {/* マイルストーン（◆） */}
+                    {(project.milestones ?? []).map((ms) => (
+                      <div
+                        key={ms.id}
+                        className="absolute z-10"
+                        style={{ left: dayOffset(ms.date) * cellWidth + cellWidth / 2 - 5 }}
+                        title={`${ms.title}（${new Date(ms.date).toLocaleDateString("ja-JP")}）`}
+                      >
+                        <div
+                          className={`w-2.5 h-2.5 rotate-45 border-2 ${ms.done ? "bg-green-500 border-green-600" : "bg-amber-400 border-amber-600"}`}
+                        />
+                      </div>
+                    ))}
                   </div>
 
                   {/* Task bars */}
                   {isExpanded && projectTasks.map((task) => {
-                    const taskStart = dayOffset(task.createdAt);
+                    // 開始日があればそれを使う。無ければ従来どおり作成日から。
+                    const taskStart = dayOffset(task.startDate ?? task.createdAt);
                     const taskEnd = task.dueDate ? dayOffset(task.dueDate) : taskStart + 3;
                     const taskWidth = Math.max(taskEnd - taskStart, 1);
                     const isDone = task.status === "done";

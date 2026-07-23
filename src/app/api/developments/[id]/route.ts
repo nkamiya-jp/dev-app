@@ -13,6 +13,7 @@ export async function GET(
     include: {
       product: true,
       tasks: { orderBy: [{ status: "asc" }, { dueDate: "asc" }] },
+      milestones: { orderBy: { date: "asc" } },
     },
   });
   if (!dev) return Response.json({ error: "Not found" }, { status: 404 });
