@@ -90,6 +90,19 @@ export async function GET() {
       size: p.size,
       sortOrder: p.sortOrder,
       cost,
+      // 原価の内訳（原価比較ページで商品を横並びにするのに使う）
+      breakdown: {
+        productionCost: Math.round(breakdown.productionCost),
+        cuttingCost: Math.round(breakdown.cuttingCost),
+        fabricCost: Math.round(breakdown.fabricCost),
+        materialCost: Math.round(breakdown.materialCost),
+        packagingMaterialCost: Math.round(breakdown.packagingMaterialCost),
+        laborCost: Math.round(breakdown.laborCost),
+      },
+      // 制作費の工程内訳（どの工程が高いかを掘るため）
+      steps: breakdown.stepBreakdown
+        .filter((s) => s.category === "制作費")
+        .map((s) => ({ step: s.step, cost: Math.round(s.cost) })),
       retailPrice: retail,
       wholesalePrice: p.wholesalePrice,
       costRatioVsRetail,   // 上代ベース原価率

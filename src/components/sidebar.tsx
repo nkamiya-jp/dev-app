@@ -24,6 +24,7 @@ import {
   CalendarDays,
   Layers,
   ListChecks,
+  Scale,
   ChevronDown,
   Coins,
   ClipboardList,
@@ -86,6 +87,7 @@ const navSections = [
     items: [
       { href: "/products", label: "商品", icon: Package },
       { href: "/price-list", label: "価格表", icon: ListChecks },
+      { href: "/cost-list", label: "原価比較", icon: Scale },
       { href: "/materials", label: "資材", icon: Layers },
       { href: "/contacts", label: "顧客", icon: Users },
       { href: "/members", label: "スタッフ", icon: UserCircle },
