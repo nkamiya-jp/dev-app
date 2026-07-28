@@ -61,6 +61,8 @@ export async function POST(request: NextRequest) {
       shippingCost: p.shippingCost,
       outboundCost: p.outboundCost,
       mgmtCost: p.mgmtCost,
+      purchaseCost: p.purchaseCost,
+      isPurchase: p.series === "purchase",
       cutHeight: p.cutHeight,
       cutWidth: p.cutWidth,
       usedMeters: p.usedMeters,

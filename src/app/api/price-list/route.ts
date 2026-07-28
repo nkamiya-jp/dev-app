@@ -37,6 +37,8 @@ export async function GET() {
       shippingCost: p.shippingCost,
       outboundCost: p.outboundCost,
       mgmtCost: p.mgmtCost,
+      purchaseCost: p.purchaseCost,
+      isPurchase: p.series === "purchase",
       cutHeight: p.cutHeight,
       cutWidth: p.cutWidth,
       usedMeters: p.usedMeters,
@@ -97,6 +99,7 @@ export async function GET() {
         fabricCost: Math.round(breakdown.fabricCost),
         materialCost: Math.round(breakdown.materialCost),
         packagingMaterialCost: Math.round(breakdown.packagingMaterialCost),
+        purchaseCost: Math.round(breakdown.purchaseCost),
         laborCost: Math.round(breakdown.laborCost),
       },
       // 制作費の工程内訳（どの工程が高いかを掘るため）

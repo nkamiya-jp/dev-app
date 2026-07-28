@@ -73,6 +73,7 @@ export async function PUT(
       ...(data.shippingCost !== undefined && { shippingCost: data.shippingCost }),
       ...(data.outboundCost !== undefined && { outboundCost: data.outboundCost }),
       ...(data.mgmtCost !== undefined && { mgmtCost: data.mgmtCost }),
+      ...(data.purchaseCost !== undefined && { purchaseCost: data.purchaseCost }),
       ...(data.cutHeight !== undefined && { cutHeight: data.cutHeight }),
       ...(data.cutWidth !== undefined && { cutWidth: data.cutWidth }),
       ...(data.usedMeters !== undefined && { usedMeters: data.usedMeters }),

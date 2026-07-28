@@ -80,6 +80,7 @@ interface Product {
   shippingCost: number | null;
   outboundCost: number | null;
   mgmtCost: number | null;
+  purchaseCost: number | null;
   cutHeight: number | null;
   cutWidth: number | null;
   usedMeters: number | null;
@@ -129,6 +130,8 @@ export function ProductDetail({ productId }: { productId: string }) {
     shippingCost: product.shippingCost,
     outboundCost: product.outboundCost,
     mgmtCost: product.mgmtCost,
+    purchaseCost: product.purchaseCost,
+    isPurchase: product.series === "purchase",
     cutHeight: product.cutHeight,
     cutWidth: product.cutWidth,
     usedMeters: product.usedMeters,
@@ -137,6 +140,8 @@ export function ProductDetail({ productId }: { productId: string }) {
   });
   const sellPrice = product.wholesalePrice ?? 0;
   const { profit, rate } = calcGrossProfit(breakdown.total, sellPrice);
+  // 仕入品は「仕入単価＋販管費」だけ。制作・裁断・生地・資材・梱包の内訳UIは出さない
+  const isPurchase = product.series === "purchase";
 
   // 上代と卸価格マトリクス（顧客タイプ別の掛率を使用）
   const cost = breakdown.total;
@@ -366,26 +371,35 @@ export function ProductDetail({ productId }: { productId: string }) {
               <p className="font-bold">{breakdown.laborCost.toLocaleString()}円</p>
               <p className="text-[10px] text-gray-400">営業{breakdown.salesCost}+出荷{breakdown.outboundCost}+管理{breakdown.mgmtCost}</p>
             </div>
-            <div className="border-l-4 border-l-rose-500 pl-3 bg-rose-50/40 rounded-r p-2">
-              <p className="text-xs text-gray-500">梱包資材費</p>
-              <p className="font-bold">{Math.round(breakdown.packagingMaterialCost).toLocaleString()}円</p>
-            </div>
-            <div className="border-l-4 border-l-blue-500 pl-3 bg-blue-50/40 rounded-r p-2">
-              <p className="text-xs text-gray-500">制作費</p>
-              <p className="font-bold">{breakdown.productionCost.toLocaleString()}円</p>
-            </div>
-            <div className="border-l-4 border-l-purple-500 pl-3 bg-purple-50/40 rounded-r p-2">
-              <p className="text-xs text-gray-500">生地費</p>
-              <p className="font-bold">{Math.round(breakdown.fabricCost).toLocaleString()}円</p>
-            </div>
-            <div className="border-l-4 border-l-amber-500 pl-3 bg-amber-50/40 rounded-r p-2">
-              <p className="text-xs text-gray-500">資材費</p>
-              <p className="font-bold">{Math.round(breakdown.materialCost).toLocaleString()}円</p>
-            </div>
-            <div className="border-l-4 border-l-teal-500 pl-3 bg-teal-50/40 rounded-r p-2">
-              <p className="text-xs text-gray-500">裁断費</p>
-              <p className="font-bold">{breakdown.cuttingCost.toLocaleString()}円</p>
-            </div>
+            {isPurchase ? (
+              <div className="border-l-4 border-l-emerald-500 pl-3 bg-emerald-50/40 rounded-r p-2 col-span-2 md:col-span-2">
+                <p className="text-xs text-gray-500">仕入原価</p>
+                <p className="font-bold">{Math.round(breakdown.purchaseCost).toLocaleString()}円</p>
+              </div>
+            ) : (
+              <>
+                <div className="border-l-4 border-l-rose-500 pl-3 bg-rose-50/40 rounded-r p-2">
+                  <p className="text-xs text-gray-500">梱包資材費</p>
+                  <p className="font-bold">{Math.round(breakdown.packagingMaterialCost).toLocaleString()}円</p>
+                </div>
+                <div className="border-l-4 border-l-blue-500 pl-3 bg-blue-50/40 rounded-r p-2">
+                  <p className="text-xs text-gray-500">制作費</p>
+                  <p className="font-bold">{breakdown.productionCost.toLocaleString()}円</p>
+                </div>
+                <div className="border-l-4 border-l-purple-500 pl-3 bg-purple-50/40 rounded-r p-2">
+                  <p className="text-xs text-gray-500">生地費</p>
+                  <p className="font-bold">{Math.round(breakdown.fabricCost).toLocaleString()}円</p>
+                </div>
+                <div className="border-l-4 border-l-amber-500 pl-3 bg-amber-50/40 rounded-r p-2">
+                  <p className="text-xs text-gray-500">資材費</p>
+                  <p className="font-bold">{Math.round(breakdown.materialCost).toLocaleString()}円</p>
+                </div>
+                <div className="border-l-4 border-l-teal-500 pl-3 bg-teal-50/40 rounded-r p-2">
+                  <p className="text-xs text-gray-500">裁断費</p>
+                  <p className="font-bold">{breakdown.cuttingCost.toLocaleString()}円</p>
+                </div>
+              </>
+            )}
             <div className="border-l-4 border-l-red-500 pl-3 col-span-2 md:col-span-3 bg-red-50/30 rounded-r p-2">
               <p className="text-xs text-gray-500">合計原価</p>
               <p className="font-bold text-2xl">{Math.round(breakdown.total).toLocaleString()}円</p>
@@ -414,6 +428,21 @@ export function ProductDetail({ productId }: { productId: string }) {
           )}
         </CardContent>
       </Card>
+
+      {/* 仕入単価（仕入品のみ） */}
+      {isPurchase && (
+        <Card className="bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">仕入単価</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PurchaseCostEditor purchaseCost={product.purchaseCost} onSave={saveBasic} />
+            <p className="text-xs text-gray-400 mt-2">
+              ※ 仕入品の1個あたりの仕入原価。原価 = 仕入単価 ＋ 販管費 で計算されます。
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 販管費（営業費・出荷費・管理費） */}
       <Card className="bg-white shadow-sm">
@@ -524,6 +553,8 @@ export function ProductDetail({ productId }: { productId: string }) {
         </CardContent>
       </Card>
 
+      {/* 自社製造の原価内訳（仕入品では非表示） */}
+      {!isPurchase && (<>
       {/* 制作費 */}
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
@@ -677,6 +708,7 @@ export function ProductDetail({ productId }: { productId: string }) {
           />
         </CardContent>
       </Card>
+      </>)}
 
       <MaterialPickerDialog
         category={pickerCategory}
@@ -883,6 +915,45 @@ function MaterialPickerDialog({
 }
 
 // ─── 販管費エディタ（営業費・出荷費・管理費） ───
+function PurchaseCostEditor({
+  purchaseCost,
+  onSave,
+}: {
+  purchaseCost: number | null;
+  onSave: (d: Partial<Product>) => void;
+}) {
+  const [val, setVal] = useState(purchaseCost?.toString() || "");
+  useEffect(() => setVal(purchaseCost?.toString() || ""), [purchaseCost]);
+  const dirty = Number(val || 0) !== (purchaseCost ?? 0);
+  function commit() {
+    if (!dirty) return;
+    onSave({ purchaseCost: val ? Number(val) : null });
+  }
+  return (
+    <div className="flex items-end gap-2">
+      <div>
+        <label className="text-xs text-gray-500">仕入単価（円/個）</label>
+        <Input
+          type="number"
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+          className="w-40"
+          placeholder="例: 500"
+        />
+      </div>
+      <Button
+        size="sm"
+        onClick={commit}
+        disabled={!dirty}
+        className={dirty ? "bg-amber-500 hover:bg-amber-600" : ""}
+      >
+        <Save className="size-4 mr-1" /> {dirty ? "確定" : "変更なし"}
+      </Button>
+    </div>
+  );
+}
+
 function SgaEditor({
   salesCost,
   outboundCost,

@@ -12,6 +12,7 @@ interface Breakdown {
   fabricCost: number;
   materialCost: number;
   packagingMaterialCost: number;
+  purchaseCost: number;
   laborCost: number;
 }
 
@@ -40,6 +41,7 @@ const COLS = [
   { key: "fabricCost", label: "生地費", hint: "表地/裏地/芯", cls: "text-purple-700" },
   { key: "materialCost", label: "資材費", hint: "口金など", cls: "text-amber-700" },
   { key: "packagingMaterialCost", label: "梱包資材費", hint: "袋・箱", cls: "text-pink-700" },
+  { key: "purchaseCost", label: "仕入", hint: "仕入品", cls: "text-emerald-700" },
   { key: "laborCost", label: "販管費", hint: "営業/出荷/管理", cls: "text-gray-600" },
 ] as const;
 
@@ -119,7 +121,7 @@ export default function CostListPage() {
       acc.cost += it.cost;
       return acc;
     },
-    { productionCost: 0, cuttingCost: 0, fabricCost: 0, materialCost: 0, packagingMaterialCost: 0, laborCost: 0, cost: 0 } as Record<string, number>
+    { productionCost: 0, cuttingCost: 0, fabricCost: 0, materialCost: 0, packagingMaterialCost: 0, purchaseCost: 0, laborCost: 0, cost: 0 } as Record<string, number>
   );
   const n = filtered.length || 1;
 

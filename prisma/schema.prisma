@@ -100,6 +100,7 @@ model Product {
   shippingCost    Int?         // [legacy] 運賃 → 営業費に統合済み
   outboundCost    Int?         // 出荷費（個あたり、梱包含む）
   mgmtCost        Int?         // 管理費（個あたり）
+  purchaseCost    Int?         // 仕入単価（仕入品のみ。個あたりの仕入原価）
   cutHeight       Int?         // 裁断 縦 (cm)
   cutWidth        Int?         // 裁断 横 (cm)
   usedMeters      Float?       // 生地の使用M（1個作るのに使う長さ。商品ごとに異なる）

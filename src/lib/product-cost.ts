@@ -32,6 +32,8 @@ export interface ProductCostInput {
   salesCost?: number | null;     // 営業費（運賃含む）
   outboundCost?: number | null;  // 出荷費（梱包含む）
   mgmtCost?: number | null;      // 管理費
+  purchaseCost?: number | null;  // 仕入単価（仕入品のみ。個あたりの仕入原価）
+  isPurchase?: boolean;          // 仕入品なら true。原価 = 仕入単価 ＋ 販管費 のみ（製造原価は無視）
   // [legacy] 統合済みフィールド（後方互換のため受けるが、通常 null）
   packagingCost?: number | null;
   shippingCost?: number | null;
@@ -59,6 +61,7 @@ export interface CostBreakdown {
   fabricCost: number;       // 生地費（表地・裏地・芯材）
   materialCost: number;     // 資材費（留め具・資材）
   packagingMaterialCost: number; // 梱包資材費
+  purchaseCost: number;     // 仕入原価（仕入品のみ）
 
   total: number; // 合計原価
   // 詳細
@@ -123,11 +126,19 @@ export function calcCostBreakdown(input: ProductCostInput): CostBreakdown {
     }
     return { name: m.name, perPiece, category: m.category, topCategory: top };
   });
-  const fabricCost           = materialBreakdown.filter((m) => m.topCategory === "生地費").reduce((s, m) => s + m.perPiece, 0);
-  const materialCost         = materialBreakdown.filter((m) => m.topCategory === "資材費").reduce((s, m) => s + m.perPiece, 0);
-  const packagingMaterialCost= materialBreakdown.filter((m) => m.topCategory === "梱包資材費").reduce((s, m) => s + m.perPiece, 0);
+  // 仕入品は製造原価（制作・裁断・生地・資材・梱包）を原価に含めない。
+  // 過去に製造品だった商品を仕入に変えても、残った工程・資材が二重計上されないようにする。
+  const mfgMul = input.isPurchase ? 0 : 1;
+  const fabricCost           = mfgMul * materialBreakdown.filter((m) => m.topCategory === "生地費").reduce((s, m) => s + m.perPiece, 0);
+  const materialCost         = mfgMul * materialBreakdown.filter((m) => m.topCategory === "資材費").reduce((s, m) => s + m.perPiece, 0);
+  const packagingMaterialCost= mfgMul * materialBreakdown.filter((m) => m.topCategory === "梱包資材費").reduce((s, m) => s + m.perPiece, 0);
+  const productionCostEff = mfgMul * productionCost;
+  const cuttingCostEff    = mfgMul * cuttingCost;
 
-  const total = laborCost + productionCost + cuttingCost + fabricCost + materialCost + packagingMaterialCost;
+  // 仕入品の仕入原価（仕入品以外は通常 null で 0）
+  const purchaseCost = input.purchaseCost ?? 0;
+
+  const total = laborCost + productionCostEff + cuttingCostEff + fabricCost + materialCost + packagingMaterialCost + purchaseCost;
 
   return {
     laborCost,
@@ -136,11 +147,12 @@ export function calcCostBreakdown(input: ProductCostInput): CostBreakdown {
     shippingCost,
     outboundCost,
     mgmtCost,
-    productionCost,
-    cuttingCost,
+    productionCost: productionCostEff,
+    cuttingCost: cuttingCostEff,
     fabricCost,
     materialCost,
     packagingMaterialCost,
+    purchaseCost,
     total,
     stepBreakdown,
     materialBreakdown,
