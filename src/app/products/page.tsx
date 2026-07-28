@@ -182,10 +182,11 @@ export default function ProductsPage() {
             columns={[
               { key: "code", label: "コード", required: true, example: "西2.6" },
               { key: "name", label: "商品名", required: true, example: "西陣 2.6寸がま口" },
-              { key: "series", label: "シリーズ", example: "西陣" },
+              { key: "series", label: "シリーズ", example: "西陣 / 仕入" },
               { key: "size", label: "サイズ", example: "2.6寸" },
               { key: "retailPrice", label: "上代", example: "1600" },
               { key: "wholesalePrice", label: "卸単価", example: "800" },
+              { key: "purchaseCost", label: "仕入単価", example: "500" },
               { key: "salesCost", label: "営業費", example: "20" },
               { key: "outboundCost", label: "出荷費", example: "30" },
               { key: "mgmtCost", label: "管理費", example: "8" },

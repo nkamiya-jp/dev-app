@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { normalizeSeries } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +38,12 @@ export async function POST(request: NextRequest) {
 
       const data = {
         name,
-        series: r.series ? String(r.series).trim() : null,
+        // 「西陣」「仕入」等の日本語ラベルも id（nishijin/purchase）に正規化して保存
+        series: normalizeSeries(r.series),
         size: r.size ? String(r.size).trim() : null,
         retailPrice: toInt(r.retailPrice),
         wholesalePrice: toInt(r.wholesalePrice),
+        purchaseCost: toInt(r.purchaseCost),
         salesCost: toInt(r.salesCost),
         outboundCost: toInt(r.outboundCost),
         mgmtCost: toInt(r.mgmtCost),
