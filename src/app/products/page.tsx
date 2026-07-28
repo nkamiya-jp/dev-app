@@ -369,99 +369,96 @@ function ProductGroup({
   const [overId, setOverId] = useState<string | null>(null);
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-2">
         <Badge className={color}>{title}</Badge>
         <span className="text-sm text-gray-500">{items.length}件</span>
-        <span className="text-[11px] text-gray-400 hidden md:inline">（カードをドラッグで並び替え）</span>
+        <span className="text-[11px] text-gray-400 hidden md:inline">（行をドラッグ、または↑↓で並び替え）</span>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {items.map((p, idx) => (
-          <Card
-            key={p.id}
-            draggable
-            onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = "move"; }}
-            onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== p.id) setOverId(p.id); }}
-            onDragLeave={() => setOverId((cur) => (cur === p.id ? null : cur))}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (dragId && dragId !== p.id) onMove(dragId, p.id);
-              setDragId(null);
-              setOverId(null);
-            }}
-            onDragEnd={() => { setDragId(null); setOverId(null); }}
-            className={`bg-white shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing ${!p.active ? "opacity-50" : ""} ${overId === p.id ? "ring-2 ring-blue-400" : ""} ${dragId === p.id ? "opacity-40" : ""}`}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex flex-col shrink-0 mr-1 -ml-1">
-                  <button
-                    onClick={() => onReorder(p.id, "up")}
-                    disabled={idx === 0}
-                    className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="上へ"
-                  >
-                    <ChevronUp className="size-4" />
-                  </button>
-                  <button
-                    onClick={() => onReorder(p.id, "down")}
-                    disabled={idx === items.length - 1}
-                    className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="下へ"
-                  >
-                    <ChevronDown className="size-4" />
-                  </button>
-                </div>
-                <Link href={`/products/${p.id}`} className="flex-1 min-w-0 group hover:underline">
-                  <p className="text-xs text-gray-500 font-mono">{p.code}</p>
-                  <p className="font-medium truncate">{p.name}</p>
-                  {p.size && <p className="text-xs text-gray-400 mt-0.5">{p.size}</p>}
-                </Link>
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    onClick={() => onEdit(p)}
-                    className="text-gray-400 hover:text-gray-700 p-1"
-                    title="編集"
-                  >
-                    <Pencil className="size-4" />
-                  </button>
-                  <button
-                    onClick={() => onDuplicate(p.id, p.name)}
-                    className="text-gray-400 hover:text-blue-600 p-1"
-                    title="複製"
-                  >
-                    <Copy className="size-4" />
-                  </button>
-                  <button
-                    onClick={() => onDelete(p.id, p.name, p.active)}
-                    className="text-gray-400 hover:text-red-600 p-1"
-                    title={p.active ? "取扱終了にする" : "完全に削除"}
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
-                <div>
-                  <span className="text-gray-500">卸: </span>
-                  <span className="font-medium">{p.wholesalePrice ? `${p.wholesalePrice.toLocaleString()}円` : "-"}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">内職: </span>
-                  <span className="font-medium">{p.workerCost ? `${p.workerCost.toLocaleString()}円` : "-"}</span>
-                </div>
-              </div>
-              {p.inventory && (
-                <div className="mt-2 pt-2 border-t text-xs">
-                  <span className="text-gray-500">在庫: </span>
-                  <span className="font-medium">{p.inventory.stock}</span>
-                </div>
-              )}
-              {!p.active && (
-                <Badge variant="outline" className="mt-2 text-xs">取扱終了</Badge>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+      <div className="bg-white shadow-sm border rounded-lg overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b text-gray-500">
+            <tr>
+              <th className="w-10 px-1 py-2"></th>
+              <th className="text-left px-2 py-2 font-medium w-24">コード</th>
+              <th className="text-left px-2 py-2 font-medium">商品名</th>
+              <th className="text-left px-2 py-2 font-medium w-20">サイズ</th>
+              <th className="text-right px-2 py-2 font-medium w-24">卸価格</th>
+              <th className="text-right px-2 py-2 font-medium w-20">内職</th>
+              <th className="text-right px-2 py-2 font-medium w-16">在庫</th>
+              <th className="w-28 px-2 py-2"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {items.map((p, idx) => (
+              <tr
+                key={p.id}
+                draggable
+                onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = "move"; }}
+                onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== p.id) setOverId(p.id); }}
+                onDragLeave={() => setOverId((cur) => (cur === p.id ? null : cur))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragId && dragId !== p.id) onMove(dragId, p.id);
+                  setDragId(null);
+                  setOverId(null);
+                }}
+                onDragEnd={() => { setDragId(null); setOverId(null); }}
+                className={`hover:bg-gray-50 cursor-grab active:cursor-grabbing ${!p.active ? "opacity-50" : ""} ${overId === p.id ? "bg-blue-50" : ""} ${dragId === p.id ? "opacity-40" : ""}`}
+              >
+                <td className="px-1 py-1">
+                  <div className="flex flex-col items-center">
+                    <button
+                      onClick={() => onReorder(p.id, "up")}
+                      disabled={idx === 0}
+                      className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="上へ"
+                    >
+                      <ChevronUp className="size-3.5" />
+                    </button>
+                    <button
+                      onClick={() => onReorder(p.id, "down")}
+                      disabled={idx === items.length - 1}
+                      className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="下へ"
+                    >
+                      <ChevronDown className="size-3.5" />
+                    </button>
+                  </div>
+                </td>
+                <td className="px-2 py-1.5 font-mono text-xs text-gray-500">{p.code}</td>
+                <td className="px-2 py-1.5">
+                  <Link href={`/products/${p.id}`} className="text-blue-600 hover:underline font-medium">
+                    {p.name}
+                  </Link>
+                  {!p.active && <Badge variant="outline" className="ml-2 text-[10px]">取扱終了</Badge>}
+                </td>
+                <td className="px-2 py-1.5 text-gray-500 text-xs">{p.size || "-"}</td>
+                <td className="px-2 py-1.5 text-right font-medium">
+                  {p.wholesalePrice ? `${p.wholesalePrice.toLocaleString()}円` : "-"}
+                </td>
+                <td className="px-2 py-1.5 text-right text-gray-600">
+                  {p.workerCost ? `${p.workerCost.toLocaleString()}円` : "-"}
+                </td>
+                <td className="px-2 py-1.5 text-right text-gray-600">
+                  {p.inventory ? p.inventory.stock : "-"}
+                </td>
+                <td className="px-2 py-1.5">
+                  <div className="flex items-center justify-end gap-0.5">
+                    <button onClick={() => onEdit(p)} className="text-gray-400 hover:text-gray-700 p-1" title="編集">
+                      <Pencil className="size-4" />
+                    </button>
+                    <button onClick={() => onDuplicate(p.id, p.name)} className="text-gray-400 hover:text-blue-600 p-1" title="複製">
+                      <Copy className="size-4" />
+                    </button>
+                    <button onClick={() => onDelete(p.id, p.name, p.active)} className="text-gray-400 hover:text-red-600 p-1" title={p.active ? "取扱終了にする" : "完全に削除"}>
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
