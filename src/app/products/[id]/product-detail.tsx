@@ -106,6 +106,9 @@ const UNIT_TYPES = [
   { id: "set", label: "セット" },
 ];
 
+// 制作費の固定工程（自社製造品で共通）
+const PRODUCTION_STEPS = ["口金", "貼り", "縫製", "その他"] as const;
+
 export function ProductDetail({ productId }: { productId: string }) {
   const [product, setProduct] = useState<Product | null>(null);
   const [editBasic, setEditBasic] = useState(false);
@@ -199,6 +202,28 @@ export function ProductDetail({ productId }: { productId: string }) {
       body: JSON.stringify({ id }),
     });
     load();
+  }
+
+  // 制作費の固定工程（口金/貼り/縫製/その他）の単価をupsert。0/空なら削除。
+  async function setProductionStep(stepName: string, value: number | null) {
+    if (!product) return;
+    const existing = product.costSteps.find(
+      (s) => (s.category || "制作費") === "制作費" && s.step === stepName
+    );
+    if (value == null || value === 0) {
+      if (existing) await deleteStep(existing.id);
+      return;
+    }
+    if (existing) {
+      await updateStep(existing.id, { unitCost: value });
+    } else {
+      await fetch("/api/products/cost-steps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, category: "制作費", step: stepName, unitCost: value, quantity: 1 }),
+      });
+      load();
+    }
   }
 
   async function addMaterial(group: "生地費" | "資材費" | "梱包資材費") {
@@ -555,39 +580,40 @@ export function ProductDetail({ productId }: { productId: string }) {
 
       {/* 自社製造の原価内訳（仕入品では非表示） */}
       {!isPurchase && (<>
-      {/* 制作費 */}
+      {/* 制作費（固定4工程） */}
       <Card className="bg-white shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">制作費</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => addStep("制作費")}>
-            <Plus className="size-4 mr-1" /> 工程を追加
-          </Button>
+        <CardHeader>
+          <CardTitle className="text-lg">制作費（口金・貼り・縫製・その他）</CardTitle>
         </CardHeader>
         <CardContent>
-          {productionSteps.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">工程未登録</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">工程</th>
-                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-32">単価（円/個）</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">備考</th>
-                  <th className="px-3 py-2 w-20"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {productionSteps.map((s) => (
-                  <CostStepRow key={s.id} step={s} onUpdate={updateStep} onDelete={deleteStep} />
-                ))}
-                <tr className="bg-blue-50/30 font-bold">
-                  <td className="px-3 py-2">制作費合計</td>
-                  <td className="px-3 py-2 text-right">{breakdown.productionCost.toLocaleString()}円</td>
-                  <td colSpan={2}></td>
-                </tr>
-              </tbody>
-            </table>
-          )}
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium text-gray-500">工程</th>
+                <th className="text-right px-3 py-2 font-medium text-gray-500 w-40">単価（円/個）</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {PRODUCTION_STEPS.map((name) => {
+                const step = productionSteps.find((s) => s.step === name);
+                return (
+                  <ProductionStepRow
+                    key={name}
+                    name={name}
+                    value={step?.unitCost ?? null}
+                    onSave={(v) => setProductionStep(name, v)}
+                  />
+                );
+              })}
+              <tr className="bg-blue-50/30 font-bold">
+                <td className="px-3 py-2">制作費合計</td>
+                <td className="px-3 py-2 text-right">{breakdown.productionCost.toLocaleString()}円</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="text-xs text-gray-400 mt-2">
+            ※ 工程は固定です。使わない工程は空欄のままでOK。
+          </p>
         </CardContent>
       </Card>
 
@@ -1261,6 +1287,52 @@ function BasicEditForm({
         <Button type="button" variant="outline" onClick={onCancel}><X className="size-4 mr-1" /> キャンセル</Button>
       </div>
     </form>
+  );
+}
+
+// ─── 制作費の固定工程行（単価だけ入力） ───
+function ProductionStepRow({
+  name,
+  value,
+  onSave,
+}: {
+  name: string;
+  value: number | null;
+  onSave: (v: number | null) => void;
+}) {
+  const [val, setVal] = useState(value != null ? String(value) : "");
+  useEffect(() => setVal(value != null ? String(value) : ""), [value]);
+  const dirty = (val === "" ? null : Number(val)) !== value;
+  function commit() {
+    if (!dirty) return;
+    onSave(val === "" ? null : Number(val) || 0);
+  }
+  return (
+    <tr className={dirty ? "bg-amber-50/40" : ""}>
+      <td className="px-3 py-1.5 font-medium">{name}</td>
+      <td className="px-3 py-1.5">
+        <div className="flex items-center justify-end gap-1">
+          <input
+            type="number"
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+            placeholder="0"
+            className="w-24 px-2 py-1 text-sm border rounded text-right"
+          />
+          <span className="text-xs text-gray-400">円</span>
+          <button
+            onClick={commit}
+            disabled={!dirty}
+            className={`p-1 rounded ${dirty ? "text-white bg-amber-500 hover:bg-amber-600" : "text-gray-300 cursor-not-allowed"}`}
+            title="確定"
+          >
+            <Check className="size-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
