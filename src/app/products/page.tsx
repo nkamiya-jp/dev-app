@@ -25,6 +25,11 @@ interface Product {
   size: string | null;
   wholesalePrice: number | null;
   workerCost: number | null;
+  purchaseCost: number | null;
+  salesCost: number | null;
+  outboundCost: number | null;
+  mgmtCost: number | null;
+  productionCost: number;
   description: string | null;
   active: boolean;
   inventory?: { stock: number } | null;
@@ -379,13 +384,17 @@ function ProductGroup({
           <thead className="bg-gray-50 border-b text-gray-500">
             <tr>
               <th className="w-10 px-1 py-2"></th>
-              <th className="text-left px-2 py-2 font-medium w-24">コード</th>
-              <th className="text-left px-2 py-2 font-medium">商品名</th>
-              <th className="text-left px-2 py-2 font-medium w-20">サイズ</th>
-              <th className="text-right px-2 py-2 font-medium w-24">卸価格</th>
-              <th className="text-right px-2 py-2 font-medium w-20">内職</th>
-              <th className="text-right px-2 py-2 font-medium w-16">在庫</th>
-              <th className="w-28 px-2 py-2"></th>
+              <th className="text-left px-2 py-2 font-medium w-20">コード</th>
+              <th className="text-left px-2 py-2 font-medium min-w-[140px]">商品名</th>
+              <th className="text-right px-2 py-2 font-medium w-20">卸価格</th>
+              <th className="text-right px-2 py-2 font-medium w-20 bg-emerald-50/60">仕入単価</th>
+              <th className="text-right px-2 py-2 font-medium w-16">制作費</th>
+              <th className="text-right px-2 py-2 font-medium w-16">内職</th>
+              <th className="text-right px-2 py-2 font-medium w-14 bg-slate-50">営業費</th>
+              <th className="text-right px-2 py-2 font-medium w-14 bg-slate-50">出荷費</th>
+              <th className="text-right px-2 py-2 font-medium w-14 bg-slate-50">管理費</th>
+              <th className="text-right px-2 py-2 font-medium w-14">在庫</th>
+              <th className="w-24 px-2 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -430,14 +439,29 @@ function ProductGroup({
                   <Link href={`/products/${p.id}`} className="text-blue-600 hover:underline font-medium">
                     {p.name}
                   </Link>
+                  {p.size && <span className="text-[10px] text-gray-400 ml-1">{p.size}</span>}
                   {!p.active && <Badge variant="outline" className="ml-2 text-[10px]">取扱終了</Badge>}
                 </td>
-                <td className="px-2 py-1.5 text-gray-500 text-xs">{p.size || "-"}</td>
                 <td className="px-2 py-1.5 text-right font-medium">
-                  {p.wholesalePrice ? `${p.wholesalePrice.toLocaleString()}円` : "-"}
+                  {p.wholesalePrice ? p.wholesalePrice.toLocaleString() : "-"}
+                </td>
+                <td className="px-2 py-1.5 text-right bg-emerald-50/40">
+                  {p.purchaseCost ? p.purchaseCost.toLocaleString() : "-"}
                 </td>
                 <td className="px-2 py-1.5 text-right text-gray-600">
-                  {p.workerCost ? `${p.workerCost.toLocaleString()}円` : "-"}
+                  {p.productionCost ? p.productionCost.toLocaleString() : "-"}
+                </td>
+                <td className="px-2 py-1.5 text-right text-gray-600">
+                  {p.workerCost ? p.workerCost.toLocaleString() : "-"}
+                </td>
+                <td className="px-2 py-1.5 text-right text-gray-500 bg-slate-50/40">
+                  {p.salesCost ? p.salesCost.toLocaleString() : "-"}
+                </td>
+                <td className="px-2 py-1.5 text-right text-gray-500 bg-slate-50/40">
+                  {p.outboundCost ? p.outboundCost.toLocaleString() : "-"}
+                </td>
+                <td className="px-2 py-1.5 text-right text-gray-500 bg-slate-50/40">
+                  {p.mgmtCost ? p.mgmtCost.toLocaleString() : "-"}
                 </td>
                 <td className="px-2 py-1.5 text-right text-gray-600">
                   {p.inventory ? p.inventory.stock : "-"}

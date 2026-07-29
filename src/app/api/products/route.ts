@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { effectiveStepCost } from "@/lib/product-cost";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,19 @@ export async function GET(request: NextRequest) {
   const products = await prisma.product.findMany({
     where,
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-    include: { inventory: true },
+    include: { inventory: true, costSteps: true },
   });
-  return Response.json(products);
+  // 一覧比較用に制作費（制作費カテゴリの工程合計・1個あたり）を付与
+  const withCost = products.map((p) => {
+    const productionCost = Math.round(
+      p.costSteps
+        .filter((s) => (s.category || "制作費") === "制作費")
+        .reduce((sum, s) => sum + effectiveStepCost({ id: s.id, step: s.step, unitCost: s.unitCost, quantity: s.quantity, subType: s.subType }), 0)
+    );
+    const { costSteps: _omit, ...rest } = p;
+    return { ...rest, productionCost };
+  });
+  return Response.json(withCost);
 }
 
 export async function POST(request: NextRequest) {
