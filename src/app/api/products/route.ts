@@ -24,15 +24,28 @@ export async function GET(request: NextRequest) {
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
     include: { inventory: true, costSteps: true },
   });
-  // 一覧比較用に制作費（制作費カテゴリの工程合計・1個あたり）を付与
+  // 一覧比較用に制作費を固定4工程（口金/貼り/縫製/その他）に振り分けて付与
+  const FIXED = ["口金", "貼り", "縫製"];
   const withCost = products.map((p) => {
-    const productionCost = Math.round(
-      p.costSteps
-        .filter((s) => (s.category || "制作費") === "制作費")
-        .reduce((sum, s) => sum + effectiveStepCost({ id: s.id, step: s.step, unitCost: s.unitCost, quantity: s.quantity, subType: s.subType }), 0)
-    );
+    const production = { 口金: 0, 貼り: 0, 縫製: 0, その他: 0 };
+    for (const s of p.costSteps) {
+      if ((s.category || "制作費") !== "制作費") continue;
+      const c = effectiveStepCost({ id: s.id, step: s.step, unitCost: s.unitCost, quantity: s.quantity, subType: s.subType });
+      const key = FIXED.includes(s.step) ? (s.step as "口金" | "貼り" | "縫製") : "その他";
+      production[key] += c;
+    }
+    const productionCost = Math.round(production.口金 + production.貼り + production.縫製 + production.その他);
     const { costSteps: _omit, ...rest } = p;
-    return { ...rest, productionCost };
+    return {
+      ...rest,
+      productionCost,
+      production: {
+        口金: Math.round(production.口金),
+        貼り: Math.round(production.貼り),
+        縫製: Math.round(production.縫製),
+        その他: Math.round(production.その他),
+      },
+    };
   });
   return Response.json(withCost);
 }
