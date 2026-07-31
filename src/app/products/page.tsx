@@ -56,6 +56,36 @@ export default function ProductsPage() {
     load();
   }, [load]);
 
+  // 一覧セルの直接編集：商品フィールド（卸価格・仕入単価・内職・販管費）を保存
+  async function saveField(id: string, field: string, value: number | null) {
+    // 楽観的更新（すぐ画面に反映）
+    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
+    await fetch(`/api/products/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    load();
+  }
+
+  // 一覧セルの直接編集：制作費の固定工程（口金/貼り/縫製/その他）を保存
+  async function saveProductionStep(id: string, step: "口金" | "貼り" | "縫製" | "その他", value: number | null) {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const production = { ...p.production, [step]: value ?? 0 };
+        const productionCost = production.口金 + production.貼り + production.縫製 + production.その他;
+        return { ...p, production, productionCost };
+      })
+    );
+    await fetch("/api/products/production-step", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId: id, step, value }),
+    });
+    load();
+  }
+
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
@@ -278,6 +308,8 @@ export default function ProductsPage() {
             onDelete={deleteProduct}
             onReorder={reorderProduct}
             onMove={moveProduct}
+            onSaveField={saveField}
+            onSaveStep={saveProductionStep}
           />
         ))}
         {noSeries.length > 0 && (
@@ -290,6 +322,8 @@ export default function ProductsPage() {
             onDelete={deleteProduct}
             onReorder={reorderProduct}
             onMove={moveProduct}
+            onSaveField={saveField}
+            onSaveStep={saveProductionStep}
           />
         )}
       </div>
@@ -361,6 +395,8 @@ function ProductGroup({
   onDelete,
   onReorder,
   onMove,
+  onSaveField,
+  onSaveStep,
 }: {
   title: string;
   color: string;
@@ -370,6 +406,8 @@ function ProductGroup({
   onDelete: (id: string, name: string, active: boolean) => void;
   onReorder: (id: string, direction: "up" | "down") => void;
   onMove: (id: string, targetId: string) => void;
+  onSaveField: (id: string, field: string, value: number | null) => void;
+  onSaveStep: (id: string, step: "口金" | "貼り" | "縫製" | "その他", value: number | null) => void;
 }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -451,36 +489,16 @@ function ProductGroup({
                   {p.size && <span className="text-[10px] text-gray-400 ml-1">{p.size}</span>}
                   {!p.active && <Badge variant="outline" className="ml-2 text-[10px]">取扱終了</Badge>}
                 </td>
-                <td className="px-2 py-1.5 text-right font-medium">
-                  {p.wholesalePrice ? p.wholesalePrice.toLocaleString() : "-"}
-                </td>
-                <td className="px-2 py-1.5 text-right bg-emerald-50/40">
-                  {p.purchaseCost ? p.purchaseCost.toLocaleString() : "-"}
-                </td>
-                <td className="px-1 py-1.5 text-right text-gray-600 text-xs bg-blue-50/20 border-l">
-                  {p.production.口金 ? p.production.口金.toLocaleString() : "-"}
-                </td>
-                <td className="px-1 py-1.5 text-right text-gray-600 text-xs bg-blue-50/20">
-                  {p.production.貼り ? p.production.貼り.toLocaleString() : "-"}
-                </td>
-                <td className="px-1 py-1.5 text-right text-gray-600 text-xs bg-blue-50/20">
-                  {p.production.縫製 ? p.production.縫製.toLocaleString() : "-"}
-                </td>
-                <td className="px-1 py-1.5 text-right text-gray-600 text-xs bg-blue-50/20">
-                  {p.production.その他 ? p.production.その他.toLocaleString() : "-"}
-                </td>
-                <td className="px-2 py-1.5 text-right text-gray-600">
-                  {p.workerCost ? p.workerCost.toLocaleString() : "-"}
-                </td>
-                <td className="px-1 py-1.5 text-right text-gray-500 text-xs bg-slate-50/40 border-l">
-                  {p.salesCost ? p.salesCost.toLocaleString() : "-"}
-                </td>
-                <td className="px-1 py-1.5 text-right text-gray-500 text-xs bg-slate-50/40">
-                  {p.outboundCost ? p.outboundCost.toLocaleString() : "-"}
-                </td>
-                <td className="px-1 py-1.5 text-right text-gray-500 text-xs bg-slate-50/40">
-                  {p.mgmtCost ? p.mgmtCost.toLocaleString() : "-"}
-                </td>
+                <EditCell value={p.wholesalePrice} onSave={(v) => onSaveField(p.id, "wholesalePrice", v)} className="font-medium" />
+                <EditCell value={p.purchaseCost} onSave={(v) => onSaveField(p.id, "purchaseCost", v)} className="bg-emerald-50/40" />
+                <EditCell value={p.production.口金 || null} onSave={(v) => onSaveStep(p.id, "口金", v)} className="bg-blue-50/20 border-l" />
+                <EditCell value={p.production.貼り || null} onSave={(v) => onSaveStep(p.id, "貼り", v)} className="bg-blue-50/20" />
+                <EditCell value={p.production.縫製 || null} onSave={(v) => onSaveStep(p.id, "縫製", v)} className="bg-blue-50/20" />
+                <EditCell value={p.production.その他 || null} onSave={(v) => onSaveStep(p.id, "その他", v)} className="bg-blue-50/20" />
+                <EditCell value={p.workerCost} onSave={(v) => onSaveField(p.id, "workerCost", v)} />
+                <EditCell value={p.salesCost} onSave={(v) => onSaveField(p.id, "salesCost", v)} className="bg-slate-50/40 border-l" />
+                <EditCell value={p.outboundCost} onSave={(v) => onSaveField(p.id, "outboundCost", v)} className="bg-slate-50/40" />
+                <EditCell value={p.mgmtCost} onSave={(v) => onSaveField(p.id, "mgmtCost", v)} className="bg-slate-50/40" />
                 <td className="px-2 py-1.5 text-right text-gray-600 border-l">
                   {p.inventory ? p.inventory.stock : "-"}
                 </td>
@@ -503,5 +521,62 @@ function ProductGroup({
         </table>
       </div>
     </div>
+  );
+}
+
+// 一覧セルの直接編集（数値）。クリックで入力、blur/Enterで保存。
+function EditCell({
+  value,
+  onSave,
+  className = "",
+}: {
+  value: number | null;
+  onSave: (v: number | null) => void;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+
+  function start() {
+    setVal(value != null ? String(value) : "");
+    setEditing(true);
+  }
+  function commit() {
+    setEditing(false);
+    const n = val === "" ? null : Math.round(Number(val));
+    if ((n ?? null) !== (value ?? null) && !(val !== "" && isNaN(Number(val)))) {
+      onSave(n);
+    }
+  }
+
+  return (
+    <td
+      className={`px-1 py-1 text-right text-xs ${className}`}
+      // 行ドラッグに吸われないように
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {editing ? (
+        <input
+          autoFocus
+          type="number"
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="w-16 px-1 py-0.5 border rounded text-right"
+        />
+      ) : (
+        <button
+          onClick={start}
+          className="w-full text-right px-1 py-0.5 rounded hover:bg-white hover:ring-1 hover:ring-gray-300 text-gray-700"
+          title="クリックで編集"
+        >
+          {value ? value.toLocaleString() : <span className="text-gray-300">-</span>}
+        </button>
+      )}
+    </td>
   );
 }
