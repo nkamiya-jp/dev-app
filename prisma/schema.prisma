@@ -347,13 +347,18 @@ model ProductForecast {
 }
 
 model PriceListSnapshot {
-  id        String   @id @default(cuid())
-  name      String   // 例: "2026年5月価格改定"
-  note      String?  // メモ（理由など）
-  snappedAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  items     PriceListItem[]
+  id          String   @id @default(cuid())
+  name        String   // 例: "2026年5月価格改定"
+  note        String?  // メモ（理由など）
+  kind        String   @default("matrix")  // "matrix"(全体) | "customer"(顧客別)
+  contactId   String?  // 顧客別アーカイブの対象顧客ID（削除耐性のためFKは張らない）
+  contactName String?  // 保存時点の顧客名（表示用）
+  contactRate Int?     // 保存時点の掛率(%)
+  snappedAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  items       PriceListItem[]
+  @@index([contactId])
 }
 
 model PriceListItem {
@@ -366,7 +371,8 @@ model PriceListItem {
   series      String?
   cost        Int      @default(0)        // 当時の原価
   retailPrice Int?                         // 当時の上代
-  prices      String                       // JSON: { "AmazonJP": 150, "京都問屋": 45, ... }
+  prices      String                       // JSON: matrix={ "AmazonJP_110": 150, ... } / customer={ "wholesale":X, "auto":Y, "override":0/1 }
+  note        String?                      // 顧客別: 個別価格の理由メモ（保存時点）
   createdAt   DateTime @default(now())
   @@index([snapshotId])
 }

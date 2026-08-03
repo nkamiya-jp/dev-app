@@ -55,6 +55,10 @@ interface Snapshot {
   id: string;
   name: string;
   note: string | null;
+  kind?: string;              // "matrix" | "customer"
+  contactId?: string | null;
+  contactName?: string | null;
+  contactRate?: number | null;
   snappedAt: string;
   _count: { items: number };
 }
@@ -175,18 +179,26 @@ export default function PriceListPage() {
       alert("名前を入力してください");
       return;
     }
+    // 顧客別モードで顧客選択中なら、その顧客のアーカイブとして保存
+    const asCustomer = mode === "customer" && !!selectedContactId;
+    const body = asCustomer
+      ? { name: saveName.trim(), note: saveNote || null, kind: "customer", contactId: selectedContactId }
+      : { name: saveName.trim(), note: saveNote || null, kind: "matrix" };
     setSaving(true);
     try {
       const res = await fetch("/api/price-list/snapshots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: saveName.trim(), note: saveNote || null }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         setSaveOpen(false);
         setSaveName("");
         setSaveNote("");
         load();
+      } else {
+        const e = await res.json().catch(() => ({}));
+        alert(e.error || "保存に失敗しました");
       }
     } finally {
       setSaving(false);
@@ -326,10 +338,13 @@ export default function PriceListPage() {
             <Printer className="size-4 mr-1" /> 印刷
           </Button>
           <Button size="sm" onClick={() => {
-            setSaveName(`価格表 ${new Date().toLocaleDateString("ja-JP")}`);
+            const today = new Date().toLocaleDateString("ja-JP");
+            const asCustomer = mode === "customer" && !!selectedContact;
+            setSaveName(asCustomer ? `${selectedContact!.name} 価格表 ${today}` : `価格表 ${today}`);
             setSaveOpen(true);
           }}>
-            <Camera className="size-4 mr-1" /> 現在の価格を保存
+            <Camera className="size-4 mr-1" />
+            {mode === "customer" && selectedContact ? "この顧客の価格を保存" : "現在の価格を保存"}
           </Button>
         </div>
       </div>
@@ -486,6 +501,7 @@ export default function PriceListPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium text-gray-500">名前</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 w-32">対象</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-500">メモ</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-20">商品数</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-40">保存日時</th>
@@ -496,6 +512,15 @@ export default function PriceListPage() {
                 {snaps.map((s) => (
                   <tr key={s.id} className="hover:bg-gray-50">
                     <td className="px-3 py-2 font-medium">{s.name}</td>
+                    <td className="px-3 py-2">
+                      {s.kind === "customer" ? (
+                        <Badge className="bg-blue-100 text-blue-700 inline-flex items-center gap-1">
+                          <User className="size-3" />{s.contactName || "顧客"}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-gray-400">全体</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-gray-500 text-xs">{s.note || "-"}</td>
                     <td className="px-3 py-2 text-right">{s._count.items}</td>
                     <td className="px-3 py-2 text-right text-gray-500 text-xs">
@@ -540,7 +565,9 @@ export default function PriceListPage() {
               />
             </div>
             <p className="text-xs text-gray-400">
-              現在の全{data.items.length}商品の上代・原価・各顧客タイプ別の卸価格を保存します。
+              {mode === "customer" && selectedContact
+                ? `「${selectedContact.name}」の取扱商品の卸価格・原価・メモをこの時点で保存します（掛率 ${contactRate ?? "未設定"}%）。`
+                : `現在の全${data.items.length}商品の上代・原価・各顧客タイプ別の卸価格を保存します。`}
             </p>
             <Button onClick={saveSnapshot} disabled={saving} className="w-full">
               {saving ? "保存中..." : "保存"}
