@@ -20,7 +20,7 @@ export interface ContactTypeMeta {
 export const CONTACT_TYPES: ContactTypeMeta[] = [
   {
     id: "overseas_ref",
-    label: "海外参考価格",
+    label: "海外価格",
     color: "bg-cyan-100 text-cyan-700",
     defaultRate: 150,
     rateOptions: [150],
