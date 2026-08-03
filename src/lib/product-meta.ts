@@ -2,6 +2,7 @@ export const PRODUCT_SERIES = [
   { id: "nishijin", label: "西陣", color: "bg-purple-100 text-purple-700" },
   { id: "yuzen", label: "友禅", color: "bg-pink-100 text-pink-700" },
   { id: "ise", label: "伊勢", color: "bg-blue-100 text-blue-700" },
+  { id: "sensu", label: "扇子", color: "bg-amber-100 text-amber-700" },
   { id: "purchase", label: "仕入", color: "bg-emerald-100 text-emerald-700" },
   { id: "other", label: "その他", color: "bg-gray-100 text-gray-700" },
 ] as const;
