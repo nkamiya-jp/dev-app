@@ -49,7 +49,12 @@ interface Category {
   unitType: string;
   sortOrder: number;
   active: boolean;
+  parentId?: string | null; // 大分類(top)への紐付け
+  kind?: string;            // "top" | "leaf"
 }
+
+// 大分類(top)の既定表示順。DBに未登録でも動作するためのフォールバック。
+const TOP_ORDER = ["生地費", "資材費", "梱包資材費"];
 
 const UNIT_TYPES = [
   { id: "meter", label: "m" },
@@ -183,8 +188,9 @@ export default function MaterialsPage() {
   const visibleItems = showInactive ? items : items.filter((m) => m.active);
 
   // カテゴリ別グループ化（カテゴリ一覧の順番に従う）
+  // 大分類(top)は資材を直接持たないので除外
   const grouped = categories
-    .filter((c) => c.active)
+    .filter((c) => c.active && c.kind !== "top")
     .map((c) => ({
       category: c,
       items: sortMaterials(
@@ -232,7 +238,7 @@ export default function MaterialsPage() {
             title="カテゴリ絞り込み"
           >
             <option value="">全カテゴリ</option>
-            {categories.filter((c) => c.active).map((c) => (
+            {categories.filter((c) => c.active && c.kind !== "top").map((c) => (
               <option key={c.id} value={c.name}>{c.name}</option>
             ))}
           </select>
@@ -421,7 +427,7 @@ function MaterialForm({
   categories: Category[];
   onSave: (d: Partial<Material>) => void;
 }) {
-  const activeCats = categories.filter((c) => c.active);
+  const activeCats = categories.filter((c) => c.active && c.kind !== "top");
   const [code, setCode] = useState(material?.code || "");
   const [name, setName] = useState(material?.name || "");
   const [category, setCategory] = useState(material?.category || activeCats[0]?.name || "その他");
@@ -564,12 +570,25 @@ function CategoryManageDialog({
   const [newColor, setNewColor] = useState(COLOR_PALETTE[0].id);
   const [newUnitType, setNewUnitType] = useState("piece");
 
+  // 大分類(top)一覧と、並べ替え/編集対象の leaf 一覧に分ける
+  const topCats = categories
+    .filter((c) => c.kind === "top")
+    .sort((a, b) => TOP_ORDER.indexOf(a.name) - TOP_ORDER.indexOf(b.name));
+  const leafCats = categories.filter((c) => c.kind !== "top");
+  const [newParentId, setNewParentId] = useState("");
+
   async function add() {
     if (!newName.trim()) return;
     await fetch("/api/material-categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim(), color: newColor, unitType: newUnitType }),
+      body: JSON.stringify({
+        name: newName.trim(),
+        color: newColor,
+        unitType: newUnitType,
+        kind: "leaf",
+        parentId: newParentId || topCats[0]?.id || null,
+      }),
     });
     setNewName("");
     onChange();
@@ -594,22 +613,43 @@ function CategoryManageDialog({
     onChange();
   }
 
+  // 並べ替え後の配列順に沿って sortOrder を連番で振り直す。
+  // 「その他」(sortOrder 99) は末尾固定なので触らない。
+  // 値の交換方式だと sortOrder が重複しているカテゴリ同士で
+  // 入れ替えが効かないため、連番振り直し方式にしている。
+  async function persistOrder(list: Category[]) {
+    let seq = 1;
+    const updates: Promise<unknown>[] = [];
+    for (const c of list) {
+      const target = c.sortOrder === 99 ? 99 : seq++;
+      if (c.sortOrder !== target) {
+        updates.push(
+          fetch("/api/material-categories", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: c.id, oldName: c.name, sortOrder: target }),
+          })
+        );
+      }
+    }
+    await Promise.all(updates);
+    onChange();
+  }
+
   async function moveUp(c: Category, idx: number) {
-    if (idx === 0) return;
-    const prev = categories[idx - 1];
-    await Promise.all([
-      update(c, { sortOrder: prev.sortOrder }),
-      update(prev, { sortOrder: c.sortOrder }),
-    ]);
+    if (idx === 0 || c.sortOrder === 99) return;
+    const list = [...leafCats];
+    [list[idx - 1], list[idx]] = [list[idx], list[idx - 1]];
+    await persistOrder(list);
   }
 
   async function moveDown(c: Category, idx: number) {
-    if (idx === categories.length - 1) return;
-    const next = categories[idx + 1];
-    await Promise.all([
-      update(c, { sortOrder: next.sortOrder }),
-      update(next, { sortOrder: c.sortOrder }),
-    ]);
+    const next = leafCats[idx + 1];
+    // 末尾、または直後が「その他」(99固定) の場合は移動不可
+    if (!next || c.sortOrder === 99 || next.sortOrder === 99) return;
+    const list = [...leafCats];
+    [list[idx], list[idx + 1]] = [list[idx + 1], list[idx]];
+    await persistOrder(list);
   }
 
   return (
@@ -620,19 +660,23 @@ function CategoryManageDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div className="border rounded-md divide-y">
-            {categories.map((c, idx) => (
+            {leafCats.map((c, idx) => (
               <div key={c.id} className="flex items-center gap-2 px-3 py-2">
                 <div className="flex flex-col">
                   <button
                     onClick={() => moveUp(c, idx)}
-                    disabled={idx === 0}
+                    disabled={idx === 0 || c.sortOrder === 99}
                     className="text-gray-400 hover:text-gray-700 disabled:opacity-30 p-0.5"
                   >
                     <ArrowUp className="size-3" />
                   </button>
                   <button
                     onClick={() => moveDown(c, idx)}
-                    disabled={idx === categories.length - 1}
+                    disabled={
+                      idx === leafCats.length - 1 ||
+                      c.sortOrder === 99 ||
+                      leafCats[idx + 1]?.sortOrder === 99
+                    }
                     className="text-gray-400 hover:text-gray-700 disabled:opacity-30 p-0.5"
                   >
                     <ArrowDown className="size-3" />
@@ -641,6 +685,7 @@ function CategoryManageDialog({
                 {editingId === c.id ? (
                   <CategoryEditRow
                     category={c}
+                    topCats={topCats}
                     onSave={(data) => {
                       update(c, data);
                       setEditingId(null);
@@ -650,8 +695,11 @@ function CategoryManageDialog({
                 ) : (
                   <>
                     <Badge className={c.color}>{c.name}</Badge>
+                    <span className="text-xs text-gray-500">
+                      大分類: {topCats.find((t) => t.id === c.parentId)?.name ?? "未設定"}
+                    </span>
                     <span className="text-xs text-gray-400">
-                      デフォルト単位: {UNIT_TYPES.find((u) => u.id === c.unitType)?.label}
+                      単位: {UNIT_TYPES.find((u) => u.id === c.unitType)?.label}
                     </span>
                     <div className="ml-auto flex gap-1">
                       <button
@@ -683,6 +731,16 @@ function CategoryManageDialog({
                 onChange={(e) => setNewName(e.target.value)}
                 className="flex-1 min-w-[140px]"
               />
+              <select
+                value={newParentId || topCats[0]?.id || ""}
+                onChange={(e) => setNewParentId(e.target.value)}
+                className="border rounded-md px-2 py-2 text-sm"
+                title="大分類"
+              >
+                {topCats.map((t) => (
+                  <option key={t.id} value={t.id}>大分類:{t.name}</option>
+                ))}
+              </select>
               <select
                 value={newColor}
                 onChange={(e) => setNewColor(e.target.value)}
@@ -716,18 +774,31 @@ function CategoryEditRow({
   category,
   onSave,
   onCancel,
+  topCats,
 }: {
   category: Category;
   onSave: (d: Partial<Category>) => void;
   onCancel: () => void;
+  topCats: Category[];
 }) {
   const [name, setName] = useState(category.name);
   const [color, setColor] = useState(category.color);
   const [unitType, setUnitType] = useState(category.unitType);
+  const [parentId, setParentId] = useState(category.parentId || topCats[0]?.id || "");
 
   return (
     <div className="flex-1 flex gap-2 items-center flex-wrap">
       <Input value={name} onChange={(e) => setName(e.target.value)} className="flex-1 min-w-[100px]" />
+      <select
+        value={parentId}
+        onChange={(e) => setParentId(e.target.value)}
+        className="border rounded-md px-2 py-1.5 text-sm"
+        title="大分類"
+      >
+        {topCats.map((t) => (
+          <option key={t.id} value={t.id}>大分類:{t.name}</option>
+        ))}
+      </select>
       <select
         value={color}
         onChange={(e) => setColor(e.target.value)}
@@ -746,7 +817,7 @@ function CategoryEditRow({
           <option key={u.id} value={u.id}>{u.label}</option>
         ))}
       </select>
-      <Button size="sm" onClick={() => onSave({ name, color, unitType })}>保存</Button>
+      <Button size="sm" onClick={() => onSave({ name, color, unitType, parentId: parentId || null })}>保存</Button>
       <Button size="sm" variant="outline" onClick={onCancel}>取消</Button>
     </div>
   );

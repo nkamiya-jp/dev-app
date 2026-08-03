@@ -766,24 +766,38 @@ function MaterialPickerDialog({
   const [loading, setLoading] = useState(false);
   const [usages, setUsages] = useState<Record<string, string>>({});
 
-  // 大分類 → そこに属する leaf カテゴリの一覧
-  const LEAF_MAP: Record<string, string[]> = {
-    "生地費": ["表地", "裏地", "芯材"],
-    "資材費": ["口金", "ファスナー", "ボタン", "箱", "鏡", "その他"],
-    "梱包資材費": ["梱包資材"],
-  };
-
   useEffect(() => {
     if (!category) return;
     setLoading(true);
-    const leaves = LEAF_MAP[category] ?? [];
-    // 該当 leaf カテゴリ全部を fetch して結合
-    Promise.all(leaves.map((leaf) => {
-      const p = new URLSearchParams();
-      p.set("category", leaf);
-      if (search) p.set("search", search);
-      return fetch(`/api/materials?${p}`).then((r) => r.json()).catch(() => []);
-    }))
+    // カテゴリマスタの階層(大分類→leaf)から対象カテゴリを解決する。
+    // 大分類が未設定(parentId 無し)の環境向けに、固定マップをフォールバックとして残す。
+    const FALLBACK_LEAF_MAP: Record<string, string[]> = {
+      "生地費": ["表地", "裏地", "芯材"],
+      "資材費": ["口金", "ファスナー", "ボタン", "箱", "鏡", "資材", "その他"],
+      "梱包資材費": ["梱包資材"],
+    };
+
+    fetch(`/api/material-categories`)
+      .then((r) => r.json())
+      .then((cats: { id: string; name: string; parentId?: string | null; kind?: string }[]) => {
+        const list = Array.isArray(cats) ? cats : [];
+        const top = list.find((c) => c.name === category && c.kind === "top");
+        const derived = top
+          ? list.filter((c) => c.parentId === top.id).map((c) => c.name)
+          : [];
+        // マスタで割り当て済みならそれを使い、未設定なら固定マップにフォールバック
+        return derived.length > 0 ? derived : (FALLBACK_LEAF_MAP[category] ?? []);
+      })
+      .catch(() => FALLBACK_LEAF_MAP[category] ?? [])
+      .then((leaves) =>
+        // 該当 leaf カテゴリ全部を fetch して結合
+        Promise.all(leaves.map((leaf) => {
+          const p = new URLSearchParams();
+          p.set("category", leaf);
+          if (search) p.set("search", search);
+          return fetch(`/api/materials?${p}`).then((r) => r.json()).catch(() => []);
+        }))
+      )
       .then((results) => {
         const merged = results.flatMap((r) => Array.isArray(r) ? r : []);
         setItems(merged);
