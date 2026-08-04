@@ -207,23 +207,14 @@ export function ProductDetail({ productId }: { productId: string }) {
   // 制作費の固定工程（口金/貼り/縫製/その他）の単価をupsert。0/空なら削除。
   async function setProductionStep(stepName: string, value: number | null) {
     if (!product) return;
-    const existing = product.costSteps.find(
-      (s) => (s.category || "制作費") === "制作費" && s.step === stepName
-    );
-    if (value == null || value === 0) {
-      if (existing) await deleteStep(existing.id);
-      return;
-    }
-    if (existing) {
-      await updateStep(existing.id, { unitCost: value });
-    } else {
-      await fetch("/api/products/cost-steps", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, category: "制作費", step: stepName, unitCost: value, quantity: 1 }),
-      });
-      load();
-    }
+    // クライアント状態に依存せず、サーバ側で upsert＋重複畳みする専用エンドポイントに統一。
+    // （一覧の直接入力と同じ経路。二重登録を根本的に防ぐ）
+    await fetch("/api/products/production-step", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId, step: stepName, value }),
+    });
+    load();
   }
 
   async function addMaterial(group: "生地費" | "資材費" | "梱包資材費") {
