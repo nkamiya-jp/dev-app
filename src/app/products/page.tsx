@@ -23,7 +23,9 @@ interface Product {
   name: string;
   series: string | null;
   size: string | null;
+  retailPrice: number | null;
   wholesalePrice: number | null;
+  cost: number | null;
   workerCost: number | null;
   purchaseCost: number | null;
   salesCost: number | null;
@@ -418,23 +420,23 @@ function ProductGroup({
   onSaveField: (id: string, field: string, value: number | null) => void;
   onSaveStep: (id: string, step: "口金" | "貼り" | "縫製" | "その他", value: number | null) => void;
 }) {
-  // 2クリック方式の並び替え：⠿で「掴む」→ 移動先の行の「ここへ」で確定。
-  // ドラッグは環境差で不安定なため、確実に動くクリック操作にしている。
-  const [movingId, setMovingId] = useState<string | null>(null);
-  const movingItem = items.find((it) => it.id === movingId) || null;
+  // 並び替え：⠿グリップをドラッグ＆ドロップ、または↑↓ボタンで1段ずつ。
+  // HTML5標準のドラッグを使う（グリップだけを draggable にして入力セルと競合させない）。
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const draggingItem = items.find((it) => it.id === dragId) || null;
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <Badge className={color}>{title}</Badge>
         <span className="text-sm text-gray-500">{items.length}件</span>
-        {movingItem ? (
+        {draggingItem ? (
           <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
-            「{movingItem.name}」を移動中 — 移動先の行の「ここへ」を押す
-            <button onClick={() => setMovingId(null)} className="ml-2 text-gray-500 hover:text-red-600 underline">キャンセル</button>
+            「{draggingItem.name}」をドラッグ中 — 移動先の行に落としてください
           </span>
         ) : (
-          <span className="text-[11px] text-gray-400 hidden md:inline">（⠿で掴む→移動先の「ここへ」で並び替え、または↑↓）</span>
+          <span className="text-[11px] text-gray-400 hidden md:inline">（⠿をドラッグして並び替え、または↑↓）</span>
         )}
       </div>
       <div className="bg-white shadow-sm border rounded-lg overflow-x-auto">
@@ -444,8 +446,8 @@ function ProductGroup({
               <th className="w-14 px-1 pt-2"></th>
               <th className="text-left px-2 pt-2 font-medium w-20" rowSpan={2}>コード</th>
               <th className="text-left px-2 pt-2 font-medium min-w-[140px]" rowSpan={2}>商品名</th>
-              <th className="text-right px-2 pt-2 font-medium w-20" rowSpan={2}>卸価格</th>
-              <th className="text-right px-2 pt-2 font-medium w-20 bg-emerald-50/60" rowSpan={2}>仕入単価</th>
+              <th className="text-right px-2 pt-2 font-medium w-24" rowSpan={2}>参考価格<span className="block text-[10px] font-normal text-gray-400">上代</span></th>
+              <th className="text-right px-2 pt-2 font-medium w-20 bg-emerald-50/60" rowSpan={2}>原価<span className="block text-[10px] font-normal text-gray-400">合計</span></th>
               <th className="text-center px-1 py-1 font-medium bg-blue-50/60 border-l" colSpan={4}>制作費</th>
               <th className="text-right px-2 pt-2 font-medium w-14" rowSpan={2}>内職</th>
               <th className="text-center px-1 py-1 font-medium bg-slate-50 border-l" colSpan={3}>販管費</th>
@@ -467,47 +469,55 @@ function ProductGroup({
             {items.map((p, idx) => (
               <tr
                 key={p.id}
-                className={`hover:bg-gray-50 ${!p.active ? "opacity-50" : ""} ${movingId === p.id ? "bg-blue-50 outline outline-2 outline-blue-400" : ""}`}
+                onDragOver={(e) => {
+                  if (dragId && dragId !== p.id) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (overId !== p.id) setOverId(p.id);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragId && dragId !== p.id) onMove(dragId, p.id);
+                  setDragId(null);
+                  setOverId(null);
+                }}
+                className={`hover:bg-gray-50 ${!p.active ? "opacity-50" : ""} ${dragId === p.id ? "opacity-40" : ""} ${overId === p.id && dragId ? "bg-blue-50 outline outline-2 outline-blue-400" : ""}`}
               >
                 <td className="px-1 py-1">
-                  {movingId && movingId !== p.id ? (
-                    // 移動先候補：ここへ移動
-                    <button
-                      onClick={() => { onMove(movingId, p.id); setMovingId(null); }}
-                      className="text-[10px] text-white bg-blue-500 hover:bg-blue-600 rounded px-1.5 py-1 whitespace-nowrap"
-                      title="ここへ移動"
+                  <div className="flex items-center justify-center gap-0.5">
+                    <div
+                      draggable
+                      onDragStart={(e) => {
+                        setDragId(p.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        try { e.dataTransfer.setData("text/plain", p.id); } catch { /* noop */ }
+                      }}
+                      onDragEnd={() => { setDragId(null); setOverId(null); }}
+                      className="cursor-grab active:cursor-grabbing rounded p-0.5 text-gray-300 hover:text-gray-700 hover:bg-gray-100"
+                      title="ドラッグして並び替え"
                     >
-                      ここへ
-                    </button>
-                  ) : (
-                    <div className="flex items-center justify-center gap-0.5">
-                      <button
-                        onClick={() => setMovingId(movingId === p.id ? null : p.id)}
-                        className={`rounded p-0.5 ${movingId === p.id ? "text-blue-600 bg-blue-100" : "text-gray-300 hover:text-gray-700 hover:bg-gray-100"}`}
-                        title={movingId === p.id ? "移動をキャンセル" : "掴んで移動（クリック→移動先を選ぶ）"}
-                      >
-                        <GripVertical className="size-4" />
-                      </button>
-                      <div className="flex flex-col">
-                        <button
-                          onClick={() => onReorder(p.id, "up")}
-                          disabled={idx === 0}
-                          className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                          title="上へ"
-                        >
-                          <ChevronUp className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={() => onReorder(p.id, "down")}
-                          disabled={idx === items.length - 1}
-                          className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                          title="下へ"
-                        >
-                          <ChevronDown className="size-3.5" />
-                        </button>
-                      </div>
+                      <GripVertical className="size-4" />
                     </div>
-                  )}
+                    <div className="flex flex-col">
+                      <button
+                        onClick={() => onReorder(p.id, "up")}
+                        disabled={idx === 0}
+                        className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="上へ"
+                      >
+                        <ChevronUp className="size-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onReorder(p.id, "down")}
+                        disabled={idx === items.length - 1}
+                        className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="下へ"
+                      >
+                        <ChevronDown className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </td>
                 <td className="px-2 py-1.5 font-mono text-xs text-gray-500">{p.code}</td>
                 <td className="px-2 py-1.5">
@@ -517,8 +527,10 @@ function ProductGroup({
                   {p.size && <span className="text-[10px] text-gray-400 ml-1">{p.size}</span>}
                   {!p.active && <Badge variant="outline" className="ml-2 text-[10px]">取扱終了</Badge>}
                 </td>
-                <EditCell value={p.wholesalePrice} onSave={(v) => onSaveField(p.id, "wholesalePrice", v)} className="font-medium" />
-                <EditCell value={p.purchaseCost} onSave={(v) => onSaveField(p.id, "purchaseCost", v)} className="bg-emerald-50/40" />
+                <EditCell value={p.retailPrice} onSave={(v) => onSaveField(p.id, "retailPrice", v)} className="font-medium" />
+                <td className="px-2 py-1.5 text-right font-medium tabular-nums bg-emerald-50/40">
+                  {p.cost != null && p.cost > 0 ? p.cost.toLocaleString() : "-"}
+                </td>
                 <EditCell value={p.production.口金 || null} onSave={(v) => onSaveStep(p.id, "口金", v)} className="bg-blue-50/20 border-l" />
                 <EditCell value={p.production.貼り || null} onSave={(v) => onSaveStep(p.id, "貼り", v)} className="bg-blue-50/20" />
                 <EditCell value={p.production.縫製 || null} onSave={(v) => onSaveStep(p.id, "縫製", v)} className="bg-blue-50/20" />

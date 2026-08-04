@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
-import { effectiveStepCost } from "@/lib/product-cost";
+import { effectiveStepCost, calcCostBreakdown } from "@/lib/product-cost";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +22,26 @@ export async function GET(request: NextRequest) {
   const products = await prisma.product.findMany({
     where,
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-    include: { inventory: true, costSteps: true },
+    include: {
+      inventory: true,
+      costSteps: true,
+      materials: { include: { material: { select: { fabricWidth: true, unitPrice: true } } } },
+    },
   });
+
+  // 合計原価の計算に使うカテゴリ階層（leaf → top 名）
+  const cats = await prisma.materialCategory.findMany();
+  const catById = new Map(cats.map((c) => [c.id, c]));
+  function getTopName(leafName: string): string {
+    let cur = cats.find((c) => c.name === leafName);
+    while (cur && cur.parentId) {
+      const parent = catById.get(cur.parentId);
+      if (!parent) break;
+      cur = parent;
+    }
+    return cur?.name ?? leafName;
+  }
+
   // 一覧比較用に制作費を固定4工程（口金/貼り/縫製/その他）に振り分けて付与
   const FIXED = ["口金", "貼り", "縫製"];
   const withCost = products.map((p) => {
@@ -35,10 +53,39 @@ export async function GET(request: NextRequest) {
       production[key] += c;
     }
     const productionCost = Math.round(production.口金 + production.貼り + production.縫製 + production.その他);
-    const { costSteps: _omit, ...rest } = p;
+
+    // 合計原価（原価比較ページと同じ計算）
+    const breakdown = calcCostBreakdown({
+      salesCost: p.salesCost,
+      packagingCost: p.packagingCost,
+      shippingCost: p.shippingCost,
+      outboundCost: p.outboundCost,
+      mgmtCost: p.mgmtCost,
+      purchaseCost: p.purchaseCost,
+      isPurchase: p.series === "purchase",
+      cutHeight: p.cutHeight,
+      cutWidth: p.cutWidth,
+      usedMeters: p.usedMeters,
+      costSteps: p.costSteps.map((s) => ({
+        id: s.id, step: s.step, unitCost: s.unitCost, quantity: s.quantity,
+        category: s.category, subType: s.subType,
+      })),
+      materials: p.materials.map((m) => ({
+        id: m.id, name: m.name, category: m.category,
+        unitPrice: m.material?.unitPrice ?? m.unitPrice,
+        unitType: m.unitType, yieldCount: m.yieldCount,
+        usedMeters: m.usedMeters, usageCount: m.usageCount,
+        fabricWidth: m.material?.fabricWidth ?? null,
+        topCategory: getTopName(m.category),
+      })),
+    });
+    const cost = Math.round(breakdown.total);
+
+    const { costSteps: _omit, materials: _omit2, ...rest } = p;
     return {
       ...rest,
       productionCost,
+      cost,
       production: {
         口金: Math.round(production.口金),
         貼り: Math.round(production.貼り),
