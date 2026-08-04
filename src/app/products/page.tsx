@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
-import { Search, Pencil, Plus, Package, Copy, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, Pencil, Plus, Package, Copy, Trash2, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
 import { CsvImportDialog } from "@/components/csv-import-dialog";
 
 interface Product {
@@ -409,20 +409,57 @@ function ProductGroup({
   onSaveField: (id: string, field: string, value: number | null) => void;
   onSaveStep: (id: string, step: "口金" | "貼り" | "縫製" | "その他", value: number | null) => void;
 }) {
-  const [dragId, setDragId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+
+  // ⠿グリップを掴んだ瞬間に window リスナーを張る（useEffect経由だとpointerupを取り逃すため）。
+  // HTML5 DnD は入力欄だらけの行と相性が悪いのでポインタ座標方式にしている。
+  function startDrag(e: React.PointerEvent | React.MouseEvent, id: string) {
+    e.preventDefault();
+    setDraggingId(id);
+    setOverId(null);
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+
+    const pidAt = (x: number, y: number): string | null => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null;
+      const tr = el?.closest("tr[data-pid]") as HTMLElement | null;
+      const pid = tr?.dataset.pid ?? null;
+      return pid && pid !== id && items.some((it) => it.id === pid) ? pid : null;
+    };
+    const onMoveEvt = (ev: PointerEvent | MouseEvent) => setOverId(pidAt(ev.clientX, ev.clientY));
+    let finished = false;
+    const onUpEvt = (ev: PointerEvent | MouseEvent) => {
+      if (finished) return;
+      finished = true;
+      const target = pidAt(ev.clientX, ev.clientY);
+      if (target) onMove(id, target);
+      setOverId(null);
+      setDraggingId(null);
+      document.body.style.userSelect = prevUserSelect;
+      window.removeEventListener("pointermove", onMoveEvt);
+      window.removeEventListener("mousemove", onMoveEvt);
+      window.removeEventListener("pointerup", onUpEvt);
+      window.removeEventListener("mouseup", onUpEvt);
+    };
+    window.addEventListener("pointermove", onMoveEvt);
+    window.addEventListener("mousemove", onMoveEvt);
+    window.addEventListener("pointerup", onUpEvt);
+    window.addEventListener("mouseup", onUpEvt);
+  }
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
         <Badge className={color}>{title}</Badge>
         <span className="text-sm text-gray-500">{items.length}件</span>
-        <span className="text-[11px] text-gray-400 hidden md:inline">（行をドラッグ、または↑↓で並び替え）</span>
+        <span className="text-[11px] text-gray-400 hidden md:inline">（⠿を掴んでドラッグ、または↑↓で並び替え）</span>
       </div>
       <div className="bg-white shadow-sm border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-gray-500">
             <tr className="border-b">
-              <th className="w-10 px-1 pt-2"></th>
+              <th className="w-14 px-1 pt-2"></th>
               <th className="text-left px-2 pt-2 font-medium w-20" rowSpan={2}>コード</th>
               <th className="text-left px-2 pt-2 font-medium min-w-[140px]" rowSpan={2}>商品名</th>
               <th className="text-right px-2 pt-2 font-medium w-20" rowSpan={2}>卸価格</th>
@@ -448,37 +485,36 @@ function ProductGroup({
             {items.map((p, idx) => (
               <tr
                 key={p.id}
-                draggable
-                onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = "move"; }}
-                onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== p.id) setOverId(p.id); }}
-                onDragLeave={() => setOverId((cur) => (cur === p.id ? null : cur))}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragId && dragId !== p.id) onMove(dragId, p.id);
-                  setDragId(null);
-                  setOverId(null);
-                }}
-                onDragEnd={() => { setDragId(null); setOverId(null); }}
-                className={`hover:bg-gray-50 cursor-grab active:cursor-grabbing ${!p.active ? "opacity-50" : ""} ${overId === p.id ? "bg-blue-50" : ""} ${dragId === p.id ? "opacity-40" : ""}`}
+                data-pid={p.id}
+                className={`hover:bg-gray-50 ${!p.active ? "opacity-50" : ""} ${overId === p.id ? "bg-blue-100 outline outline-2 outline-blue-400" : ""} ${draggingId === p.id ? "opacity-40" : ""}`}
               >
                 <td className="px-1 py-1">
-                  <div className="flex flex-col items-center">
+                  <div className="flex items-center justify-center gap-0.5">
                     <button
-                      onClick={() => onReorder(p.id, "up")}
-                      disabled={idx === 0}
-                      className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                      title="上へ"
+                      onPointerDown={(e) => startDrag(e, p.id)}
+                      className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-600 touch-none"
+                      title="ドラッグで並び替え"
                     >
-                      <ChevronUp className="size-3.5" />
+                      <GripVertical className="size-4" />
                     </button>
-                    <button
-                      onClick={() => onReorder(p.id, "down")}
-                      disabled={idx === items.length - 1}
-                      className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                      title="下へ"
-                    >
-                      <ChevronDown className="size-3.5" />
-                    </button>
+                    <div className="flex flex-col">
+                      <button
+                        onClick={() => onReorder(p.id, "up")}
+                        disabled={idx === 0}
+                        className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="上へ"
+                      >
+                        <ChevronUp className="size-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onReorder(p.id, "down")}
+                        disabled={idx === items.length - 1}
+                        className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="下へ"
+                      >
+                        <ChevronDown className="size-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </td>
                 <td className="px-2 py-1.5 font-mono text-xs text-gray-500">{p.code}</td>
