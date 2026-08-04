@@ -1,5 +1,5 @@
 // バージョンを上げると activate 時に旧キャッシュを一掃する
-const CACHE_NAME = "crm-v2";
+const CACHE_NAME = "crm-v3";
 const OFFLINE_URL = "/offline";
 
 // オフライン時のフォールバック用に最小限だけ precache
@@ -14,12 +14,27 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-      )
-      .then(() => self.clients.claim())
+    (async () => {
+      // 旧キャッシュを一掃
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)));
+      await self.clients.claim();
+
+      // 新しい SW が有効化されたら、開いているタブを最新へ自動リロードする。
+      // これにより「自動更新が入る前の古いバンドルに固まった端末」も、
+      // 次回アクセス時に手動リロードなしで最新化される（無限ループはしない：
+      // sw.js を書き換えたときだけ activate が走り、リロード後は最新 SW 配下で再 activate しないため）。
+      const clients = await self.clients.matchAll({ type: "window" });
+      for (const client of clients) {
+        if ("navigate" in client) {
+          try {
+            await client.navigate(client.url);
+          } catch (_) {
+            /* 別オリジン等で navigate 不可なら無視 */
+          }
+        }
+      }
+    })()
   );
 });
 
