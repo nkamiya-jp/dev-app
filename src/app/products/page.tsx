@@ -409,51 +409,24 @@ function ProductGroup({
   onSaveField: (id: string, field: string, value: number | null) => void;
   onSaveStep: (id: string, step: "口金" | "貼り" | "縫製" | "その他", value: number | null) => void;
 }) {
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
-
-  // ⠿グリップを掴んだ瞬間に window リスナーを張る（useEffect経由だとpointerupを取り逃すため）。
-  // HTML5 DnD は入力欄だらけの行と相性が悪いのでポインタ座標方式にしている。
-  function startDrag(e: React.PointerEvent | React.MouseEvent, id: string) {
-    e.preventDefault();
-    setDraggingId(id);
-    setOverId(null);
-    const prevUserSelect = document.body.style.userSelect;
-    document.body.style.userSelect = "none";
-
-    const pidAt = (x: number, y: number): string | null => {
-      const el = document.elementFromPoint(x, y) as HTMLElement | null;
-      const tr = el?.closest("tr[data-pid]") as HTMLElement | null;
-      const pid = tr?.dataset.pid ?? null;
-      return pid && pid !== id && items.some((it) => it.id === pid) ? pid : null;
-    };
-    const onMoveEvt = (ev: PointerEvent | MouseEvent) => setOverId(pidAt(ev.clientX, ev.clientY));
-    let finished = false;
-    const onUpEvt = (ev: PointerEvent | MouseEvent) => {
-      if (finished) return;
-      finished = true;
-      const target = pidAt(ev.clientX, ev.clientY);
-      if (target) onMove(id, target);
-      setOverId(null);
-      setDraggingId(null);
-      document.body.style.userSelect = prevUserSelect;
-      window.removeEventListener("pointermove", onMoveEvt);
-      window.removeEventListener("mousemove", onMoveEvt);
-      window.removeEventListener("pointerup", onUpEvt);
-      window.removeEventListener("mouseup", onUpEvt);
-    };
-    window.addEventListener("pointermove", onMoveEvt);
-    window.addEventListener("mousemove", onMoveEvt);
-    window.addEventListener("pointerup", onUpEvt);
-    window.addEventListener("mouseup", onUpEvt);
-  }
+  // 2クリック方式の並び替え：⠿で「掴む」→ 移動先の行の「ここへ」で確定。
+  // ドラッグは環境差で不安定なため、確実に動くクリック操作にしている。
+  const [movingId, setMovingId] = useState<string | null>(null);
+  const movingItem = items.find((it) => it.id === movingId) || null;
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
         <Badge className={color}>{title}</Badge>
         <span className="text-sm text-gray-500">{items.length}件</span>
-        <span className="text-[11px] text-gray-400 hidden md:inline">（⠿を掴んでドラッグ、または↑↓で並び替え）</span>
+        {movingItem ? (
+          <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+            「{movingItem.name}」を移動中 — 移動先の行の「ここへ」を押す
+            <button onClick={() => setMovingId(null)} className="ml-2 text-gray-500 hover:text-red-600 underline">キャンセル</button>
+          </span>
+        ) : (
+          <span className="text-[11px] text-gray-400 hidden md:inline">（⠿で掴む→移動先の「ここへ」で並び替え、または↑↓）</span>
+        )}
       </div>
       <div className="bg-white shadow-sm border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
@@ -485,37 +458,47 @@ function ProductGroup({
             {items.map((p, idx) => (
               <tr
                 key={p.id}
-                data-pid={p.id}
-                className={`hover:bg-gray-50 ${!p.active ? "opacity-50" : ""} ${overId === p.id ? "bg-blue-100 outline outline-2 outline-blue-400" : ""} ${draggingId === p.id ? "opacity-40" : ""}`}
+                className={`hover:bg-gray-50 ${!p.active ? "opacity-50" : ""} ${movingId === p.id ? "bg-blue-50 outline outline-2 outline-blue-400" : ""}`}
               >
                 <td className="px-1 py-1">
-                  <div className="flex items-center justify-center gap-0.5">
+                  {movingId && movingId !== p.id ? (
+                    // 移動先候補：ここへ移動
                     <button
-                      onPointerDown={(e) => startDrag(e, p.id)}
-                      className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-600 touch-none"
-                      title="ドラッグで並び替え"
+                      onClick={() => { onMove(movingId, p.id); setMovingId(null); }}
+                      className="text-[10px] text-white bg-blue-500 hover:bg-blue-600 rounded px-1.5 py-1 whitespace-nowrap"
+                      title="ここへ移動"
                     >
-                      <GripVertical className="size-4" />
+                      ここへ
                     </button>
-                    <div className="flex flex-col">
+                  ) : (
+                    <div className="flex items-center justify-center gap-0.5">
                       <button
-                        onClick={() => onReorder(p.id, "up")}
-                        disabled={idx === 0}
-                        className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                        title="上へ"
+                        onClick={() => setMovingId(movingId === p.id ? null : p.id)}
+                        className={`rounded p-0.5 ${movingId === p.id ? "text-blue-600 bg-blue-100" : "text-gray-300 hover:text-gray-700 hover:bg-gray-100"}`}
+                        title={movingId === p.id ? "移動をキャンセル" : "掴んで移動（クリック→移動先を選ぶ）"}
                       >
-                        <ChevronUp className="size-3.5" />
+                        <GripVertical className="size-4" />
                       </button>
-                      <button
-                        onClick={() => onReorder(p.id, "down")}
-                        disabled={idx === items.length - 1}
-                        className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                        title="下へ"
-                      >
-                        <ChevronDown className="size-3.5" />
-                      </button>
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => onReorder(p.id, "up")}
+                          disabled={idx === 0}
+                          className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="上へ"
+                        >
+                          <ChevronUp className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onReorder(p.id, "down")}
+                          disabled={idx === items.length - 1}
+                          className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="下へ"
+                        >
+                          <ChevronDown className="size-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </td>
                 <td className="px-2 py-1.5 font-mono text-xs text-gray-500">{p.code}</td>
                 <td className="px-2 py-1.5">
