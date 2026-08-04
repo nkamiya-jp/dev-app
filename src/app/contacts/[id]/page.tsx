@@ -53,8 +53,14 @@ export default async function ContactDetailPage({
       <div className="grid grid-cols-3 gap-6">
         <Card className="col-span-1">
           <CardHeader>
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <CardTitle>{contact.name}</CardTitle>
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div>
+                {/* 社名を主に、担当者を副に */}
+                <CardTitle>{contact.company || contact.name}</CardTitle>
+                {contact.company && contact.name && (
+                  <p className="text-sm text-gray-500 mt-1">担当: {contact.name}</p>
+                )}
+              </div>
               {contact.type && (
                 <Badge className={getContactTypeColor(contact.type)}>
                   {getContactTypeLabel(contact.type)}
@@ -67,12 +73,6 @@ export default async function ContactDetailPage({
               <div>
                 <span className="text-gray-500">掛率:</span>{" "}
                 <span className="font-medium">{contact.discountRate}%</span>
-              </div>
-            )}
-            {contact.company && (
-              <div>
-                <span className="text-gray-500">会社:</span>{" "}
-                {contact.company}
               </div>
             )}
             {contact.department && (

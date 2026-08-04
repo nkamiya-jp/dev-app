@@ -87,8 +87,8 @@ export default function ContactsPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>名前</TableHead>
-            <TableHead>会社</TableHead>
+            <TableHead>社名</TableHead>
+            <TableHead>担当者</TableHead>
             <TableHead>タイプ</TableHead>
             <TableHead className="text-right">掛率</TableHead>
             <TableHead>部署 / 役職</TableHead>
@@ -114,10 +114,10 @@ export default function ContactsPage() {
                     href={`/contacts/${c.id}`}
                     className="text-blue-600 hover:underline font-medium"
                   >
-                    {c.name}
+                    {c.company || c.name || "-"}
                   </Link>
                 </TableCell>
-                <TableCell>{c.company || "-"}</TableCell>
+                <TableCell>{c.company ? (c.name || "-") : "-"}</TableCell>
                 <TableCell>
                   {c.type ? (
                     <Badge className={getContactTypeColor(c.type)}>
