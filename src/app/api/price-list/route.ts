@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { calcCostBreakdown } from "@/lib/product-cost";
 import { getAllMatrixRows } from "@/lib/contact-meta";
+import { compareProductOrder } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +113,9 @@ export async function GET() {
       prices,
     };
   });
+
+  // 商品マスタと同じ並び（シリーズ順→シリーズ内sortOrder）に統一
+  items.sort(compareProductOrder);
 
   return Response.json({
     matrixRows, // ヘッダ用

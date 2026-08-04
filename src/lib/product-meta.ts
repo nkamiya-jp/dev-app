@@ -20,6 +20,26 @@ export function normalizeSeries(raw?: string | null): string | null {
   return v; // 未知の値はそのまま（既存挙動を壊さない）
 }
 
+// ── 商品の「マスタ順」を全画面共通の基準にするための並び替えヘルパ ──
+// マスタ（商品一覧）の並び = シリーズ順(PRODUCT_SERIES の定義順) → シリーズ内 sortOrder → コード。
+// 価格表・原価比較・顧客取扱商品などはこの比較関数で並べ、商品マスタと一致させる。
+export function seriesRank(seriesId?: string | null): number {
+  if (!seriesId) return PRODUCT_SERIES.length; // 未分類は最後
+  const i = PRODUCT_SERIES.findIndex((s) => s.id === seriesId);
+  return i === -1 ? PRODUCT_SERIES.length : i;
+}
+
+export function compareProductOrder(
+  a: { series?: string | null; sortOrder?: number | null; code?: string | null },
+  b: { series?: string | null; sortOrder?: number | null; code?: string | null }
+): number {
+  const sr = seriesRank(a.series) - seriesRank(b.series);
+  if (sr !== 0) return sr;
+  const so = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  if (so !== 0) return so;
+  return (a.code ?? "").localeCompare(b.code ?? "");
+}
+
 export function getSeriesLabel(id?: string | null) {
   if (!id) return "";
   return PRODUCT_SERIES.find((s) => s.id === id)?.label ?? id;

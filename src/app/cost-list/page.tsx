@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, Printer, ChevronDown, ChevronRight, ArrowUpDown } from "lucide-react";
+import { compareProductOrder } from "@/lib/product-meta";
 
 interface Breakdown {
   productionCost: number;
@@ -45,15 +46,15 @@ const COLS = [
   { key: "laborCost", label: "販管費", hint: "営業/出荷/管理", cls: "text-gray-600" },
 ] as const;
 
-type SortKey = (typeof COLS)[number]["key"] | "name" | "cost" | "retailPrice" | "costRatioVsRetail";
+type SortKey = (typeof COLS)[number]["key"] | "master" | "name" | "cost" | "retailPrice" | "costRatioVsRetail";
 
 export default function CostListPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [seriesFilter, setSeriesFilter] = useState("");
-  // 制作費の見直しが目的なので、初期は制作費の高い順
-  const [sortKey, setSortKey] = useState<SortKey>("productionCost");
-  const [sortDesc, setSortDesc] = useState(true);
+  // 既定は商品マスタと同じ並び（マスタ順）。列クリックで制作費順などに切替。
+  const [sortKey, setSortKey] = useState<SortKey>("master");
+  const [sortDesc, setSortDesc] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
@@ -72,7 +73,8 @@ export default function CostListPage() {
       setSortDesc((d) => !d);
     } else {
       setSortKey(key);
-      setSortDesc(true);
+      // マスタ順・商品名は昇順、コスト系は高い順を初期に
+      setSortDesc(key !== "master" && key !== "name");
     }
   }
 
@@ -92,6 +94,7 @@ export default function CostListPage() {
   const filtered = seriesFilter ? items.filter((i) => i.series === seriesFilter) : items;
 
   function valueOf(it: Item, key: SortKey): number | string {
+    if (key === "master") return 0; // マスタ順は compareProductOrder で別処理
     if (key === "name") return it.name;
     if (key === "cost") return it.cost;
     if (key === "retailPrice") return it.retailPrice;
@@ -100,6 +103,10 @@ export default function CostListPage() {
   }
 
   const sorted = [...filtered].sort((a, b) => {
+    if (sortKey === "master") {
+      const r = compareProductOrder(a, b);
+      return sortDesc ? -r : r;
+    }
     const va = valueOf(a, sortKey);
     const vb = valueOf(b, sortKey);
     if (typeof va === "string" || typeof vb === "string") {
@@ -204,7 +211,7 @@ export default function CostListPage() {
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="w-6 print:hidden"></th>
-                <SortHead k="name" align="left">商品</SortHead>
+                <SortHead k="master" align="left">商品<span className="text-[9px] text-gray-400 font-normal ml-1">マスタ順</span></SortHead>
                 {COLS.map((c) => (
                   <SortHead key={c.key} k={c.key}>
                     <span className="flex flex-col items-end">

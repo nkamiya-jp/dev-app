@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X, Package } from "lucide-react";
+import { compareProductOrder } from "@/lib/product-meta";
 
 interface Product {
   id: string;
   code: string;
   name: string;
+  series: string | null;
   retailPrice: number | null;
   sortOrder: number;
   active: boolean;
@@ -78,7 +80,8 @@ export function CustomerProductsCard({
     await fetch(`/api/customer-prices?contactId=${contactId}&productId=${productId}`, { method: "DELETE" });
   }
 
-  const ordered = [...products].sort((a, b) => a.sortOrder - b.sortOrder);
+  // 商品マスタと同じ並び（シリーズ順→シリーズ内sortOrder）に統一
+  const ordered = [...products].sort(compareProductOrder);
   const handled = ordered.filter((p) => p.id in entries);
   const addable = ordered.filter((p) => !(p.id in entries));
 
