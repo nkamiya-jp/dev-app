@@ -12,21 +12,28 @@ export async function POST(request: NextRequest) {
   if (!productId || !step) {
     return Response.json({ error: "productId and step required" }, { status: 400 });
   }
-  const existing = await prisma.productCostStep.findFirst({
+  // 同名工程は本来1件だが、旧データで重複しているとその分だけ制作費が
+  // 二重計上され「制作費が倍」になる。ここで重複を畳んで自己修復する。
+  const matches = await prisma.productCostStep.findMany({
     where: { productId, step, category: "制作費" },
+    orderBy: { id: "asc" },
   });
+  const [keep, ...extras] = matches;
+  if (extras.length > 0) {
+    await prisma.productCostStep.deleteMany({ where: { id: { in: extras.map((e) => e.id) } } });
+  }
   const v = value === null || value === "" || value === undefined ? 0 : Math.round(Number(value));
 
   if (!v) {
-    if (existing) await prisma.productCostStep.delete({ where: { id: existing.id } });
-    return Response.json({ ok: true, value: 0 });
+    if (keep) await prisma.productCostStep.delete({ where: { id: keep.id } });
+    return Response.json({ ok: true, value: 0, removedDupes: extras.length });
   }
-  if (existing) {
-    await prisma.productCostStep.update({ where: { id: existing.id }, data: { unitCost: v } });
+  if (keep) {
+    await prisma.productCostStep.update({ where: { id: keep.id }, data: { unitCost: v } });
   } else {
     await prisma.productCostStep.create({
       data: { productId, step, unitCost: v, quantity: 1, category: "制作費" },
     });
   }
-  return Response.json({ ok: true, value: v });
+  return Response.json({ ok: true, value: v, removedDupes: extras.length });
 }
