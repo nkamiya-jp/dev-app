@@ -22,11 +22,14 @@ export async function POST(request: NextRequest) {
     orderBy: withinSeries
       ? [{ sortOrder: "asc" }, { code: "asc" }]
       : [{ sortOrder: "asc" }, { series: "asc" }, { code: "asc" }],
-    select: { id: true },
+    select: { id: true, sortOrder: true },
   });
 
   const idx = all.findIndex((p) => p.id === id);
   if (idx === -1) return Response.json({ error: "not in list" }, { status: 404 });
+
+  // 現在の sortOrder を覚えておき、後で「変わった行だけ」更新する
+  const oldOrder = new Map(all.map((p) => [p.id, p.sortOrder]));
 
   // 移動後の並び（id配列）を組み立てる
   const ids = all.map((p) => p.id);
@@ -50,12 +53,20 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "invalid params" }, { status: 400 });
   }
 
-  // 並び順どおりに 100刻みで sortOrder を振り直す
-  await prisma.$transaction(
-    ids.map((pid, i) =>
-      prisma.product.update({ where: { id: pid }, data: { sortOrder: (i + 1) * 100 } })
-    )
-  );
+  // 並び順どおりに 100刻みで sortOrder を振り直す。
+  // ただし本番(Turso)では大量更新を1トランザクションに詰めると失敗するため、
+  // 実際に値が変わる行だけを更新してトランザクションを最小化する。
+  const updates = ids
+    .map((pid, i) => ({ pid, next: (i + 1) * 100 }))
+    .filter(({ pid, next }) => oldOrder.get(pid) !== next);
 
-  return Response.json({ ok: true });
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map(({ pid, next }) =>
+        prisma.product.update({ where: { id: pid }, data: { sortOrder: next } })
+      )
+    );
+  }
+
+  return Response.json({ ok: true, updated: updates.length });
 }

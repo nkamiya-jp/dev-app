@@ -130,21 +130,30 @@ export default function ProductsPage() {
   }
 
   async function reorderProduct(id: string, direction: "up" | "down") {
-    await fetch("/api/products/reorder", {
+    // 並び替えはシリーズグループ内で行う（一覧はシリーズ別に表示しているため）
+    const res = await fetch("/api/products/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, direction, withinSeries: false }),
+      body: JSON.stringify({ id, direction, withinSeries: true }),
     });
+    if (!res.ok) {
+      alert("並び替えに失敗しました。時間をおいて再度お試しください。");
+      return;
+    }
     load();
   }
 
   async function moveProduct(id: string, targetId: string) {
     if (id === targetId) return;
-    await fetch("/api/products/reorder", {
+    const res = await fetch("/api/products/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, targetId, withinSeries: false }),
+      body: JSON.stringify({ id, targetId, withinSeries: true }),
     });
+    if (!res.ok) {
+      alert("並び替えに失敗しました。時間をおいて再度お試しください。");
+      return;
+    }
     load();
   }
 
