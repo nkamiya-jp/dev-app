@@ -247,19 +247,21 @@ export function ProductDetail({ productId }: { productId: string }) {
     load();
   }
 
-  async function addMaterialFromMaster(
-    master: MasterMaterial,
-    params: { yieldCount?: number; usedMeters?: number; usageCount?: number }
+  async function addMaterialsFromMaster(
+    picks: { master: MasterMaterial; params: { yieldCount?: number; usedMeters?: number; usageCount?: number } }[]
   ) {
-    await fetch("/api/products/materials", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        productId,
-        materialId: master.id,
-        ...params,
-      }),
-    });
+    // 複数選択をまとめて追加（順次POST）
+    for (const { master, params } of picks) {
+      await fetch("/api/products/materials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId,
+          materialId: master.id,
+          ...params,
+        }),
+      });
+    }
     setPickerCategory(null);
     load();
   }
@@ -725,7 +727,7 @@ export function ProductDetail({ productId }: { productId: string }) {
       <MaterialPickerDialog
         category={pickerCategory}
         onClose={() => setPickerCategory(null)}
-        onPick={addMaterialFromMaster}
+        onPickMany={addMaterialsFromMaster}
         existingMaterialIds={product.materials.map((m) => m.materialId).filter((x): x is string => !!x)}
         productCut={{ cutHeight: product.cutHeight, cutWidth: product.cutWidth, usedMeters: product.usedMeters }}
       />
@@ -737,13 +739,13 @@ export function ProductDetail({ productId }: { productId: string }) {
 function MaterialPickerDialog({
   category,
   onClose,
-  onPick,
+  onPickMany,
   existingMaterialIds,
   productCut,
 }: {
   category: "生地費" | "資材費" | "梱包資材費" | null;
   onClose: () => void;
-  onPick: (m: MasterMaterial, params: { yieldCount?: number; usedMeters?: number; usageCount?: number }) => void;
+  onPickMany: (picks: { master: MasterMaterial; params: { yieldCount?: number; usedMeters?: number; usageCount?: number } }[]) => void;
   existingMaterialIds: string[];
   productCut: { cutHeight: number | null; cutWidth: number | null; usedMeters: number | null };
 }) {
@@ -751,6 +753,9 @@ function MaterialPickerDialog({
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [usages, setUsages] = useState<Record<string, string>>({});
+  // 複数選択：チェックした資材/生地のID
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (!category) return;
@@ -795,12 +800,31 @@ function MaterialPickerDialog({
   useEffect(() => {
     if (!category) {
       setUsages({});
+      setSelected({});
     }
   }, [category]);
 
   const open = !!category;
-  const hasCut = !!(productCut.cutHeight && productCut.cutWidth);
   const isFabricPicker = category === "生地費";
+
+  const selectedIds = Object.keys(selected).filter((id) => selected[id]);
+  const selectedCount = selectedIds.length;
+
+  function toggle(id: string) {
+    setSelected((p) => ({ ...p, [id]: !p[id] }));
+  }
+
+  async function addSelected() {
+    if (selectedCount === 0) return;
+    setAdding(true);
+    const picks = selectedIds.map((id) => {
+      const m = items.find((it) => it.id === id)!;
+      if (isFabricPicker) return { master: m, params: {} };
+      const usageNum = Number(usages[id] ?? "1");
+      return { master: m, params: { usageCount: usageNum > 0 ? usageNum : 1 } };
+    });
+    onPickMany(picks);
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -818,8 +842,8 @@ function MaterialPickerDialog({
           />
           <p className="text-xs text-gray-500">
             {isFabricPicker
-              ? "※ 追加後、原価画面の生地行で 使用M・取れ数・裁断サイズを商品ごとに設定します"
-              : "1個あたりの使用数を入力してから「追加」（例: ボタン2個使い → 2）"}
+              ? "※ チェックで複数選択できます。追加後、原価画面の生地行で 使用M・取れ数・裁断サイズを商品ごとに設定します"
+              : "※ チェックで複数選択できます。資材は1個あたりの使用数を入力（例: ボタン2個使い → 2）"}
           </p>
           <div className="max-h-96 overflow-y-auto border rounded-md">
             {loading ? (
@@ -835,6 +859,7 @@ function MaterialPickerDialog({
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b sticky top-0">
                   <tr>
+                    <th className="px-2 py-1.5 w-8"></th>
                     <th className="text-left px-2 py-1.5 font-medium text-gray-500">名前</th>
                     <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24">単価</th>
                     {isFabricPicker ? (
@@ -845,7 +870,7 @@ function MaterialPickerDialog({
                         <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24">1個あたり</th>
                       </>
                     )}
-                    <th className="px-2 py-1.5 w-16"></th>
+                    <th className="px-2 py-1.5 w-16 text-right font-medium text-gray-500 text-xs">状態</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -855,8 +880,23 @@ function MaterialPickerDialog({
 
                     if (isFabricPicker) {
                       // 取れ数・使用M・裁断サイズは商品ごとに異なるため、追加後に原価画面の行で設定する
+                      const checked = !!selected[m.id];
                       return (
-                        <tr key={m.id} className="hover:bg-gray-50">
+                        <tr
+                          key={m.id}
+                          className={`hover:bg-gray-50 cursor-pointer ${checked ? "bg-blue-50" : ""} ${used ? "opacity-50" : ""}`}
+                          onClick={() => !used && toggle(m.id)}
+                        >
+                          <td className="px-2 py-1.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={used}
+                              onChange={() => toggle(m.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="size-4 align-middle"
+                            />
+                          </td>
                           <td className="px-2 py-1.5">
                             <div className="font-medium">{m.name}</div>
                             {m.code && <div className="font-mono text-[10px] text-gray-400">{m.code}</div>}
@@ -868,16 +908,8 @@ function MaterialPickerDialog({
                             {m.fabricWidth ? `巾${m.fabricWidth}cm` : <span className="text-gray-300">巾未設定</span>}
                             {m.fabricLength ? ` × ${m.fabricLength}尺` : ""}
                           </td>
-                          <td className="px-2 py-1.5 text-right">
-                            <Button
-                              size="sm"
-                              variant={used ? "outline" : "default"}
-                              onClick={() => !used && onPick(m, {})}
-                              disabled={used}
-                              className="h-7 px-2 text-xs"
-                            >
-                              {used ? "登録済" : "追加"}
-                            </Button>
+                          <td className="px-2 py-1.5 text-right text-[10px] text-gray-400">
+                            {used ? "登録済" : ""}
                           </td>
                         </tr>
                       );
@@ -886,11 +918,20 @@ function MaterialPickerDialog({
                     // 資材・梱包資材: 使用数
                     const usageStr = usages[m.id] ?? "1";
                     const usageNum = Number(usageStr);
-                    const valid = !used && usageNum > 0;
-                    const perPiece = valid ? m.unitPrice * usageNum : 0;
+                    const perPiece = usageNum > 0 ? m.unitPrice * usageNum : 0;
+                    const checked = !!selected[m.id];
                     return (
-                      <tr key={m.id} className="hover:bg-gray-50">
-                        <td className="px-2 py-1.5">
+                      <tr key={m.id} className={`hover:bg-gray-50 ${checked ? "bg-blue-50" : ""} ${used ? "opacity-50" : ""}`}>
+                        <td className="px-2 py-1.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={used}
+                            onChange={() => toggle(m.id)}
+                            className="size-4 align-middle"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 cursor-pointer" onClick={() => !used && toggle(m.id)}>
                           <div className="font-medium">{m.name}</div>
                           {m.code && <div className="font-mono text-[10px] text-gray-400">{m.code}</div>}
                         </td>
@@ -910,18 +951,10 @@ function MaterialPickerDialog({
                           />
                         </td>
                         <td className="px-2 py-1.5 text-right text-gray-600">
-                          {valid ? `${perPiece.toFixed(1)}円` : "-"}
+                          {usageNum > 0 ? `${perPiece.toFixed(1)}円` : "-"}
                         </td>
-                        <td className="px-2 py-1.5 text-right">
-                          <Button
-                            size="sm"
-                            variant={valid ? "default" : "outline"}
-                            onClick={() => valid && onPick(m, { usageCount: usageNum })}
-                            disabled={!valid}
-                            className="h-7 px-2 text-xs"
-                          >
-                            {used ? "登録済" : "追加"}
-                          </Button>
+                        <td className="px-2 py-1.5 text-right text-[10px] text-gray-400">
+                          {used ? "登録済" : ""}
                         </td>
                       </tr>
                     );
@@ -930,10 +963,19 @@ function MaterialPickerDialog({
               </table>
             )}
           </div>
-          <p className="text-xs text-gray-400">
-            <Link href="/materials" className="text-blue-600 hover:underline">資材マスタ</Link>
-            で新規登録・編集できます
-          </p>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <p className="text-xs text-gray-400">
+              <Link href="/materials" className="text-blue-600 hover:underline">資材マスタ</Link>
+              で新規登録・編集できます
+            </p>
+            <Button
+              onClick={addSelected}
+              disabled={selectedCount === 0 || adding}
+              className={selectedCount > 0 ? "bg-blue-600 hover:bg-blue-700" : ""}
+            >
+              {adding ? "追加中..." : selectedCount > 0 ? `選択した${selectedCount}件を追加` : "追加する項目を選択"}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
