@@ -745,7 +745,7 @@ function MaterialPickerDialog({
 }: {
   category: "生地費" | "資材費" | "梱包資材費" | null;
   onClose: () => void;
-  onPickMany: (picks: { master: MasterMaterial; params: { yieldCount?: number; usedMeters?: number; usageCount?: number } }[]) => void;
+  onPickMany: (picks: { master: MasterMaterial; params: { yieldCount?: number; usedMeters?: number; usageCount?: number } }[]) => void | Promise<void>;
   existingMaterialIds: string[];
   productCut: { cutHeight: number | null; cutWidth: number | null; usedMeters: number | null };
 }) {
@@ -796,11 +796,14 @@ function MaterialPickerDialog({
       .finally(() => setLoading(false));
   }, [category, search, productCut]);
 
-  // ダイアログを閉じたら入力値をクリア
+  // ダイアログを閉じたら入力値・選択・追加中フラグをクリア。
+  // （このコンポーネントは常時マウントされ閉じても state が残るため、
+  //   adding をリセットしないと2回目以降「追加中...」で固まる）
   useEffect(() => {
     if (!category) {
       setUsages({});
       setSelected({});
+      setAdding(false);
     }
   }, [category]);
 
@@ -815,15 +818,21 @@ function MaterialPickerDialog({
   }
 
   async function addSelected() {
-    if (selectedCount === 0) return;
+    if (selectedCount === 0 || adding) return;
     setAdding(true);
-    const picks = selectedIds.map((id) => {
-      const m = items.find((it) => it.id === id)!;
-      if (isFabricPicker) return { master: m, params: {} };
-      const usageNum = Number(usages[id] ?? "1");
-      return { master: m, params: { usageCount: usageNum > 0 ? usageNum : 1 } };
-    });
-    onPickMany(picks);
+    const picks = selectedIds
+      .map((id) => items.find((it) => it.id === id))
+      .filter((m): m is MasterMaterial => !!m)
+      .map((m) => {
+        if (isFabricPicker) return { master: m, params: {} };
+        const usageNum = Number(usages[m.id] ?? "1");
+        return { master: m, params: { usageCount: usageNum > 0 ? usageNum : 1 } };
+      });
+    try {
+      await onPickMany(picks);
+    } finally {
+      setAdding(false);
+    }
   }
 
   return (
