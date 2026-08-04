@@ -347,32 +347,18 @@ export function ProductDetail({ productId }: { productId: string }) {
               )}
 
               {/* 数値スペック（下部に小さく） */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-3 border-t text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t text-sm">
                 <div>
-                  <p className="text-[11px] text-gray-400">卸単価</p>
-                  <p className="font-medium">{product.wholesalePrice ? `${product.wholesalePrice.toLocaleString()}円` : "-"}</p>
+                  <p className="text-[11px] text-gray-400">参考価格（上代）</p>
+                  <p className="font-medium">{product.retailPrice ? `${product.retailPrice.toLocaleString()}円` : "-"}</p>
                 </div>
                 <div>
                   <p className="text-[11px] text-gray-400">在庫</p>
                   <p className="font-medium">{product.inventory?.stock ?? 0}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-gray-400">サイズ W×H×D</p>
-                  <p className="font-medium">
-                    {product.sizeW || product.sizeH || product.sizeD
-                      ? `${product.sizeW ?? "-"}×${product.sizeH ?? "-"}×${product.sizeD ?? "-"}`
-                      : "-"}
-                  </p>
-                </div>
-                <div>
                   <p className="text-[11px] text-gray-400">重さ</p>
                   <p className="font-medium">{product.weightG ? `${product.weightG.toLocaleString()}g` : "-"}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-gray-400">裁断 縦×横</p>
-                  <p className="font-medium">
-                    {product.cutHeight && product.cutWidth ? `${product.cutHeight}×${product.cutWidth}` : "-"}
-                  </p>
                 </div>
                 <div>
                   <p className="text-[11px] text-gray-400">生地 使用M</p>
