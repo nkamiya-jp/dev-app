@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Camera, Archive, Download, Printer, ChevronUp, ChevronDown, LayoutGrid, User, X } from "lucide-react";
-import { getContactTypeMeta, getContactTypeLabel, getContactTypeColor } from "@/lib/contact-meta";
+import { getContactTypeMeta, getContactTypeLabel, getContactTypeColor, getDefaultRate } from "@/lib/contact-meta";
 
 interface MatrixRow {
   typeId: string;
@@ -705,9 +705,16 @@ function CustomerPriceTable({
                 <tr>
                   <th className="px-1 py-2 w-8 print:hidden"></th>
                   <th className="text-left px-3 py-2 font-medium text-gray-500 min-w-[200px]">商品</th>
-                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24 bg-amber-50">上代</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-700 w-32 bg-green-50">卸価格</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">
+                    基本価格
+                    <span className="block text-[10px] font-normal text-gray-400">
+                      {selectedContact.type ? `${getContactTypeLabel(selectedContact.type)} 標準` : "カテゴリ標準"}
+                      {getDefaultRate(selectedContact.type) != null ? ` ${getDefaultRate(selectedContact.type)}%` : ""}
+                    </span>
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">粗利</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価率(卸)</th>
                   <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">原価率(上代)</th>
@@ -722,6 +729,9 @@ function CustomerPriceTable({
                   const wholesale = override ?? auto;
                   const profit = wholesale - it.cost;
                   const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
+                  // 顧客カテゴリー（タイプ）の標準掛率での基本価格
+                  const typeBaseRate = getDefaultRate(selectedContact.type);
+                  const basePrice = it.retailPrice > 0 && typeBaseRate != null ? Math.round(it.retailPrice * typeBaseRate / 100) : 0;
                   return (
                     <tr key={it.productId} className="hover:bg-gray-50">
                       <td className="px-1 py-1 print:hidden">
@@ -750,7 +760,6 @@ function CustomerPriceTable({
                         </Link>
                         <div className="text-[10px] font-mono text-gray-400">{it.code || "-"}</div>
                       </td>
-                      <td className="px-3 py-2 text-right text-gray-600">{it.cost.toLocaleString()}円</td>
                       <td className="px-3 py-2 text-right bg-amber-50/30">{it.retailPrice > 0 ? `${it.retailPrice.toLocaleString()}円` : "-"}</td>
                       <td className="px-3 py-2 text-right bg-green-50/40">
                         {/* 印刷時は確定値をテキスト表示 */}
@@ -788,6 +797,10 @@ function CustomerPriceTable({
                           )}
                         </div>
                       </td>
+                      <td className="px-3 py-2 text-right text-gray-600">
+                        {basePrice > 0 ? `${basePrice.toLocaleString()}円` : "-"}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-600">{it.cost.toLocaleString()}円</td>
                       <td className={`px-3 py-2 text-right font-medium ${profit >= 0 ? "text-green-600" : "text-red-500"}`}>
                         {wholesale > 0 ? `${profit >= 0 ? "+" : ""}${profit.toLocaleString()}円` : "-"}
                       </td>
