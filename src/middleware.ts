@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionToken, SESSION_COOKIE, isAuthConfigured } from "@/lib/auth";
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/_next", "/icons", "/manifest.json", "/sw.js", "/offline"];
+const PUBLIC_PATHS = ["/login", "/api/auth", "/api/version", "/_next", "/icons", "/manifest.json", "/sw.js", "/offline"];
 
 export async function middleware(request: NextRequest) {
   // Googleログインの設定(環境変数)が揃うまでは認証OFF。デプロイしてもロックアウトしない。
