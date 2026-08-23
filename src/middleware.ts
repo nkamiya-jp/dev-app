@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// 認証は一時的に無効化中（ベータ運用のため）
-// 復活させる時は AUTH_ENABLED を true に戻す
-const AUTH_ENABLED = false;
+import { verifySessionToken, SESSION_COOKIE, isAuthConfigured } from "@/lib/auth";
 
 const PUBLIC_PATHS = ["/login", "/api/auth", "/_next", "/icons", "/manifest.json", "/sw.js", "/offline"];
 
-export function middleware(request: NextRequest) {
-  if (!AUTH_ENABLED) {
+export async function middleware(request: NextRequest) {
+  // Googleログインの設定(環境変数)が揃うまでは認証OFF。デプロイしてもロックアウトしない。
+  if (!isAuthConfigured()) {
     return NextResponse.next();
   }
 
@@ -23,9 +21,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 認証チェック
-  const authCookie = request.cookies.get("dev-auth");
-  if (authCookie?.value === "authenticated") {
+  // 署名付きセッションCookieを検証
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const session = await verifySessionToken(token, process.env.AUTH_SECRET);
+  if (session) {
     return NextResponse.next();
   }
 
