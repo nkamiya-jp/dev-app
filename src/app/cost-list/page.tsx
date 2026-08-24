@@ -56,6 +56,17 @@ export default function CostListPage() {
   const [sortKey, setSortKey] = useState<SortKey>("master");
   const [sortDesc, setSortDesc] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // 比較用に選んだ商品
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
 
   const load = useCallback(async () => {
     const res = await fetch("/api/price-list");
@@ -132,6 +143,9 @@ export default function CostListPage() {
   );
   const n = filtered.length || 1;
 
+  // 比較パネル用：選択された商品を現在の並び順で
+  const compareItems = sorted.filter((it) => selected.has(it.productId));
+
   function exportCSV() {
     const header = ["コード", "商品名", "シリーズ", ...COLS.map((c) => c.label), "合計原価", "上代", "原価率(上代)"];
     const rows = sorted.map((it) => [
@@ -182,7 +196,7 @@ export default function CostListPage() {
         <div>
           <h2 className="text-2xl font-bold">原価比較</h2>
           <p className="text-xs text-gray-500 mt-1">
-            商品ごとの原価内訳を横並びで比較します。列見出しをクリックで並び替え、商品行をクリックで制作費の工程内訳を表示。
+            左のチェックで2〜3商品を選ぶと、上に横並びの比較パネルが出ます。列見出しで並び替え、商品行クリックで工程内訳を表示。
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -205,11 +219,106 @@ export default function CostListPage() {
         </div>
       </div>
 
+      {/* 比較パネル：チェックした商品を縦横入れ替えて横並び比較 */}
+      {compareItems.length >= 2 && (
+        <Card className="bg-white shadow-sm border-blue-300">
+          <CardContent className="p-0 overflow-x-auto">
+            <div className="flex items-center justify-between px-3 py-2 border-b bg-blue-50/60">
+              <p className="text-sm font-medium text-blue-900">商品比較（{compareItems.length}商品）</p>
+              <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>
+                比較をクリア
+              </Button>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left px-3 py-2 font-medium text-gray-500 min-w-[88px] sticky left-0 bg-gray-50">項目</th>
+                  {compareItems.map((it) => (
+                    <th key={it.productId} className="text-right px-3 py-2 font-medium min-w-[110px]">
+                      <Link href={`/products/${it.productId}`} className="text-blue-600 hover:underline">
+                        {it.name}
+                      </Link>
+                      <div className="text-[10px] font-mono text-gray-400 font-normal">{it.code || "-"}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {COLS.map((c) => {
+                  const vals = compareItems.map((it) => it.breakdown[c.key]);
+                  const mx = Math.max(0, ...vals);
+                  return (
+                    <tr key={c.key}>
+                      <td className="px-3 py-1.5 sticky left-0 bg-white">
+                        <span className={c.cls}>{c.label}</span>
+                      </td>
+                      {compareItems.map((it, i) => {
+                        const v = vals[i];
+                        const isMax = v > 0 && v === mx;
+                        return (
+                          <td key={it.productId} className={`px-3 py-1.5 text-right ${isMax ? "font-bold text-red-600" : "text-gray-700"}`}>
+                            {v.toLocaleString()}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+                {/* 合計原価 */}
+                <tr className="border-t-2 bg-gray-50/60">
+                  <td className="px-3 py-1.5 font-bold text-gray-700 sticky left-0 bg-gray-50/60">合計原価</td>
+                  {(() => {
+                    const vals = compareItems.map((it) => it.cost);
+                    const mx = Math.max(0, ...vals);
+                    return compareItems.map((it, i) => {
+                      const v = vals[i];
+                      const isMax = v > 0 && v === mx;
+                      return (
+                        <td key={it.productId} className={`px-3 py-1.5 text-right font-bold ${isMax ? "text-red-600" : "text-gray-900"}`}>
+                          {v.toLocaleString()}
+                        </td>
+                      );
+                    });
+                  })()}
+                </tr>
+                {/* 上代 */}
+                <tr>
+                  <td className="px-3 py-1.5 text-gray-600 sticky left-0 bg-white">上代</td>
+                  {compareItems.map((it) => (
+                    <td key={it.productId} className="px-3 py-1.5 text-right text-gray-600">
+                      {it.retailPrice > 0 ? it.retailPrice.toLocaleString() : "-"}
+                    </td>
+                  ))}
+                </tr>
+                {/* 原価率 */}
+                <tr>
+                  <td className="px-3 py-1.5 text-gray-600 sticky left-0 bg-white">原価率(上代)</td>
+                  {(() => {
+                    const vals = compareItems.map((it) => (it.retailPrice > 0 ? it.costRatioVsRetail : 0));
+                    const mx = Math.max(0, ...vals);
+                    return compareItems.map((it, i) => {
+                      const v = vals[i];
+                      const isMax = v > 0 && v === mx;
+                      return (
+                        <td key={it.productId} className={`px-3 py-1.5 text-right ${isMax ? "font-bold text-red-600" : "text-gray-500"}`}>
+                          {it.retailPrice > 0 ? `${it.costRatioVsRetail.toFixed(0)}%` : "-"}
+                        </td>
+                      );
+                    });
+                  })()}
+                </tr>
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="bg-white shadow-sm">
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b">
               <tr>
+                <th className="w-8 px-2 print:hidden"></th>
                 <th className="w-6 print:hidden"></th>
                 <SortHead k="master" align="left">商品<span className="text-[9px] text-gray-400 font-normal ml-1">マスタ順</span></SortHead>
                 {COLS.map((c) => (
@@ -228,7 +337,7 @@ export default function CostListPage() {
             <tbody className="divide-y">
               {sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={COLS.length + 5} className="text-center text-gray-400 py-8">
+                  <td colSpan={COLS.length + 6} className="text-center text-gray-400 py-8">
                     商品がありません
                   </td>
                 </tr>
@@ -238,9 +347,17 @@ export default function CostListPage() {
                   return (
                     <Fragment key={it.productId}>
                       <tr
-                        className="hover:bg-gray-50 cursor-pointer"
+                        className={`hover:bg-gray-50 cursor-pointer ${selected.has(it.productId) ? "bg-blue-50/50" : ""}`}
                         onClick={() => toggleExpand(it.productId)}
                       >
+                        <td className="px-2 print:hidden" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(it.productId)}
+                            onChange={() => toggleSelect(it.productId)}
+                            className="size-4 align-middle"
+                          />
+                        </td>
                         <td className="px-1 print:hidden text-gray-300">
                           {it.steps.length > 0 &&
                             (isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />)}
@@ -290,6 +407,7 @@ export default function CostListPage() {
                       {isOpen && it.steps.length > 0 && (
                         <tr className="bg-blue-50/30">
                           <td className="print:hidden"></td>
+                          <td className="print:hidden"></td>
                           <td colSpan={COLS.length + 4} className="px-2 py-2">
                             <p className="text-[10px] text-gray-500 mb-1">制作費の工程内訳</p>
                             <div className="flex flex-wrap gap-1.5">
@@ -311,6 +429,7 @@ export default function CostListPage() {
             {sorted.length > 0 && (
               <tfoot className="bg-gray-50 border-t-2 font-medium">
                 <tr>
+                  <td className="print:hidden"></td>
                   <td className="print:hidden"></td>
                   <td className="px-2 py-2 text-gray-600">合計 / 平均（{filtered.length}商品）</td>
                   {COLS.map((c) => (
