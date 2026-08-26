@@ -53,6 +53,8 @@ export default function ProductsPage() {
   const [seriesFilter, setSeriesFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
+  // 一覧の表示モード：工程別（編集向け）/ 種別原価（カテゴリ別）
+  const [view, setView] = useState<"process" | "category">("process");
   // 比較用に選んだ商品
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -241,6 +243,23 @@ export default function ProductsPage() {
               <option key={s.id} value={s.id}>{s.label}</option>
             ))}
           </select>
+          {/* 表示モード切替 */}
+          <div className="inline-flex rounded-md border overflow-hidden text-sm">
+            <button
+              onClick={() => setView("process")}
+              className={`px-3 py-2 ${view === "process" ? "bg-zinc-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              title="口金/貼り/縫製などの工程別・編集向け"
+            >
+              工程別
+            </button>
+            <button
+              onClick={() => setView("category")}
+              className={`px-3 py-2 border-l ${view === "category" ? "bg-zinc-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              title="生地費/資材費などの種別原価（カテゴリ別）"
+            >
+              種別原価
+            </button>
+          </div>
           <CsvImportDialog
             title="商品マスタ"
             endpoint="/api/products/import"
@@ -338,6 +357,7 @@ export default function ProductsPage() {
             color={series.color}
             items={items}
             selected={selected}
+            view={view}
             onToggleSelect={toggleSelect}
             onEdit={setEditTarget}
             onDuplicate={duplicateProduct}
@@ -354,6 +374,7 @@ export default function ProductsPage() {
             color="bg-gray-100 text-gray-700"
             items={noSeries}
             selected={selected}
+            view={view}
             onToggleSelect={toggleSelect}
             onEdit={setEditTarget}
             onDuplicate={duplicateProduct}
@@ -533,6 +554,7 @@ function ProductGroup({
   title,
   color,
   items,
+  view,
   selected,
   onToggleSelect,
   onEdit,
@@ -546,6 +568,7 @@ function ProductGroup({
   title: string;
   color: string;
   items: Product[];
+  view: "process" | "category";
   selected: Set<string>;
   onToggleSelect: (id: string) => void;
   onEdit: (p: Product) => void;
@@ -578,29 +601,51 @@ function ProductGroup({
       <div className="bg-white shadow-sm border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-gray-500">
-            <tr className="border-b">
-              <th className="w-8 px-1 pt-2" rowSpan={2}></th>
-              <th className="w-14 px-1 pt-2"></th>
-              <th className="text-left px-2 pt-2 font-medium w-20" rowSpan={2}>コード</th>
-              <th className="text-left px-2 pt-2 font-medium min-w-[140px]" rowSpan={2}>商品名</th>
-              <th className="text-right px-2 pt-2 font-medium w-24" rowSpan={2}>参考価格<span className="block text-[10px] font-normal text-gray-400">上代</span></th>
-              <th className="text-right px-2 pt-2 font-medium w-20 bg-emerald-50/60" rowSpan={2}>原価<span className="block text-[10px] font-normal text-gray-400">合計</span></th>
-              <th className="text-center px-1 py-1 font-medium bg-blue-50/60 border-l" colSpan={4}>制作費</th>
-              <th className="text-right px-2 pt-2 font-medium w-14" rowSpan={2}>内職</th>
-              <th className="text-center px-1 py-1 font-medium bg-slate-50 border-l" colSpan={3}>販管費</th>
-              <th className="text-right px-2 pt-2 font-medium w-14 border-l" rowSpan={2}>在庫</th>
-              <th className="w-24 px-2 pt-2" rowSpan={2}></th>
-            </tr>
-            <tr>
-              <th></th>
-              <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-blue-50/40 border-l">口金</th>
-              <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-blue-50/40">貼り</th>
-              <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-blue-50/40">縫製</th>
-              <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-blue-50/40">その他</th>
-              <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-slate-50 border-l">営業</th>
-              <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-slate-50">出荷</th>
-              <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-slate-50">管理</th>
-            </tr>
+            {view === "category" ? (
+              <tr className="border-b">
+                <th className="w-8 px-1 py-2"></th>
+                <th className="w-14 px-1 py-2"></th>
+                <th className="text-left px-2 py-2 font-medium w-20">コード</th>
+                <th className="text-left px-2 py-2 font-medium min-w-[140px]">商品名</th>
+                <th className="text-right px-2 py-2 font-medium w-20">参考価格<span className="block text-[10px] font-normal text-gray-400">上代</span></th>
+                <th className="text-right px-1 py-2 font-medium text-[11px] text-blue-700 border-l w-12">制作費</th>
+                <th className="text-right px-1 py-2 font-medium text-[11px] text-teal-700 w-12">裁断費</th>
+                <th className="text-right px-1 py-2 font-medium text-[11px] text-purple-700 w-12">生地費</th>
+                <th className="text-right px-1 py-2 font-medium text-[11px] text-amber-700 w-12">資材費</th>
+                <th className="text-right px-1 py-2 font-medium text-[11px] text-pink-700 w-12">梱包<br />資材費</th>
+                <th className="text-right px-1 py-2 font-medium text-[11px] text-emerald-700 w-12">仕入</th>
+                <th className="text-right px-1 py-2 font-medium text-[11px] text-gray-600 w-12">販管費</th>
+                <th className="text-right px-2 py-2 font-medium bg-emerald-50/60 border-l w-20">原価<span className="block text-[10px] font-normal text-gray-400">合計</span></th>
+                <th className="text-right px-2 py-2 font-medium w-14">原価率<span className="block text-[10px] font-normal text-gray-400">上代</span></th>
+                <th className="w-24 px-2 py-2"></th>
+              </tr>
+            ) : (
+              <>
+                <tr className="border-b">
+                  <th className="w-8 px-1 pt-2" rowSpan={2}></th>
+                  <th className="w-14 px-1 pt-2"></th>
+                  <th className="text-left px-2 pt-2 font-medium w-20" rowSpan={2}>コード</th>
+                  <th className="text-left px-2 pt-2 font-medium min-w-[140px]" rowSpan={2}>商品名</th>
+                  <th className="text-right px-2 pt-2 font-medium w-24" rowSpan={2}>参考価格<span className="block text-[10px] font-normal text-gray-400">上代</span></th>
+                  <th className="text-right px-2 pt-2 font-medium w-20 bg-emerald-50/60" rowSpan={2}>原価<span className="block text-[10px] font-normal text-gray-400">合計</span></th>
+                  <th className="text-center px-1 py-1 font-medium bg-blue-50/60 border-l" colSpan={4}>制作費</th>
+                  <th className="text-right px-2 pt-2 font-medium w-14" rowSpan={2}>内職</th>
+                  <th className="text-center px-1 py-1 font-medium bg-slate-50 border-l" colSpan={3}>販管費</th>
+                  <th className="text-right px-2 pt-2 font-medium w-14 border-l" rowSpan={2}>在庫</th>
+                  <th className="w-24 px-2 pt-2" rowSpan={2}></th>
+                </tr>
+                <tr>
+                  <th></th>
+                  <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-blue-50/40 border-l">口金</th>
+                  <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-blue-50/40">貼り</th>
+                  <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-blue-50/40">縫製</th>
+                  <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-blue-50/40">その他</th>
+                  <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-slate-50 border-l">営業</th>
+                  <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-slate-50">出荷</th>
+                  <th className="text-right px-1 py-1 font-normal text-[11px] w-12 bg-slate-50">管理</th>
+                </tr>
+              </>
+            )}
           </thead>
           <tbody className="divide-y">
             {items.map((p, idx) => (
@@ -672,21 +717,40 @@ function ProductGroup({
                   {p.size && <span className="text-[10px] text-gray-400 ml-1">{p.size}</span>}
                   {!p.active && <Badge variant="outline" className="ml-2 text-[10px]">取扱終了</Badge>}
                 </td>
-                <EditCell value={p.retailPrice} onSave={(v) => onSaveField(p.id, "retailPrice", v)} className="font-medium" />
-                <td className="px-2 py-1.5 text-right font-medium tabular-nums bg-emerald-50/40">
-                  {p.cost != null && p.cost > 0 ? p.cost.toLocaleString() : "-"}
-                </td>
-                <EditCell value={p.production.口金 || null} onSave={(v) => onSaveStep(p.id, "口金", v)} className="bg-blue-50/20 border-l" />
-                <EditCell value={p.production.貼り || null} onSave={(v) => onSaveStep(p.id, "貼り", v)} className="bg-blue-50/20" />
-                <EditCell value={p.production.縫製 || null} onSave={(v) => onSaveStep(p.id, "縫製", v)} className="bg-blue-50/20" />
-                <EditCell value={p.production.その他 || null} onSave={(v) => onSaveStep(p.id, "その他", v)} className="bg-blue-50/20" />
-                <EditCell value={p.workerCost} onSave={(v) => onSaveField(p.id, "workerCost", v)} />
-                <EditCell value={p.salesCost} onSave={(v) => onSaveField(p.id, "salesCost", v)} className="bg-slate-50/40 border-l" />
-                <EditCell value={p.outboundCost} onSave={(v) => onSaveField(p.id, "outboundCost", v)} className="bg-slate-50/40" />
-                <EditCell value={p.mgmtCost} onSave={(v) => onSaveField(p.id, "mgmtCost", v)} className="bg-slate-50/40" />
-                <td className="px-2 py-1.5 text-right text-gray-600 border-l">
-                  {p.inventory ? p.inventory.stock : "-"}
-                </td>
+                {view === "category" ? (
+                  <>
+                    <EditCell value={p.retailPrice} onSave={(v) => onSaveField(p.id, "retailPrice", v)} className="font-medium" />
+                    <td className="px-1 py-1.5 text-right text-gray-700 border-l tabular-nums">{p.breakdown ? p.breakdown.productionCost.toLocaleString() : "-"}</td>
+                    <td className="px-1 py-1.5 text-right text-gray-700 tabular-nums">{p.breakdown ? p.breakdown.cuttingCost.toLocaleString() : "-"}</td>
+                    <td className="px-1 py-1.5 text-right text-gray-700 tabular-nums">{p.breakdown ? p.breakdown.fabricCost.toLocaleString() : "-"}</td>
+                    <td className="px-1 py-1.5 text-right text-gray-700 tabular-nums">{p.breakdown ? p.breakdown.materialCost.toLocaleString() : "-"}</td>
+                    <td className="px-1 py-1.5 text-right text-gray-700 tabular-nums">{p.breakdown ? p.breakdown.packagingMaterialCost.toLocaleString() : "-"}</td>
+                    <td className="px-1 py-1.5 text-right text-gray-700 tabular-nums">{p.breakdown ? p.breakdown.purchaseCost.toLocaleString() : "-"}</td>
+                    <td className="px-1 py-1.5 text-right text-gray-700 tabular-nums">{p.breakdown ? p.breakdown.laborCost.toLocaleString() : "-"}</td>
+                    <td className="px-2 py-1.5 text-right font-medium bg-emerald-50/40 border-l tabular-nums">{p.cost != null && p.cost > 0 ? p.cost.toLocaleString() : "-"}</td>
+                    <td className={`px-2 py-1.5 text-right tabular-nums ${p.retailPrice && p.cost != null && p.retailPrice > 0 && (p.cost / p.retailPrice) * 100 > 40 ? "text-red-600 font-medium" : "text-gray-500"}`}>
+                      {p.retailPrice && p.cost != null && p.retailPrice > 0 ? `${Math.round((p.cost / p.retailPrice) * 100)}%` : "-"}
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <EditCell value={p.retailPrice} onSave={(v) => onSaveField(p.id, "retailPrice", v)} className="font-medium" />
+                    <td className="px-2 py-1.5 text-right font-medium tabular-nums bg-emerald-50/40">
+                      {p.cost != null && p.cost > 0 ? p.cost.toLocaleString() : "-"}
+                    </td>
+                    <EditCell value={p.production.口金 || null} onSave={(v) => onSaveStep(p.id, "口金", v)} className="bg-blue-50/20 border-l" />
+                    <EditCell value={p.production.貼り || null} onSave={(v) => onSaveStep(p.id, "貼り", v)} className="bg-blue-50/20" />
+                    <EditCell value={p.production.縫製 || null} onSave={(v) => onSaveStep(p.id, "縫製", v)} className="bg-blue-50/20" />
+                    <EditCell value={p.production.その他 || null} onSave={(v) => onSaveStep(p.id, "その他", v)} className="bg-blue-50/20" />
+                    <EditCell value={p.workerCost} onSave={(v) => onSaveField(p.id, "workerCost", v)} />
+                    <EditCell value={p.salesCost} onSave={(v) => onSaveField(p.id, "salesCost", v)} className="bg-slate-50/40 border-l" />
+                    <EditCell value={p.outboundCost} onSave={(v) => onSaveField(p.id, "outboundCost", v)} className="bg-slate-50/40" />
+                    <EditCell value={p.mgmtCost} onSave={(v) => onSaveField(p.id, "mgmtCost", v)} className="bg-slate-50/40" />
+                    <td className="px-2 py-1.5 text-right text-gray-600 border-l">
+                      {p.inventory ? p.inventory.stock : "-"}
+                    </td>
+                  </>
+                )}
                 <td className="px-2 py-1.5">
                   <div className="flex items-center justify-end gap-0.5">
                     <button onClick={() => onEdit(p)} className="text-gray-400 hover:text-gray-700 p-1" title="編集">
