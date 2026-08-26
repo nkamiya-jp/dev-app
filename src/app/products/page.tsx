@@ -33,6 +33,15 @@ interface Product {
   mgmtCost: number | null;
   productionCost: number;
   production: { 口金: number; 貼り: number; 縫製: number; その他: number };
+  breakdown?: {
+    productionCost: number;
+    cuttingCost: number;
+    fabricCost: number;
+    materialCost: number;
+    packagingMaterialCost: number;
+    purchaseCost: number;
+    laborCost: number;
+  };
   description: string | null;
   active: boolean;
   inventory?: { stock: number } | null;
@@ -44,6 +53,15 @@ export default function ProductsPage() {
   const [seriesFilter, setSeriesFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
+  // 比較用に選んだ商品
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
@@ -197,6 +215,7 @@ export default function ProductsPage() {
     items: products.filter((p) => p.series === s.id),
   })).filter((g) => g.items.length > 0);
   const noSeries = products.filter((p) => !p.series);
+  const compareItems = products.filter((p) => selected.has(p.id));
 
   return (
     <div className="space-y-4">
@@ -307,6 +326,10 @@ export default function ProductsPage() {
         </Card>
       )}
 
+      {compareItems.length >= 1 && (
+        <CostComparePanel items={compareItems} onClear={() => setSelected(new Set())} />
+      )}
+
       <div className="space-y-6">
         {grouped.map(({ series, items }) => (
           <ProductGroup
@@ -314,6 +337,8 @@ export default function ProductsPage() {
             title={series.label}
             color={series.color}
             items={items}
+            selected={selected}
+            onToggleSelect={toggleSelect}
             onEdit={setEditTarget}
             onDuplicate={duplicateProduct}
             onDelete={deleteProduct}
@@ -328,6 +353,8 @@ export default function ProductsPage() {
             title="未分類"
             color="bg-gray-100 text-gray-700"
             items={noSeries}
+            selected={selected}
+            onToggleSelect={toggleSelect}
             onEdit={setEditTarget}
             onDuplicate={duplicateProduct}
             onDelete={deleteProduct}
@@ -397,10 +424,117 @@ export default function ProductsPage() {
   );
 }
 
+// 種別原価の比較パネル（1つ選択＝内訳表示、2つ以上＝横並び比較）
+const COMPARE_ROWS = [
+  { key: "productionCost", label: "制作費", cls: "text-blue-700" },
+  { key: "cuttingCost", label: "裁断費", cls: "text-teal-700" },
+  { key: "fabricCost", label: "生地費", cls: "text-purple-700" },
+  { key: "materialCost", label: "資材費", cls: "text-amber-700" },
+  { key: "packagingMaterialCost", label: "梱包資材費", cls: "text-pink-700" },
+  { key: "purchaseCost", label: "仕入", cls: "text-emerald-700" },
+  { key: "laborCost", label: "販管費", cls: "text-gray-600" },
+] as const;
+
+function CostComparePanel({ items, onClear }: { items: Product[]; onClear: () => void }) {
+  const val = (p: Product, key: string) =>
+    p.breakdown ? ((p.breakdown as unknown as Record<string, number>)[key] ?? 0) : 0;
+  const multi = items.length > 1;
+  const ratio = (p: Product) =>
+    p.retailPrice && p.retailPrice > 0 && p.cost != null ? (p.cost / p.retailPrice) * 100 : null;
+
+  return (
+    <Card className="bg-white shadow-sm border-blue-300">
+      <CardContent className="p-0 overflow-x-auto">
+        <div className="flex items-center justify-between px-3 py-2 border-b bg-blue-50/60">
+          <p className="text-sm font-medium text-blue-900">
+            {multi ? `商品比較（${items.length}商品）` : "原価内訳"}
+          </p>
+          <Button variant="outline" size="sm" onClick={onClear}>クリア</Button>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b bg-gray-50">
+              <th className="text-left px-3 py-2 font-medium text-gray-500 min-w-[92px] sticky left-0 bg-gray-50">項目</th>
+              {items.map((it) => (
+                <th key={it.id} className="text-right px-3 py-2 font-medium min-w-[110px]">
+                  <Link href={`/products/${it.id}`} className="text-blue-600 hover:underline">{it.name}</Link>
+                  <div className="text-[10px] font-mono text-gray-400 font-normal">{it.code}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {COMPARE_ROWS.map((r) => {
+              const vals = items.map((it) => val(it, r.key));
+              const mx = Math.max(0, ...vals);
+              return (
+                <tr key={r.key}>
+                  <td className="px-3 py-1.5 sticky left-0 bg-white"><span className={r.cls}>{r.label}</span></td>
+                  {items.map((it, i) => {
+                    const v = vals[i];
+                    const isMax = multi && v > 0 && v === mx;
+                    return (
+                      <td key={it.id} className={`px-3 py-1.5 text-right ${isMax ? "font-bold text-red-600" : "text-gray-700"}`}>
+                        {v.toLocaleString()}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+            <tr className="border-t-2 bg-gray-50/60">
+              <td className="px-3 py-1.5 font-bold text-gray-700 sticky left-0 bg-gray-50/60">合計原価</td>
+              {(() => {
+                const vals = items.map((it) => it.cost ?? 0);
+                const mx = Math.max(0, ...vals);
+                return items.map((it, i) => {
+                  const v = vals[i];
+                  const isMax = multi && v > 0 && v === mx;
+                  return (
+                    <td key={it.id} className={`px-3 py-1.5 text-right font-bold ${isMax ? "text-red-600" : "text-gray-900"}`}>
+                      {v.toLocaleString()}
+                    </td>
+                  );
+                });
+              })()}
+            </tr>
+            <tr>
+              <td className="px-3 py-1.5 text-gray-600 sticky left-0 bg-white">参考価格(上代)</td>
+              {items.map((it) => (
+                <td key={it.id} className="px-3 py-1.5 text-right text-gray-600">
+                  {it.retailPrice ? it.retailPrice.toLocaleString() : "-"}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td className="px-3 py-1.5 text-gray-600 sticky left-0 bg-white">原価率(上代)</td>
+              {(() => {
+                const vals = items.map((it) => ratio(it) ?? 0);
+                const mx = Math.max(0, ...vals);
+                return items.map((it) => {
+                  const rr = ratio(it);
+                  const isMax = multi && rr != null && rr > 0 && rr === mx;
+                  return (
+                    <td key={it.id} className={`px-3 py-1.5 text-right ${isMax ? "font-bold text-red-600" : "text-gray-500"}`}>
+                      {rr != null ? `${rr.toFixed(0)}%` : "-"}
+                    </td>
+                  );
+                });
+              })()}
+            </tr>
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ProductGroup({
   title,
   color,
   items,
+  selected,
+  onToggleSelect,
   onEdit,
   onDuplicate,
   onDelete,
@@ -412,6 +546,8 @@ function ProductGroup({
   title: string;
   color: string;
   items: Product[];
+  selected: Set<string>;
+  onToggleSelect: (id: string) => void;
   onEdit: (p: Product) => void;
   onDuplicate: (id: string, name: string) => void;
   onDelete: (id: string, name: string, active: boolean) => void;
@@ -443,6 +579,7 @@ function ProductGroup({
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-gray-500">
             <tr className="border-b">
+              <th className="w-8 px-1 pt-2" rowSpan={2}></th>
               <th className="w-14 px-1 pt-2"></th>
               <th className="text-left px-2 pt-2 font-medium w-20" rowSpan={2}>コード</th>
               <th className="text-left px-2 pt-2 font-medium min-w-[140px]" rowSpan={2}>商品名</th>
@@ -482,8 +619,16 @@ function ProductGroup({
                   setDragId(null);
                   setOverId(null);
                 }}
-                className={`hover:bg-gray-50 ${!p.active ? "opacity-50" : ""} ${dragId === p.id ? "opacity-40" : ""} ${overId === p.id && dragId ? "bg-blue-50 outline outline-2 outline-blue-400" : ""}`}
+                className={`hover:bg-gray-50 ${!p.active ? "opacity-50" : ""} ${dragId === p.id ? "opacity-40" : ""} ${overId === p.id && dragId ? "bg-blue-50 outline outline-2 outline-blue-400" : ""} ${selected.has(p.id) ? "bg-blue-50/50" : ""}`}
               >
+                <td className="px-1 py-1 text-center">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(p.id)}
+                    onChange={() => onToggleSelect(p.id)}
+                    className="size-4 align-middle"
+                  />
+                </td>
                 <td className="px-1 py-1">
                   <div className="flex items-center justify-center gap-0.5">
                     <div

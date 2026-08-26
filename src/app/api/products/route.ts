@@ -92,6 +92,16 @@ export async function GET(request: NextRequest) {
         縫製: Math.round(production.縫製),
         その他: Math.round(production.その他),
       },
+      // 種別原価（生地費・裁断費・資材費・梱包資材費・仕入・販管費）＝原価比較と同じ内訳
+      breakdown: {
+        productionCost: Math.round(breakdown.productionCost),
+        cuttingCost: Math.round(breakdown.cuttingCost),
+        fabricCost: Math.round(breakdown.fabricCost),
+        materialCost: Math.round(breakdown.materialCost),
+        packagingMaterialCost: Math.round(breakdown.packagingMaterialCost),
+        purchaseCost: Math.round(breakdown.purchaseCost),
+        laborCost: Math.round(breakdown.laborCost),
+      },
     };
   });
   return Response.json(withCost);
