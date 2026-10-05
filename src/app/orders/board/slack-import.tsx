@@ -4,12 +4,24 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { MessageCircleQuestion, Plus, Send, Sparkles, Trash2 } from "lucide-react";
+import { compareProductOrder } from "@/lib/product-meta";
 
-interface ProductOpt { id: string; code: string; name: string; active: boolean }
+interface ProductOpt { id: string; code: string; name: string; active: boolean; series: string | null; sortOrder: number }
 interface ContactOpt { id: string; name: string; company: string | null }
 
 interface DraftItem { key: string; label: string; productId: string; quantity: string }
+
+interface ParseResult {
+  isOrder: boolean;
+  customerLabel: string;
+  contactId: string | null;
+  items: { label: string; productId: string | null; quantity: number | null }[];
+  shipDate: string | null;
+  shipHint: string | null;
+  note: string | null;
+  questions: string[];
+}
 
 const NEW_CONTACT = "__new__";
 
@@ -20,7 +32,7 @@ function todayJST(): string {
 let keySeq = 0;
 const nextKey = () => `k${++keySeq}`;
 
-// Slackの投稿を貼り付け → AIで明細化 → 確認・修正して受注登録
+// Slackの投稿を貼り付け → AIで明細化 → AIの確認に返事して読み直し → 確認・修正して受注登録
 export function SlackImportDialog({
   open,
   onOpenChange,
@@ -46,13 +58,19 @@ export function SlackImportDialog({
   const [note, setNote] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
 
+  // AIとのやりとり
+  const [questions, setQuestions] = useState<string[]>([]);
+  const [clarifications, setClarifications] = useState<string[]>([]);
+  const [reply, setReply] = useState("");
+
   useEffect(() => {
     if (!open) return;
     Promise.all([
       fetch("/api/products").then((r) => (r.ok ? r.json() : [])),
       fetch("/api/contacts").then((r) => (r.ok ? r.json() : [])),
     ]).then(([ps, cs]) => {
-      setProducts((ps as ProductOpt[]).filter((p) => p.active));
+      // 商品の並びは価格表（マスタ順）と同じ
+      setProducts((ps as ProductOpt[]).filter((p) => p.active).sort(compareProductOrder));
       setContacts(cs as ContactOpt[]);
     });
   }, [open]);
@@ -67,6 +85,9 @@ export function SlackImportDialog({
     setShipHint(null);
     setNote("");
     setItems([]);
+    setQuestions([]);
+    setClarifications([]);
+    setReply("");
   }
 
   function startManual(withError = "") {
@@ -76,40 +97,62 @@ export function SlackImportDialog({
     if (!note && text.trim()) setNote(text.trim());
   }
 
-  async function parse() {
+  // AIの結果を画面に反映。読み直し時は、担当者が選び済みの商品・顧客を（AIが特定できなかった分だけ）引き継ぐ
+  function applyResult(data: ParseResult) {
+    const prevByLabel = new Map(items.filter((it) => it.label && it.productId).map((it) => [it.label, it.productId]));
+    setCustomerLabel(data.customerLabel || "");
+    setContactId(
+      data.contactId ||
+        (contactId && contactId !== NEW_CONTACT ? contactId : "") ||
+        (data.customerLabel ? NEW_CONTACT : "")
+    );
+    setDueDate(data.shipDate || dueDate);
+    setShipHint(data.shipHint);
+    setNote(data.note || "");
+    setQuestions(data.questions || []);
+    setItems(
+      data.items.map((it) => ({
+        key: nextKey(),
+        label: it.label,
+        productId: it.productId || prevByLabel.get(it.label) || "",
+        quantity: it.quantity != null ? String(it.quantity) : "",
+      }))
+    );
+    setHasDraft(true);
+  }
+
+  async function parse(clar: string[]) {
     setParsing(true);
     setError("");
     try {
       const res = await fetch("/api/orders/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, clarifications: clar }),
       });
       const data = await res.json();
       if (!res.ok) {
-        startManual(`${data.error || "読み取りに失敗しました"}（下で手入力できます）`);
+        if (hasDraft) setError(`${data.error || "読み取りに失敗しました"}（今の内容は残っています）`);
+        else startManual(`${data.error || "読み取りに失敗しました"}（下で手入力できます）`);
         return;
       }
       if (!data.isOrder) setError("受注の投稿ではない可能性があります。内容を確認してください。");
-      setCustomerLabel(data.customerLabel || "");
-      setContactId(data.contactId || (data.customerLabel ? NEW_CONTACT : ""));
-      setDueDate(data.shipDate || "");
-      setShipHint(data.shipHint);
-      setNote(data.note || "");
-      setItems(
-        (data.items as { label: string; productId: string | null; quantity: number | null }[]).map((it) => ({
-          key: nextKey(),
-          label: it.label,
-          productId: it.productId || "",
-          quantity: it.quantity != null ? String(it.quantity) : "",
-        }))
-      );
-      setHasDraft(true);
+      applyResult(data as ParseResult);
     } catch {
-      startManual("通信に失敗しました（下で手入力できます）");
+      if (hasDraft) setError("通信に失敗しました（今の内容は残っています）");
+      else startManual("通信に失敗しました（下で手入力できます）");
     } finally {
       setParsing(false);
     }
+  }
+
+  async function sendReply() {
+    const r = reply.trim();
+    if (!r) return;
+    const next = [...clarifications, r];
+    setClarifications(next);
+    setReply("");
+    await parse(next);
   }
 
   const unmatched = items.filter((it) => !it.productId || !(Number(it.quantity) > 0)).length;
@@ -157,6 +200,17 @@ export function SlackImportDialog({
         }),
       });
       if (!res.ok) throw new Error("受注の登録に失敗しました");
+
+      // 投稿上の書き方 → 確定した商品 を記録（次回からAIがこの対応で読み取る）。失敗しても登録は完了扱い
+      const aliases = items.filter((it) => it.label.trim() && it.productId).map((it) => ({ label: it.label, productId: it.productId }));
+      if (aliases.length) {
+        fetch("/api/product-aliases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ aliases }),
+        }).catch(() => {});
+      }
+
       reset();
       onOpenChange(false);
       onCreated();
@@ -195,9 +249,9 @@ export function SlackImportDialog({
               className="w-full border rounded-md px-3 py-2 text-sm resize-y"
             />
             <div className="flex items-center gap-2 mt-1.5">
-              <Button size="sm" onClick={parse} disabled={parsing || !text.trim()}>
+              <Button size="sm" onClick={() => parse(clarifications)} disabled={parsing || !text.trim()}>
                 <Sparkles className="size-4 mr-1" />
-                {parsing ? "読み取り中..." : "AIで読み取る"}
+                {parsing ? "読み取り中..." : hasDraft ? "もう一度読み取る" : "AIで読み取る"}
               </Button>
               {!hasDraft && (
                 <button type="button" onClick={() => startManual()} className="text-xs text-gray-500 underline">
@@ -208,6 +262,54 @@ export function SlackImportDialog({
           </div>
 
           {error && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">{error}</p>}
+
+          {hasDraft && (
+            <div className="rounded-md border border-blue-200 bg-blue-50/50 p-3 space-y-2">
+              {questions.length > 0 ? (
+                <div>
+                  <p className="text-xs font-medium text-blue-900 flex items-center gap-1">
+                    <MessageCircleQuestion className="size-4" /> AIからの確認
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-sm text-blue-900 list-disc pl-5">
+                    {questions.map((q, i) => (
+                      <li key={i}>{q}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-xs text-blue-900">AIからの確認はありません。違うところがあれば下からAIに伝えられます。</p>
+              )}
+
+              {clarifications.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {clarifications.map((c, i) => (
+                    <span key={i} className="text-[11px] bg-white border border-blue-200 rounded-full px-2 py-0.5 text-blue-800">
+                      あなた：{c}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Input
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      sendReply();
+                    }
+                  }}
+                  placeholder="例：朱印袋は朱印帳のこと／3.3寸は箱入"
+                  className="bg-white"
+                />
+                <Button size="sm" onClick={sendReply} disabled={parsing || !reply.trim()}>
+                  <Send className="size-4 mr-1" />
+                  {parsing ? "読み直し中..." : "伝える"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {hasDraft && (
             <div className="space-y-3 border-t pt-3">
@@ -298,7 +400,7 @@ export function SlackImportDialog({
               </div>
 
               <div>
-                <label className="text-xs text-gray-500">メモ（支払方法・注意点など）</label>
+                <label className="text-xs text-gray-500">メモ（支払方法・注意点など。受注に残ります）</label>
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}

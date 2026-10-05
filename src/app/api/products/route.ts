@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { effectiveStepCost, calcCostBreakdown } from "@/lib/product-cost";
+import { compareProductOrder } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,8 @@ export async function GET(request: NextRequest) {
     ];
   }
 
-  const products = await prisma.product.findMany({
+  // 並びは価格表と同じマスタ順（シリーズ順→シリーズ内sortOrder→コード）
+  const products = (await prisma.product.findMany({
     where,
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
     include: {
@@ -27,7 +29,7 @@ export async function GET(request: NextRequest) {
       costSteps: true,
       materials: { include: { material: { select: { fabricWidth: true, unitPrice: true } } } },
     },
-  });
+  })).sort(compareProductOrder);
 
   // 合計原価の計算に使うカテゴリ階層（leaf → top 名）
   const cats = await prisma.materialCategory.findMany();

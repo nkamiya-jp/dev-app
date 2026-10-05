@@ -1,11 +1,12 @@
 // Slack #受注 などの自由文から、受注の下書き（顧客・明細・発送予定）をAIで取り出す。
 // 商品マスタ・顧客マスタを一覧で渡して照合させ、結果は必ずマスタに実在するものだけ採用する。
+// 担当者の補足（「朱印帳のことです」など）を渡すと、それを優先して読み直す。
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
-import { getSeriesLabel } from "@/lib/product-meta";
+import { compareProductOrder, getSeriesLabel } from "@/lib/product-meta";
 
 export interface ParsedOrderItem {
-  label: string; // 原文での書き方（例: 西）2.6寸）
+  label: string; // 原文での商品の書き方（数量を除く。例: 西）2.6寸）
   productId: string | null; // マスタと照合できた商品（できなければ null）
   quantity: number | null;
 }
@@ -17,7 +18,8 @@ export interface ParsedOrder {
   items: ParsedOrderItem[];
   shipDate: string | null; // YYYY-MM-DD（読み取れた場合）
   shipHint: string | null; // 発送時期に関する原文の表現
-  note: string | null; // 支払方法・注意点など
+  note: string | null; // 受注として残す情報（支払方法・注意点）
+  questions: string[]; // AIから担当者への確認事項（照合できなかった点など）
 }
 
 export class OrderParseError extends Error {}
@@ -33,13 +35,19 @@ const SYSTEM_PROMPT = `あなたは神谷クラフト（西陣織・友禅・伊
 - 「（注残）」は以前からの残り分、「（新規注文）」は新しい注文だが、どちらも明細に含める。
 - メンション、あいさつ、出荷可否の質問は明細ではない。
 - 発送時期（「10月末発送予定」「来月10/13の週発送予定」「今週出荷」など）があれば読み取る。
-- 支払方法（PayPal請求・銀行振込など）や注意点は note にまとめる。
 
 照合のルール:
-- 商品は下の商品マスタの code で答える。シリーズの略が無く複数のシリーズに候補がある場合や、確信が持てない場合は productCode を null にする（推測で決めない）。
+- 明細の label には、原文の商品の書き方を数量を除いてそのまま入れる（例:「朱印袋10」なら「朱印袋」）。
+- 商品は下の商品マスタの code で答える。「過去に確定した書き方」に一致するものはその商品を使う。
+- シリーズの略が無く複数のシリーズに候補がある場合や、確信が持てない場合は productCode を null にする（推測で決めない）。
 - 顧客は下の顧客マスタの番号（#の数字）で答える。確信が持てない場合は contactIndex を null にする。
 - shipDate は日付が特定できる場合だけ YYYY-MM-DD で答える。「10月末」は月末日、「〇日の週」はその日付を使う。曖昧なら null にし、原文の表現を shipHint に入れる。
-- 受注の投稿でない場合（連絡・質問のみなど）は isOrder を false にする。`;
+- 受注の投稿でない場合（連絡・質問のみなど）は isOrder を false にする。
+- 「担当者からの補足」がある場合は、投稿よりも補足を優先して反映する。
+
+出力の分け方:
+- note には、受注として残す情報（支払方法、梱包・発送の注意点など）だけを書く。照合の迷いは書かない。無ければ null。
+- questions には、担当者に確認したいことを、一言で答えられる短い質問文で入れる（例:「3.3寸は箱入・PP・桐箱のどれですか？」「朱印袋はどの商品ですか？」）。照合できなかった顧客・商品ごとに1つ。全部確信がある場合は空にする。`;
 
 const OUTPUT_SCHEMA = {
   type: "object",
@@ -63,8 +71,9 @@ const OUTPUT_SCHEMA = {
     shipDate: { anyOf: [{ type: "string", format: "date" }, { type: "null" }] },
     shipHint: { anyOf: [{ type: "string" }, { type: "null" }] },
     note: { anyOf: [{ type: "string" }, { type: "null" }] },
+    questions: { type: "array", items: { type: "string" } },
   },
-  required: ["isOrder", "customerLabel", "contactIndex", "items", "shipDate", "shipHint", "note"],
+  required: ["isOrder", "customerLabel", "contactIndex", "items", "shipDate", "shipHint", "note", "questions"],
   additionalProperties: false,
 } as const;
 
@@ -76,28 +85,37 @@ interface RawOutput {
   shipDate: string | null;
   shipHint: string | null;
   note: string | null;
+  questions: string[];
+}
+
+// 書き方の照合用に空白を除いて正規化（全角スペースも）
+export function normalizeAliasLabel(label: string): string {
+  return label.replace(/[\s　]+/g, "").trim();
 }
 
 function todayJST(): string {
   return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }); // YYYY-MM-DD
 }
 
-export async function parseOrderText(text: string): Promise<ParsedOrder> {
+export async function parseOrderText(text: string, clarifications: string[] = []): Promise<ParsedOrder> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new OrderParseError("AIのキー（ANTHROPIC_API_KEY）が設定されていません");
   }
 
-  const [products, contacts] = await Promise.all([
+  const [productsRaw, contacts, aliases] = await Promise.all([
     prisma.product.findMany({
       where: { active: true },
-      select: { id: true, code: true, name: true, series: true },
-      orderBy: [{ series: "asc" }, { sortOrder: "asc" }],
+      select: { id: true, code: true, name: true, series: true, sortOrder: true },
     }),
     prisma.contact.findMany({
       select: { id: true, name: true, company: true },
       orderBy: { createdAt: "asc" },
     }),
+    prisma.productAlias.findMany({
+      select: { label: true, product: { select: { id: true, code: true, active: true } } },
+    }),
   ]);
+  const products = [...productsRaw].sort(compareProductOrder);
 
   const productList = products
     .map((p) => `${p.code} | ${p.name} | ${getSeriesLabel(p.series) || "-"}`)
@@ -105,6 +123,15 @@ export async function parseOrderText(text: string): Promise<ParsedOrder> {
   const contactList = contacts
     .map((c, i) => `#${i} ${c.company || ""}${c.company && c.name !== c.company ? `（担当: ${c.name}）` : c.company ? "" : c.name}`)
     .join("\n");
+  const activeAliases = aliases.filter((a) => a.product.active);
+  const aliasList = activeAliases.length
+    ? activeAliases.map((a) => `${a.label} → ${a.product.code}`).join("\n")
+    : "（まだありません）";
+
+  const cleanClar = clarifications.map((c) => c.trim()).filter(Boolean);
+  const userText =
+    `今日の日付: ${todayJST()}\n\n投稿:\n${text}` +
+    (cleanClar.length ? `\n\n担当者からの補足（投稿より優先して反映）:\n${cleanClar.map((c) => `- ${c}`).join("\n")}` : "");
 
   const client = new Anthropic();
   const response = await client.beta.messages.create({
@@ -119,16 +146,11 @@ export async function parseOrderText(text: string): Promise<ParsedOrder> {
     system: [
       {
         type: "text",
-        text: `${SYSTEM_PROMPT}\n\n## 商品マスタ（code | 商品名 | シリーズ）\n${productList}\n\n## 顧客マスタ\n${contactList}`,
+        text: `${SYSTEM_PROMPT}\n\n## 商品マスタ（code | 商品名 | シリーズ）\n${productList}\n\n## 顧客マスタ\n${contactList}\n\n## 過去に確定した書き方（書き方 → code）\n${aliasList}`,
         cache_control: { type: "ephemeral" },
       },
     ],
-    messages: [
-      {
-        role: "user",
-        content: `今日の日付: ${todayJST()}\n\n投稿:\n${text}`,
-      },
-    ],
+    messages: [{ role: "user", content: userText }],
   });
 
   if (response.stop_reason === "refusal") {
@@ -150,8 +172,10 @@ export async function parseOrderText(text: string): Promise<ParsedOrder> {
     throw new OrderParseError("AIの応答を読み取れませんでした");
   }
 
-  // マスタに実在するものだけ採用（AIの誤った照合を通さない）
+  // マスタに実在するものだけ採用（AIの誤った照合を通さない）。
+  // AIが特定できなかった明細でも、過去に確定した書き方と完全一致すればその商品を使う。
   const byCode = new Map(products.map((p) => [p.code, p.id]));
+  const byAlias = new Map(activeAliases.map((a) => [normalizeAliasLabel(a.label), a.product.id]));
   const contact = raw.contactIndex != null ? contacts[raw.contactIndex] : undefined;
   const shipDate = raw.shipDate && /^\d{4}-\d{2}-\d{2}$/.test(raw.shipDate) ? raw.shipDate : null;
 
@@ -161,11 +185,15 @@ export async function parseOrderText(text: string): Promise<ParsedOrder> {
     contactId: contact?.id ?? null,
     items: raw.items.map((it) => ({
       label: it.label,
-      productId: it.productCode ? byCode.get(it.productCode) ?? null : null,
+      productId:
+        (it.productCode ? byCode.get(it.productCode) : undefined) ??
+        byAlias.get(normalizeAliasLabel(it.label)) ??
+        null,
       quantity: it.quantity != null && it.quantity > 0 ? it.quantity : null,
     })),
     shipDate,
     shipHint: raw.shipHint,
     note: raw.note,
+    questions: Array.isArray(raw.questions) ? raw.questions.filter((q) => q && q.trim()) : [],
   };
 }

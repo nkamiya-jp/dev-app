@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { compareProductOrder } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +16,11 @@ export async function GET(request: NextRequest) {
   const month = request.nextUrl.searchParams.get("month"); // YYYY-MM（任意）
   const useMonth = !!(month && /^\d{4}-\d{2}$/.test(month));
 
-  const products = await prisma.product.findMany({
+  const products = (await prisma.product.findMany({
     where: { active: true },
-    orderBy: [{ series: "asc" }, { sortOrder: "asc" }, { code: "asc" }],
-    select: { id: true, code: true, name: true, shortName: true, series: true },
-  });
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+    select: { id: true, code: true, name: true, shortName: true, series: true, sortOrder: true },
+  })).sort(compareProductOrder);
 
   const orderItems = await prisma.orderItem.findMany({
     where: { order: { status: { not: "cancelled" } } },

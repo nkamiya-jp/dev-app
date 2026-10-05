@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, Search, Users, Package } from "lucide-react";
 import { getContactTypeColor, getContactTypeLabel, CONTACT_TYPES } from "@/lib/contact-meta";
-import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
+import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor, compareProductOrder } from "@/lib/product-meta";
 
 interface Week {
   monday: string;
@@ -28,6 +28,7 @@ interface Row {
   productCode: string;
   productName: string;
   productSeries: string | null;
+  productSortOrder: number;
   totalQuantity: number;
   shippedQty: number;
   remainQty: number;
@@ -540,6 +541,7 @@ interface ProductAgg {
   productCode: string;
   productName: string;
   productSeries: string | null;
+  productSortOrder: number;
   customerCount: number;
   totalQuantity: number;
   shippedQty: number;
@@ -560,6 +562,7 @@ function ProductView({ data, rows, month }: { data: ApiResponse | null; rows: Ro
           productCode: it.productCode,
           productName: it.productName,
           productSeries: it.productSeries,
+          productSortOrder: it.productSortOrder,
           customerCount: 0,
           totalQuantity: 0,
           shippedQty: 0,
@@ -580,7 +583,13 @@ function ProductView({ data, rows, month }: { data: ApiResponse | null; rows: Ro
     for (const [pid, agg] of map) {
       agg.customerCount = customerSetByProduct.get(pid)!.size;
     }
-    return [...map.values()].sort((a, b) => b.monthlyPlan - a.monthlyPlan);
+    // 並びは価格表と同じマスタ順
+    return [...map.values()].sort((a, b) =>
+      compareProductOrder(
+        { series: a.productSeries, sortOrder: a.productSortOrder, code: a.productCode },
+        { series: b.productSeries, sortOrder: b.productSortOrder, code: b.productCode }
+      )
+    );
   }, [data, rows]);
 
   if (!data) return null;

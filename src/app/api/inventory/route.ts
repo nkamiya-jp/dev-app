@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { compareProductOrder } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,8 @@ export async function GET() {
       select: { productId: true, quantity: true, shippedQty: true },
     }),
   ]);
+  // 並びは価格表と同じマスタ順
+  products.sort(compareProductOrder);
 
   const stockMap = new Map(inventories.map((i) => [i.productId, i.stock]));
   const backlogMap = new Map<string, number>();

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { compareProductOrder } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +12,11 @@ export const dynamic = "force-dynamic";
 // - inFlight    : 製造中（未納品の割当数合計）
 // - toMake      : 作るべき数 = max(0, orderRemain - stock - inFlight)
 export async function GET(_request: NextRequest) {
-  const products = await prisma.product.findMany({
+  const products = (await prisma.product.findMany({
     where: { active: true },
-    orderBy: [{ series: "asc" }, { sortOrder: "asc" }, { code: "asc" }],
-    select: { id: true, code: true, name: true, shortName: true, series: true },
-  });
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+    select: { id: true, code: true, name: true, shortName: true, series: true, sortOrder: true },
+  })).sort(compareProductOrder);
 
   const orderItems = await prisma.orderItem.findMany({
     where: { order: { status: { not: "cancelled" } } },

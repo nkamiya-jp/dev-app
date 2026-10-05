@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { getWeeksOfMonth } from "@/lib/week-utils";
+import { compareProductOrder } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +23,11 @@ export async function GET(request: NextRequest) {
   const month = request.nextUrl.searchParams.get("month");
 
   // 商品一覧
-  const products = await prisma.product.findMany({
+  const products = (await prisma.product.findMany({
     where: { active: true, ...(productId ? { id: productId } : {}) },
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-    select: { id: true, code: true, name: true, series: true },
-  });
+    select: { id: true, code: true, name: true, series: true, sortOrder: true },
+  })).sort(compareProductOrder);
 
   const weeks = month && /^\d{4}-\d{2}$/.test(month) ? getWeeksOfMonth(month) : [];
 

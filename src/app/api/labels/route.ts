@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { compareProductOrder } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +35,11 @@ export async function GET(request: NextRequest) {
     note: s.note,
   }));
 
-  const products = await prisma.product.findMany({
+  const products = (await prisma.product.findMany({
     where: { active: true },
-    orderBy: [{ series: "asc" }, { sortOrder: "asc" }, { code: "asc" }],
-    select: { id: true, code: true, name: true, shortName: true, fnsku: true },
-  });
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+    select: { id: true, code: true, name: true, shortName: true, fnsku: true, series: true, sortOrder: true },
+  })).sort(compareProductOrder);
 
   // 裁断カード用: 未納品の製造依頼（既定=裁断がまだ／納品済でないもの）
   const prods = await prisma.production.findMany({

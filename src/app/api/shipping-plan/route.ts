@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     },
     include: {
       order: { select: { id: true, orderDate: true, dueDate: true, contactId: true, contact: { select: { id: true, name: true, company: true, type: true } } } },
-      product: { select: { id: true, code: true, name: true, series: true } },
+      product: { select: { id: true, code: true, name: true, series: true, sortOrder: true } },
     },
     orderBy: [{ order: { orderDate: "asc" } }],
   });
@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
         productCode: it.product.code,
         productName: it.product.name,
         productSeries: it.product.series,
+        productSortOrder: it.product.sortOrder,
         totalQuantity: it.quantity,
         shippedQty: it.shippedQty,
         remainQty: remain,

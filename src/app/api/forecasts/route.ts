@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { compareProductOrder } from "@/lib/product-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export async function GET(request: NextRequest) {
       include: { order: { select: { dueDate: true, orderDate: true, status: true } } },
     }),
   ]);
+  // 並びは価格表と同じマスタ順
+  products.sort(compareProductOrder);
 
   // 予測マップ
   const forecastMap = new Map<string, number>();

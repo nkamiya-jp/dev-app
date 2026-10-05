@@ -127,6 +127,7 @@ model Product {
   costSteps       ProductCostStep[]
   materials       ProductMaterial[]
   customerPrices  CustomerPrice[]
+  aliases         ProductAlias[]
 }
 
 // 顧客の取扱商品＋個別卸価格。行が存在する = その顧客が取り扱う商品。
@@ -482,4 +483,14 @@ model EcSale {
   @@index([yearMonth])
   @@index([channelId])
   @@index([skuId])
+}
+
+// Slack投稿などでの商品の書き方 → 商品マスタ（受注登録時に確定した対応を学習する）
+model ProductAlias {
+  id        String   @id @default(cuid())
+  label     String   @unique
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
