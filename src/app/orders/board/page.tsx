@@ -6,7 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, ChevronRight, Plus, Search } from "lucide-react";
+import { AlertTriangle, ChevronRight, MessageSquareText, Plus, Search } from "lucide-react";
+import { SlackImportDialog } from "./slack-import";
 
 interface BoardItem {
   id: string;
@@ -56,6 +57,7 @@ export default function OrderBoardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/orders");
@@ -128,13 +130,18 @@ export default function OrderBoardPage() {
               className="pl-9 w-full sm:w-56"
             />
           </div>
+          <Button size="sm" onClick={() => setImportOpen(true)}>
+            <MessageSquareText className="size-4 mr-1" /> Slackから登録
+          </Button>
           <Link href="/orders">
-            <Button size="sm">
-              <Plus className="size-4 mr-1" /> 受注を登録
+            <Button size="sm" variant="outline">
+              <Plus className="size-4 mr-1" /> 手入力
             </Button>
           </Link>
         </div>
       </div>
+
+      <SlackImportDialog open={importOpen} onOpenChange={setImportOpen} onCreated={load} />
 
       {overdue.length > 0 && (
         <Card className="border-red-300 bg-red-50/60">
