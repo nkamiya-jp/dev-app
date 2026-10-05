@@ -24,7 +24,12 @@ export async function GET(request: NextRequest) {
       contact: { select: { id: true, name: true, company: true, type: true } },
       items: {
         include: {
-          product: { select: { id: true, code: true, name: true, series: true, wholesalePrice: true } },
+          product: {
+            select: {
+              id: true, code: true, name: true, series: true, wholesalePrice: true,
+              inventory: { select: { stock: true } },
+            },
+          },
         },
       },
     },
@@ -56,16 +61,41 @@ export async function POST(request: NextRequest) {
   return Response.json(order);
 }
 
+// 進捗段階 ⇔ 従来の status の対応（既存画面と食い違わないよう相互に同期する）
+const STAGE_TO_STATUS: Record<string, string> = {
+  received: "pending",
+  production: "in_progress",
+  preparing: "in_progress",
+  shipped: "completed",
+  cancelled: "cancelled",
+};
+const STATUS_TO_STAGE: Record<string, string> = {
+  completed: "shipped",
+  cancelled: "cancelled",
+};
+
 export async function PUT(request: NextRequest) {
   const data = await request.json();
   const { id, ...rest } = data;
+
+  // stage を指定したら status も合わせる。status だけ変えた場合は完了/キャンセルのみ stage に反映
+  let stage: string | undefined = rest.stage;
+  let status: string | undefined = rest.status;
+  if (stage) {
+    if (!STAGE_TO_STATUS[stage]) return Response.json({ error: "invalid stage" }, { status: 400 });
+    status = STAGE_TO_STATUS[stage];
+  } else if (status && STATUS_TO_STAGE[status]) {
+    stage = STATUS_TO_STAGE[status];
+  }
+
   const order = await prisma.order.update({
     where: { id },
     data: {
       ...(rest.contactId && { contactId: rest.contactId }),
       ...(rest.orderDate && { orderDate: new Date(rest.orderDate) }),
       ...(rest.dueDate !== undefined && { dueDate: rest.dueDate ? new Date(rest.dueDate) : null }),
-      ...(rest.status && { status: rest.status }),
+      ...(status && { status }),
+      ...(stage && { stage, stageUpdatedAt: new Date() }),
       ...(rest.note !== undefined && { note: rest.note || null }),
     },
   });

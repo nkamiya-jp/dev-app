@@ -220,6 +220,9 @@ model Order {
   orderDate   DateTime
   dueDate     DateTime?
   status      String   @default("pending")  // pending | in_progress | completed | cancelled
+  // 進捗段階（受注進捗ボード）: received | production | preparing | shipped | cancelled
+  stage          String    @default("received")
+  stageUpdatedAt DateTime?
   note        String?
   items       OrderItem[]
   shipments   Shipment[]

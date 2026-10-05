@@ -29,6 +29,7 @@ import {
   Coins,
   ClipboardList,
   Tags,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +67,7 @@ const navSections = [
   {
     label: "受注・出荷",
     items: [
+      { href: "/orders/board", label: "受注進捗", icon: Activity },
       { href: "/orders", label: "受注", icon: ShoppingCart },
       { href: "/orders-by-product", label: "商品別出荷管理", icon: ClipboardList },
       { href: "/shipping-plan", label: "出荷計画", icon: CalendarDays },
@@ -120,12 +122,18 @@ function NavContent({ pathname }: { pathname: string }) {
     });
   }
 
+  // 現在地は「最も具体的に一致するメニュー」1つだけ（/orders/board で /orders まで光らないように）
+  const activeHref = navSections
+    .flatMap((s) => s.items.map((i) => i.href))
+    .filter((h) => pathname === h || pathname.startsWith(h + "/"))
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
     <nav className="flex flex-col gap-3 px-3">
       {navSections.map((section) => {
         const isCollapsed = collapsed.has(section.label);
         // 折りたたみ中でも、現在ページを含むセクションは中身を表示（迷子防止）
-        const hasActive = section.items.some((i) => pathname.startsWith(i.href));
+        const hasActive = section.items.some((i) => i.href === activeHref);
         const showItems = !isCollapsed || hasActive;
         return (
           <div key={section.label} className="flex flex-col gap-1">
@@ -142,7 +150,7 @@ function NavContent({ pathname }: { pathname: string }) {
               />
             </button>
             {showItems && section.items.map((item) => {
-              const isActive = pathname.startsWith(item.href);
+              const isActive = item.href === activeHref;
               const Icon = item.icon;
               return (
                 <Link
