@@ -7,8 +7,10 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+// 入力途中で画面外を誤タップしても消えないよう、外側クリックでは閉じない（×ボタン・Escで閉じる）。
+// 閉じてよいダイアログは disablePointerDismissal={false} を渡す。
+function Dialog({ disablePointerDismissal = true, ...props }: DialogPrimitive.Root.Props) {
+  return <DialogPrimitive.Root data-slot="dialog" disablePointerDismissal={disablePointerDismissal} {...props} />
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
