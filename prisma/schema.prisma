@@ -28,6 +28,9 @@ model Contact {
   lastContactDate DateTime?
   nextAction     String?
   nextActionDate DateTime?
+  // 毎日注文の取引先（受注進捗ボード・Slack取り込みの対象外）と、Slack投稿での呼び名（カンマ区切り）
+  dailyOrder   Boolean  @default(false)
+  orderAliases String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   deals          Deal[]
@@ -505,7 +508,8 @@ model OrderDraft {
   slackUserId   String?
   slackUserName String?
   rawText       String
-  status        String    @default("pending") // pending | registered | dismissed
+  status        String    @default("pending") // pending | registered | dismissed | excluded(自動で除外)
+  excludedReason String?
   orderId       String?
   order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
   postedAt      DateTime?

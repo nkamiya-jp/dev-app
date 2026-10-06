@@ -19,6 +19,7 @@ interface BoardItem {
 interface OrderDraftRow {
   id: string;
   rawText: string;
+  excludedReason?: string | null;
   slackUserName: string | null;
   postedAt: string | null;
   createdAt: string;
@@ -31,7 +32,7 @@ interface BoardOrder {
   stage: string;
   stageUpdatedAt: string | null;
   note: string | null;
-  contact: { id: string; name: string; company: string | null };
+  contact: { id: string; name: string; company: string | null; dailyOrder?: boolean };
   items: BoardItem[];
 }
 
@@ -67,6 +68,10 @@ export default function OrderBoardPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [drafts, setDrafts] = useState<OrderDraftRow[]>([]);
+  const [excludedDrafts, setExcludedDrafts] = useState<OrderDraftRow[]>([]);
+  const [showExcluded, setShowExcluded] = useState(false);
+  // 毎日注文の取引先（清水・よしとよ嵐山など）の受注は普段は非表示
+  const [showDaily, setShowDaily] = useState(false);
   const [activeDraft, setActiveDraft] = useState<OrderDraftRow | null>(null);
 
   const load = useCallback(async () => {
@@ -74,6 +79,8 @@ export default function OrderBoardPage() {
     if (res.ok) setOrders(await res.json());
     const dr = await fetch("/api/order-drafts");
     if (dr.ok) setDrafts(await dr.json());
+    const ex = await fetch("/api/order-drafts?status=excluded");
+    if (ex.ok) setExcludedDrafts(await ex.json());
     setLoading(false);
   }, []);
 
@@ -101,6 +108,7 @@ export default function OrderBoardPage() {
     const q = search.trim();
     return orders.filter((o) => {
       if (o.stage === "cancelled") return false;
+      if (!showDaily && o.contact.dailyOrder) return false;
       if (o.stage === "shipped") {
         const at = new Date(o.stageUpdatedAt || o.orderDate).getTime();
         if (Date.now() - at > SHIPPED_DAYS * 86400000) return false;
@@ -109,7 +117,19 @@ export default function OrderBoardPage() {
       const hay = `${o.contact.company || ""} ${o.contact.name} ${o.note || ""} ${o.items.map((i) => i.product.name).join(" ")}`;
       return hay.includes(q);
     });
-  }, [orders, search]);
+  }, [orders, search, showDaily]);
+  const hiddenDailyCount = orders.filter((o) => o.contact.dailyOrder && o.stage !== "cancelled").length;
+
+  async function restoreDraft(id: string) {
+    setExcludedDrafts((prev) => prev.filter((x) => x.id !== id));
+    const res = await fetch("/api/order-drafts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status: "pending" }),
+    });
+    if (!res.ok) alert("更新に失敗しました。時間をおいて再度お試しください。");
+    load();
+  }
 
   // 遅れ：発送予定日を過ぎていて未出荷
   const overdue = visible.filter((o) => o.stage !== "shipped" && o.dueDate && dayDiff(o.dueDate) < 0);
@@ -131,6 +151,17 @@ export default function OrderBoardPage() {
           <p className="text-xs text-gray-500 mt-1">
             受注 → 制作中 → 出荷準備 → 出荷済。発送予定日を過ぎた受注は赤で表示します。
           </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-gray-500">
+            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={showDaily} onChange={(e) => setShowDaily(e.target.checked)} className="size-3.5" />
+              毎日注文の取引先も表示{hiddenDailyCount > 0 ? `（${hiddenDailyCount}件）` : ""}
+            </label>
+            {excludedDrafts.length > 0 && (
+              <button type="button" onClick={() => setShowExcluded((v) => !v)} className="underline">
+                Slackから自動で除外した投稿 {excludedDrafts.length}件{showExcluded ? "を閉じる" : "を見る"}
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-initial">
@@ -168,6 +199,35 @@ export default function OrderBoardPage() {
         onCreated={load}
         draft={activeDraft ? { id: activeDraft.id, rawText: activeDraft.rawText } : null}
       />
+
+      {showExcluded && excludedDrafts.length > 0 && (
+        <Card className="bg-gray-50">
+          <CardContent className="py-3 space-y-2">
+            <p className="text-xs text-gray-600">
+              毎日注文の取引先として自動で除外した投稿（直近30日）。受注として扱うものは「確認待ちに戻す」を押してください。
+            </p>
+            <ul className="space-y-2">
+              {excludedDrafts.map((d) => (
+                <li key={d.id} className="bg-white rounded-md border p-2.5 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-gray-500">
+                      {d.postedAt
+                        ? new Date(d.postedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                        : ""}
+                      {d.slackUserName ? `・${d.slackUserName}` : ""}
+                      {d.excludedReason ? `・${d.excludedReason}` : ""}
+                    </p>
+                    <p className="text-sm whitespace-pre-line line-clamp-2 text-gray-600">{d.rawText}</p>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => restoreDraft(d.id)}>
+                    確認待ちに戻す
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {drafts.length > 0 && (
         <Card className="border-blue-300 bg-blue-50/50">

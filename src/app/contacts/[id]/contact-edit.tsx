@@ -28,6 +28,8 @@ interface Contact {
   closingDay: number | null;
   paymentMonthOffset: number | null;
   paymentDay: number | null;
+  dailyOrder?: boolean;
+  orderAliases?: string | null;
 }
 
 export function ContactEditButton({
@@ -71,6 +73,8 @@ export function ContactEditButton({
       closingDay: form.get("closingDay") ? Number(form.get("closingDay")) : null,
       paymentMonthOffset: form.get("paymentMonthOffset") ? Number(form.get("paymentMonthOffset")) : null,
       paymentDay: form.get("paymentDay") ? Number(form.get("paymentDay")) : null,
+      dailyOrder: form.get("dailyOrder") === "on",
+      orderAliases: String(form.get("orderAliases") || "").trim() || null,
     };
 
     await fetch(`/api/contacts/${contact.id}`, {
@@ -202,6 +206,21 @@ export function ContactEditButton({
           <p className="text-[11px] text-gray-400 -mt-1">
             例: 締め翌月末払い → 7月締め分は8月末に着金予定
           </p>
+          <div className="rounded-md border p-3 space-y-2">
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input type="checkbox" name="dailyOrder" defaultChecked={!!contact.dailyOrder} className="size-4 mt-0.5" />
+              <span>
+                毎日注文の取引先
+                <span className="block text-[11px] text-gray-400">
+                  受注進捗ボードに普段は表示せず、Slack #受注 の投稿も確認待ちに入れません（1行目がこの取引先の名前・呼び名で始まる投稿）
+                </span>
+              </span>
+            </label>
+            <div>
+              <label className="text-xs text-gray-500">Slackでの呼び名（カンマ区切り・任意）</label>
+              <Input name="orderAliases" defaultValue={contact.orderAliases || ""} placeholder="例: 嵐山,よしとよ" />
+            </div>
+          </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "保存中..." : "保存"}
           </Button>

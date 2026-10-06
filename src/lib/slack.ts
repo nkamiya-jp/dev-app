@@ -37,6 +37,30 @@ export function cleanSlackText(text: string): string {
     .trim();
 }
 
+// 投稿の「1行目」（メンションだけの行は飛ばす）。顧客名は通常ここに書かれる
+export function firstMeaningfulLine(rawSlackText: string): string {
+  const withoutMentions = cleanSlackText(rawSlackText.replace(/<@[^>]+>/g, ""));
+  const line = withoutMentions.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return (line || "").replace(/[\s　]+/g, "");
+}
+
+// 1行目が「毎日注文の取引先」の名前・呼び名で始まっていれば、その取引先を返す。
+// 本文の途中に出てくるだけ（「清水との兼ね合いで…」など）では一致させない。
+export function matchDailyOrderContact<T extends { company: string | null; name: string; orderAliases: string | null }>(
+  rawSlackText: string,
+  dailyContacts: T[]
+): T | null {
+  const head = firstMeaningfulLine(rawSlackText);
+  if (!head) return null;
+  for (const c of dailyContacts) {
+    const keys = [c.company, c.name, ...(c.orderAliases || "").split(/[,、，]/)]
+      .map((k) => (k || "").replace(/[\s　]+/g, ""))
+      .filter((k) => k.length > 0);
+    if (keys.some((k) => head.startsWith(k))) return c;
+  }
+  return null;
+}
+
 async function slackPost(method: string, body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) return null;

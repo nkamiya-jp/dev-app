@@ -5,6 +5,7 @@ import {
   addReaction,
   cleanSlackText,
   getSlackUserName,
+  matchDailyOrderContact,
   verifySlackSignature,
 } from "@/lib/slack";
 
@@ -72,6 +73,13 @@ export async function POST(request: NextRequest) {
     // 同じ投稿の再送（Slackのリトライ）でも重複しないよう slackTs で一意にする
     const existing = await prisma.orderDraft.findUnique({ where: { slackTs: ev.ts } });
     if (!existing) {
+      // 1行目が「毎日注文の取引先」なら確認待ちに入れず自動で除外（記録は残し、ボードから戻せる）
+      const dailyContacts = await prisma.contact.findMany({
+        where: { dailyOrder: true },
+        select: { company: true, name: true, orderAliases: true },
+      });
+      const daily = matchDailyOrderContact(ev.text || "", dailyContacts);
+
       await prisma.orderDraft.create({
         data: {
           source: "slack",
@@ -80,12 +88,16 @@ export async function POST(request: NextRequest) {
           slackUserId: ev.user || null,
           rawText: text,
           postedAt: new Date(Number(ev.ts) * 1000),
+          ...(daily && {
+            status: "excluded",
+            excludedReason: `毎日注文の取引先（${daily.company || daily.name}）`,
+          }),
         },
       });
       const ts = ev.ts;
       const userId = ev.user;
       after(async () => {
-        await addReaction(channel, ts, "memo"); // 取り込んだ印
+        if (!daily) await addReaction(channel, ts, "memo"); // 取り込んだ印（自動除外は付けない）
         if (userId) {
           const name = await getSlackUserName(userId);
           if (name) await prisma.orderDraft.update({ where: { slackTs: ts }, data: { slackUserName: name } });

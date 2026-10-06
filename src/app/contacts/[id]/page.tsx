@@ -47,6 +47,8 @@ export default async function ContactDetailPage({
           closingDay: contact.closingDay,
           paymentMonthOffset: contact.paymentMonthOffset,
           paymentDay: contact.paymentDay,
+          dailyOrder: contact.dailyOrder,
+          orderAliases: contact.orderAliases,
         }} />
       </div>
 

@@ -31,6 +31,8 @@ interface Contact {
   closingDay: number | null;
   paymentMonthOffset: number | null;
   paymentDay: number | null;
+  dailyOrder?: boolean;
+  orderAliases?: string | null;
   createdAt: string;
   _count: { deals: number; tasks: number };
 }
@@ -159,6 +161,8 @@ export default function ContactsPage() {
                       closingDay: c.closingDay,
                       paymentMonthOffset: c.paymentMonthOffset,
                       paymentDay: c.paymentDay,
+                      dailyOrder: c.dailyOrder,
+                      orderAliases: c.orderAliases,
                     }}
                     onSaved={loadContacts}
                     variant="icon"

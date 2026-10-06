@@ -8,7 +8,7 @@ import { MessageCircleQuestion, Plus, Send, Sparkles, Trash2 } from "lucide-reac
 import { compareProductOrder } from "@/lib/product-meta";
 
 interface ProductOpt { id: string; code: string; name: string; active: boolean; series: string | null; sortOrder: number }
-interface ContactOpt { id: string; name: string; company: string | null }
+interface ContactOpt { id: string; name: string; company: string | null; dailyOrder?: boolean }
 
 interface DraftItem { key: string; label: string; productId: string; quantity: string }
 
@@ -363,6 +363,11 @@ export function SlackImportDialog({
                     placeholder="新規顧客の名前"
                     className="mt-1.5"
                   />
+                )}
+                {contacts.find((c) => c.id === contactId)?.dailyOrder && (
+                  <p className="text-[11px] text-amber-700 mt-0.5">
+                    この顧客は「毎日注文の取引先」です。登録しても受注進捗ボードには普段表示されません。
+                  </p>
                 )}
                 {customerLabel && contactId !== NEW_CONTACT && contactId && (
                   <p className="text-[11px] text-gray-400 mt-0.5">投稿上の表記：{customerLabel}</p>
