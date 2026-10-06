@@ -227,6 +227,7 @@ model Order {
   note        String?
   items       OrderItem[]
   shipments   Shipment[]
+  drafts      OrderDraft[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -493,4 +494,23 @@ model ProductAlias {
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Slack #受注 から自動で取り込んだ「確認待ちの受注下書き」
+model OrderDraft {
+  id            String    @id @default(cuid())
+  source        String    @default("slack")
+  slackChannel  String?
+  slackTs       String?   @unique
+  slackUserId   String?
+  slackUserName String?
+  rawText       String
+  status        String    @default("pending") // pending | registered | dismissed
+  orderId       String?
+  order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  postedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
 }

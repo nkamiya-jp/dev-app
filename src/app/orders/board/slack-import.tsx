@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -37,10 +37,13 @@ export function SlackImportDialog({
   open,
   onOpenChange,
   onCreated,
+  draft,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
+  // Slackから自動で取り込んだ下書き（指定時は開いた時点でAIが読み取る）
+  draft?: { id: string; rawText: string } | null;
 }) {
   const [text, setText] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -74,6 +77,20 @@ export function SlackImportDialog({
       setContacts(cs as ContactOpt[]);
     });
   }, [open]);
+
+  const autoParsedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      autoParsedFor.current = null;
+      return;
+    }
+    if (draft && autoParsedFor.current !== draft.id) {
+      autoParsedFor.current = draft.id;
+      setText(draft.rawText);
+      parse([], draft.rawText);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, draft]);
 
   function reset() {
     setText("");
@@ -121,14 +138,14 @@ export function SlackImportDialog({
     setHasDraft(true);
   }
 
-  async function parse(clar: string[]) {
+  async function parse(clar: string[], overrideText?: string) {
     setParsing(true);
     setError("");
     try {
       const res = await fetch("/api/orders/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, clarifications: clar }),
+        body: JSON.stringify({ text: overrideText ?? text, clarifications: clar }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -200,6 +217,16 @@ export function SlackImportDialog({
         }),
       });
       if (!res.ok) throw new Error("受注の登録に失敗しました");
+      const created = await res.json();
+
+      // Slackから取り込んだ下書きなら「登録済み」にする（Slackの投稿に ✅ が付く）
+      if (draft) {
+        await fetch("/api/order-drafts", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: draft.id, status: "registered", orderId: created.id }),
+        }).catch(() => {});
+      }
 
       // 投稿上の書き方 → 確定した商品 を記録（次回からAIがこの対応で読み取る）。失敗しても登録は完了扱い
       const aliases = items.filter((it) => it.label.trim() && it.productId).map((it) => ({ label: it.label, productId: it.productId }));
@@ -235,7 +262,7 @@ export function SlackImportDialog({
     >
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Slackの投稿から受注を登録</DialogTitle>
+          <DialogTitle>{draft ? "Slackから届いた受注を確認" : "Slackの投稿から受注を登録"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3">

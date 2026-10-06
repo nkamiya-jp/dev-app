@@ -16,6 +16,14 @@ interface BoardItem {
   product: { id: string; code: string; name: string; inventory: { stock: number } | null };
 }
 
+interface OrderDraftRow {
+  id: string;
+  rawText: string;
+  slackUserName: string | null;
+  postedAt: string | null;
+  createdAt: string;
+}
+
 interface BoardOrder {
   id: string;
   orderDate: string;
@@ -58,10 +66,14 @@ export default function OrderBoardPage() {
   const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [drafts, setDrafts] = useState<OrderDraftRow[]>([]);
+  const [activeDraft, setActiveDraft] = useState<OrderDraftRow | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/orders");
     if (res.ok) setOrders(await res.json());
+    const dr = await fetch("/api/order-drafts");
+    if (dr.ok) setDrafts(await dr.json());
     setLoading(false);
   }, []);
 
@@ -130,7 +142,13 @@ export default function OrderBoardPage() {
               className="pl-9 w-full sm:w-56"
             />
           </div>
-          <Button size="sm" onClick={() => setImportOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setActiveDraft(null);
+              setImportOpen(true);
+            }}
+          >
             <MessageSquareText className="size-4 mr-1" /> Slackから登録
           </Button>
           <Link href="/orders">
@@ -141,7 +159,72 @@ export default function OrderBoardPage() {
         </div>
       </div>
 
-      <SlackImportDialog open={importOpen} onOpenChange={setImportOpen} onCreated={load} />
+      <SlackImportDialog
+        open={importOpen}
+        onOpenChange={(o) => {
+          setImportOpen(o);
+          if (!o) setActiveDraft(null);
+        }}
+        onCreated={load}
+        draft={activeDraft ? { id: activeDraft.id, rawText: activeDraft.rawText } : null}
+      />
+
+      {drafts.length > 0 && (
+        <Card className="border-blue-300 bg-blue-50/50">
+          <CardContent className="py-3 space-y-2">
+            <p className="text-sm font-medium text-blue-900 flex items-center gap-1.5">
+              <MessageSquareText className="size-4" /> Slackから届いた確認待ち {drafts.length}件
+            </p>
+            <ul className="space-y-2">
+              {drafts.map((d) => (
+                <li key={d.id} className="bg-white rounded-md border p-2.5 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-gray-500">
+                      {d.postedAt
+                        ? new Date(d.postedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                        : ""}
+                      {d.slackUserName ? `・${d.slackUserName}` : ""}
+                    </p>
+                    <p className="text-sm whitespace-pre-line line-clamp-3">{d.rawText}</p>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setActiveDraft(d);
+                        setImportOpen(true);
+                      }}
+                    >
+                      確認して登録
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={async () => {
+                        if (!confirm("この投稿は受注ではないものとして、確認待ちから外しますか？")) return;
+                        setDrafts((prev) => prev.filter((x) => x.id !== d.id));
+                        const res = await fetch("/api/order-drafts", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: d.id, status: "dismissed" }),
+                        });
+                        if (!res.ok) {
+                          alert("更新に失敗しました。時間をおいて再度お試しください。");
+                          load();
+                        }
+                      }}
+                    >
+                      対象外
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {overdue.length > 0 && (
         <Card className="border-red-300 bg-red-50/60">

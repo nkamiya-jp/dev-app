@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionToken, SESSION_COOKIE, isAuthConfigured } from "@/lib/auth";
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/api/version", "/_next", "/icons", "/manifest.json", "/sw.js", "/offline"];
+// /api/slack は Slack からの通知の受け口（ログイン不要。代わりに署名で本物か確認する）
+const PUBLIC_PATHS = ["/login", "/api/auth", "/api/version", "/api/slack", "/_next", "/icons", "/manifest.json", "/sw.js", "/offline"];
 
 export async function middleware(request: NextRequest) {
   // Googleログインの設定(環境変数)が揃うまでは認証OFF。デプロイしてもロックアウトしない。

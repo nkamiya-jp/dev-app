@@ -29,6 +29,12 @@
 - Vercel環境変数: `AUTH_SECRET` `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` `ALLOWED_EMAIL_DOMAIN`（個別許可は任意で `ALLOWED_EMAILS`）。未設定なら認証OFF（ロックアウトしない設計）。
 - 本番ページはログインが必要なので自動ブラウザ確認はできない。UIはローカル（認証OFF）で検証し、本番はビルドID確認＋ユーザー確認。
 
+## 受注の取り込み（Slack・AI）
+- 受注進捗ボード `/orders/board`。受注の進捗は `Order.stage`（received/production/preparing/shipped/cancelled）。従来の `status` とは API で相互同期。
+- Slack #受注 の投稿は `/api/slack/events`（署名検証あり・ログイン不要）で `OrderDraft`（確認待ち）に保存。登録すると投稿に ✅。
+- 投稿の明細化は `src/lib/order-parse.ts`（Claude `claude-opus-5-5`・構造化出力）。担当者が確定した「書き方→商品」は `ProductAlias` に記録して次回の読み取りに使う。
+- 環境変数: `ANTHROPIC_API_KEY`、`SLACK_SIGNING_SECRET`、`SLACK_BOT_TOKEN`（任意で `SLACK_ORDER_CHANNEL_ID`）。いずれもVercelのみに設定（ローカルには無い）。
+
 ## 原価計算
 - 正は `src/lib/product-cost.ts` の `calcCostBreakdown`。合計原価 = 制作費＋裁断費＋生地費＋資材費＋梱包資材費＋仕入＋販管費。**内職(workerCost)は含めない**。
 - 制作費は固定4工程（口金/貼り/縫製/その他）。書き込みは `/api/products/production-step`（名前でupsert＋重複を畳む）を使う。重複すると制作費が倍になる。
