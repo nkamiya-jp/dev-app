@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     where,
     include: {
       contact: { select: { id: true, name: true, company: true, type: true, dailyOrder: true } },
+      development: { select: { id: true, title: true } },
       items: {
         include: {
           product: {
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
       status: data.status || "pending",
       note: data.note || null,
+      developmentId: data.developmentId || null,
       items: {
         create: (data.items || []).map((it: OrderItemInput) => ({
           productId: it.productId,
@@ -97,6 +99,7 @@ export async function PUT(request: NextRequest) {
       ...(status && { status }),
       ...(stage && { stage, stageUpdatedAt: new Date() }),
       ...(rest.note !== undefined && { note: rest.note || null }),
+      ...(rest.developmentId !== undefined && { developmentId: rest.developmentId || null }),
     },
   });
   return Response.json(order);

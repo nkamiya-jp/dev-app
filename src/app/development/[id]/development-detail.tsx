@@ -18,8 +18,9 @@ import {
   getDevelopmentStatusColor,
 } from "@/lib/development-status";
 import { TASK_STATUSES, getTaskStatusLabel, getTaskStatusColor } from "@/lib/task-status";
+import { DEV_PHASES, getDevPhase } from "@/lib/development-phase";
 import Link from "next/link";
-import { Pencil, Plus, Trash2, Package, CheckSquare, Flag } from "lucide-react";
+import { Pencil, Plus, Trash2, Package, CheckSquare, Flag, Factory, Link2, Unlink } from "lucide-react";
 
 interface Task {
   id: string;
@@ -41,11 +42,60 @@ interface Milestone {
   done: boolean;
 }
 
+interface DevOrder {
+  id: string;
+  orderDate: string;
+  dueDate: string | null;
+  status: string;
+  stage: string;
+  contact: { id: string; name: string; company: string | null };
+  items: { id: string; quantity: number; shippedQty: number; product: { id: string; code: string; name: string } }[];
+}
+
+interface MassRow {
+  productId: string;
+  code: string;
+  name: string;
+  ordered: number;
+  shipped: number;
+  requested: number;
+  completed: number;
+  stock: number;
+}
+
+interface OrderOpt {
+  id: string;
+  orderDate: string;
+  status: string;
+  developmentId: string | null;
+  contact: { id: string; name: string; company: string | null };
+  items: { quantity: number; product: { name: string } }[];
+}
+
+interface ContactOpt {
+  id: string;
+  name: string;
+  company: string | null;
+}
+
+const ORDER_STAGE_LABEL: Record<string, string> = {
+  received: "受注",
+  production: "制作中",
+  preparing: "出荷準備",
+  shipped: "出荷済",
+  cancelled: "キャンセル",
+};
+
 interface Development {
   id: string;
   title: string;
   description: string | null;
   status: string;
+  phase: string;
+  contactId: string | null;
+  contact: { id: string; name: string; company: string | null } | null;
+  orders: DevOrder[];
+  massSummary: MassRow[];
   initiator: string | null;
   startDate: string | null;
   releasedDate: string | null;
@@ -72,20 +122,27 @@ export function DevelopmentDetail({ id }: { id: string }) {
   const [dev, setDev] = useState<Development | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [contacts, setContacts] = useState<ContactOpt[]>([]);
+  const [allOrders, setAllOrders] = useState<OrderOpt[]>([]);
+  const [linkOrderId, setLinkOrderId] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [msOpen, setMsOpen] = useState(false);
 
   const load = useCallback(async () => {
-    const [dRes, pRes, mRes] = await Promise.all([
+    const [dRes, pRes, mRes, cRes, oRes] = await Promise.all([
       fetch(`/api/developments/${id}`),
       fetch("/api/products"),
       fetch("/api/members"),
+      fetch("/api/contacts"),
+      fetch("/api/orders"),
     ]);
     setDev(await dRes.json());
     setProducts(await pRes.json());
     setMembers(await mRes.json());
+    if (cRes.ok) setContacts(await cRes.json());
+    if (oRes.ok) setAllOrders(await oRes.json());
   }, [id]);
 
   useEffect(() => {
@@ -105,6 +162,8 @@ export function DevelopmentDetail({ id }: { id: string }) {
         title: form.get("title"),
         description: form.get("description") || null,
         status: form.get("status"),
+        phase: form.get("phase"),
+        contactId: form.get("contactId") || null,
         initiator: form.get("initiator") || null,
         startDate: form.get("startDate") || null,
         releasedDate: form.get("releasedDate") || null,
@@ -113,6 +172,28 @@ export function DevelopmentDetail({ id }: { id: string }) {
       }),
     });
     setEditOpen(false);
+    load();
+  }
+
+  async function handlePhaseChange(phase: string) {
+    const res = await fetch("/api/developments", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, phase }),
+    });
+    if (!res.ok) alert("段階の更新に失敗しました。時間をおいて再度お試しください。");
+    load();
+  }
+
+  // 受注をこのプロジェクトにひもづける／外す
+  async function setOrderLink(orderId: string, developmentId: string | null) {
+    const res = await fetch("/api/orders", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: orderId, developmentId }),
+    });
+    if (!res.ok) alert("受注のひもづけに失敗しました。時間をおいて再度お試しください。");
+    setLinkOrderId("");
     load();
   }
 
@@ -270,6 +351,25 @@ export function DevelopmentDetail({ id }: { id: string }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
+                    <label className="text-xs text-gray-500">別注の段階</label>
+                    <select name="phase" defaultValue={dev.phase} className="w-full border rounded-md px-3 py-2 text-sm">
+                      {DEV_PHASES.map((p) => (
+                        <option key={p.id} value={p.id}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">依頼主（顧客）</label>
+                    <select name="contactId" defaultValue={dev.contactId || ""} className="w-full border rounded-md px-3 py-2 text-sm">
+                      <option value="">未設定</option>
+                      {contacts.map((c) => (
+                        <option key={c.id} value={c.id}>{c.company || c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
                     <label className="text-xs text-gray-500">発案者</label>
                     <Input name="initiator" defaultValue={dev.initiator || ""} />
                   </div>
@@ -302,6 +402,40 @@ export function DevelopmentDetail({ id }: { id: string }) {
         </div>
       </div>
 
+      {/* 別注の段階：量産前（相談〜承認）→ 量産中 → 納品完了。押すとその段階に変更 */}
+      <Card className="bg-white shadow-sm">
+        <CardContent className="py-3">
+          <div className="flex items-stretch gap-1 overflow-x-auto">
+            {DEV_PHASES.map((p, i) => {
+              const curIdx = DEV_PHASES.findIndex((x) => x.id === dev.phase);
+              const done = i < curIdx;
+              const current = i === curIdx;
+              const groupStart = i === 0 || DEV_PHASES[i - 1].group !== p.group;
+              return (
+                <div key={p.id} className="flex-1 min-w-[88px]">
+                  <p className={`text-[10px] mb-1 h-3 ${groupStart ? "text-gray-500" : "text-transparent"}`}>{p.group}</p>
+                  <button
+                    type="button"
+                    onClick={() => !current && handlePhaseChange(p.id)}
+                    className={`w-full rounded-md border px-2 py-2 text-xs font-medium transition-colors ${
+                      current
+                        ? `${p.color} border-transparent ring-2 ring-offset-1 ring-gray-400`
+                        : done
+                        ? "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+                        : "bg-white text-gray-400 border-dashed hover:bg-gray-50"
+                    }`}
+                    title={current ? "現在の段階" : `${p.label} に変更`}
+                  >
+                    {done ? "✓ " : ""}
+                    {p.label}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Left: Info */}
         <Card className="bg-white shadow-sm md:col-span-1">
@@ -318,6 +452,20 @@ export function DevelopmentDetail({ id }: { id: string }) {
               <p className="whitespace-pre-wrap text-gray-700">{dev.description}</p>
             )}
             <div className="space-y-1 pt-3 border-t text-xs">
+              <div className="flex justify-between">
+                <span className="text-gray-500">依頼主</span>
+                {dev.contact ? (
+                  <Link href={`/contacts/${dev.contact.id}`} className="text-blue-600 hover:underline">
+                    {dev.contact.company || dev.contact.name}
+                  </Link>
+                ) : (
+                  <span className="text-gray-400">未設定（編集から設定）</span>
+                )}
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">別注の段階</span>
+                <Badge className={`text-[10px] ${getDevPhase(dev.phase).color}`}>{getDevPhase(dev.phase).label}</Badge>
+              </div>
               {dev.initiator && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">発案者</span>
@@ -391,6 +539,14 @@ export function DevelopmentDetail({ id }: { id: string }) {
 
         {/* Right: Milestones + Tasks */}
         <div className="md:col-span-2 space-y-4">
+          <MassProductionCard
+            dev={dev}
+            allOrders={allOrders}
+            linkOrderId={linkOrderId}
+            setLinkOrderId={setLinkOrderId}
+            onLink={(oid) => setOrderLink(oid, id)}
+            onUnlink={(oid) => setOrderLink(oid, null)}
+          />
           {/* マイルストーン（タスクではなく、期日そのものが意味を持つ節目） */}
           <Card className="bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between">
@@ -653,5 +809,146 @@ export function DevelopmentDetail({ id }: { id: string }) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// 量産の進み具合：ひもづいた受注と、商品ごとの 受注→製造→完成→出荷 の数
+function MassProductionCard({
+  dev,
+  allOrders,
+  linkOrderId,
+  setLinkOrderId,
+  onLink,
+  onUnlink,
+}: {
+  dev: Development;
+  allOrders: OrderOpt[];
+  linkOrderId: string;
+  setLinkOrderId: (v: string) => void;
+  onLink: (orderId: string) => void;
+  onUnlink: (orderId: string) => void;
+}) {
+  // ひもづけ候補：まだどのプロジェクトにも入っていない受注。依頼主の受注を先頭に
+  const candidates = allOrders
+    .filter((o) => !o.developmentId && o.status !== "cancelled")
+    .sort((a, b) => {
+      const ac = a.contact.id === dev.contactId ? 0 : 1;
+      const bc = b.contact.id === dev.contactId ? 0 : 1;
+      if (ac !== bc) return ac - bc;
+      return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
+    });
+  const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("ja-JP") : "-");
+
+  return (
+    <Card className="bg-white shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Factory className="size-5" /> 量産の進み具合
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {dev.massSummary.length === 0 ? (
+          <p className="text-sm text-gray-400">
+            関連商品か受注をひもづけると、受注数・製造・完成・出荷の数がここにまとまります。
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs text-gray-500 border-b">
+                <tr>
+                  <th className="text-left py-1.5 pr-2 font-medium">商品</th>
+                  <th className="text-right py-1.5 px-2 font-medium">受注</th>
+                  <th className="text-right py-1.5 px-2 font-medium">製造依頼</th>
+                  <th className="text-right py-1.5 px-2 font-medium">完成</th>
+                  <th className="text-right py-1.5 px-2 font-medium">出荷済</th>
+                  <th className="text-right py-1.5 pl-2 font-medium">残り</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {dev.massSummary.map((r) => {
+                  const remain = Math.max(0, r.ordered - r.shipped);
+                  const pct = r.ordered > 0 ? Math.min(100, Math.round((r.shipped / r.ordered) * 100)) : 0;
+                  return (
+                    <tr key={r.productId}>
+                      <td className="py-1.5 pr-2">
+                        <p>{r.name}</p>
+                        {r.ordered > 0 && (
+                          <div className="w-full bg-gray-100 rounded-full h-1.5 mt-1">
+                            <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        )}
+                      </td>
+                      <td className="text-right px-2 tabular-nums">{r.ordered.toLocaleString()}</td>
+                      <td className="text-right px-2 tabular-nums">{r.requested.toLocaleString()}</td>
+                      <td className="text-right px-2 tabular-nums">{r.completed.toLocaleString()}</td>
+                      <td className="text-right px-2 tabular-nums">{r.shipped.toLocaleString()}</td>
+                      <td className={`text-right pl-2 tabular-nums ${remain > 0 ? "text-amber-700 font-medium" : "text-gray-400"}`}>
+                        {remain.toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="text-[11px] text-gray-400 mt-1">
+              製造依頼・完成は、プロジェクト開始日以降のその商品の製造記録（完成＝内職の納品済）。在庫は商品全体の数です。
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">ひもづいた受注（{dev.orders.length}件）</p>
+          {dev.orders.length === 0 && <p className="text-sm text-gray-400">まだありません</p>}
+          {dev.orders.map((o) => (
+            <div key={o.id} className="border rounded-md p-2.5 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {o.contact.company || o.contact.name}
+                  <span className="ml-2 text-[11px] font-normal text-gray-500">
+                    受注 {fmt(o.orderDate)}・発送予定 {fmt(o.dueDate)}
+                  </span>
+                </p>
+                <p className="text-xs text-gray-600 truncate">
+                  {o.items.map((it) => `${it.product.name}×${it.quantity}`).join("、") || "明細なし"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge className="text-[10px] bg-gray-100 text-gray-700">{ORDER_STAGE_LABEL[o.stage] || o.stage}</Badge>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("この受注をプロジェクトから外しますか？（受注そのものは消えません）")) onUnlink(o.id);
+                  }}
+                  className="text-gray-400 hover:text-red-600"
+                  title="プロジェクトから外す"
+                >
+                  <Unlink className="size-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-2 pt-1">
+            <select
+              value={linkOrderId}
+              onChange={(e) => setLinkOrderId(e.target.value)}
+              className="flex-1 min-w-0 border rounded-md px-2 py-1.5 text-sm bg-white"
+            >
+              <option value="">＋ 受注をひもづける…</option>
+              {candidates.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.contact.company || o.contact.name}（{fmt(o.orderDate)}）
+                  {o.items.slice(0, 2).map((it) => ` ${it.product.name}×${it.quantity}`).join("")}
+                  {o.items.length > 2 ? " ほか" : ""}
+                </option>
+              ))}
+            </select>
+            <Button size="sm" variant="outline" disabled={!linkOrderId} onClick={() => onLink(linkOrderId)}>
+              <Link2 className="size-4 mr-1" /> ひもづけ
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

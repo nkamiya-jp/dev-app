@@ -20,12 +20,16 @@ import {
 } from "@/lib/development-status";
 import Link from "next/link";
 import { Plus, Search, Lightbulb } from "lucide-react";
+import { getDevPhase } from "@/lib/development-phase";
 
 interface Development {
   id: string;
   title: string;
   description: string | null;
   status: string;
+  phase: string;
+  contact: { id: string; name: string; company: string | null } | null;
+  _count?: { orders: number };
   initiator: string | null;
   startDate: string | null;
   releasedDate: string | null;
@@ -165,6 +169,11 @@ export default function DevelopmentPage() {
                       <Badge className={`text-xs shrink-0 ${getDevelopmentStatusColor(d.status)}`}>
                         {getDevelopmentStatusLabel(d.status)}
                       </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                      <Badge className={`text-[10px] ${getDevPhase(d.phase).color}`}>{getDevPhase(d.phase).label}</Badge>
+                      {d.contact && <span className="text-xs text-gray-600">依頼主: {d.contact.company || d.contact.name}</span>}
+                      {!!d._count?.orders && <span className="text-[11px] text-gray-400">受注 {d._count.orders}件</span>}
                     </div>
                     {d.description && (
                       <p className="text-xs text-gray-500 line-clamp-2 mb-2">{d.description}</p>

@@ -31,6 +31,7 @@ model Contact {
   // 毎日注文の取引先（受注進捗ボード・Slack取り込みの対象外）と、Slack投稿での呼び名（カンマ区切り）
   dailyOrder   Boolean  @default(false)
   orderAliases String?
+  developments Development[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   deals          Deal[]
@@ -231,6 +232,8 @@ model Order {
   items       OrderItem[]
   shipments   Shipment[]
   drafts      OrderDraft[]
+  developmentId String?   // 別注プロジェクトの受注
+  development   Development? @relation(fields: [developmentId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -297,6 +300,11 @@ model Development {
   title        String
   description  String?
   status       String   @default("active")  // active | released | paused | abandoned
+  // 別注の段階: consult | quote | sample | approved（ここまで量産前） | production | delivered
+  phase        String   @default("consult")
+  contactId    String?  // 依頼主
+  contact      Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  orders       Order[]
   initiator    String?  // 誰が発案
   startDate    DateTime?
   releasedDate DateTime?

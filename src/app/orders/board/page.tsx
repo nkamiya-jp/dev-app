@@ -33,6 +33,7 @@ interface BoardOrder {
   stageUpdatedAt: string | null;
   note: string | null;
   contact: { id: string; name: string; company: string | null; dailyOrder?: boolean };
+  development?: { id: string; title: string } | null;
   items: BoardItem[];
 }
 
@@ -362,6 +363,11 @@ function OrderCard({
           <div className="min-w-0">
             <p className="font-medium text-sm truncate">{order.contact.company || order.contact.name}</p>
             <p className="text-[11px] text-gray-400">受注 {fmtDate(order.orderDate)}</p>
+            {order.development && (
+              <Link href={`/development/${order.development.id}`} className="text-[11px] text-purple-700 hover:underline">
+                別注：{order.development.title}
+              </Link>
+            )}
           </div>
           {order.dueDate && (
             <Badge
