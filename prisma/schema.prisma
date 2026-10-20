@@ -507,6 +507,13 @@ model ProductAlias {
   updatedAt DateTime @updatedAt
 }
 
+// アプリ全体の設定（value は JSON 文字列）。価格計算の設定は key="pricing"
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // Slack #受注 から自動で取り込んだ「確認待ちの受注下書き」
 model OrderDraft {
   id            String    @id @default(cuid())

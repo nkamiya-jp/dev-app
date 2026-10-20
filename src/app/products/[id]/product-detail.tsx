@@ -20,7 +20,19 @@ import {
   calcRetailFromCost,
   DEFAULT_COST_RATIO,
 } from "@/lib/product-cost";
-import { getAllMatrixRows } from "@/lib/contact-meta";
+import { getAllMatrixRows, type MatrixRow } from "@/lib/contact-meta";
+import {
+  DEFAULT_PRICING_SETTINGS,
+  normalizePricingSettings,
+  getChannelFee,
+  calcChannelPrice,
+  calcRetailForTargetMargin,
+  ceilTo,
+  withTax,
+  marginTone,
+  type PricingSettings,
+  type ChannelFee,
+} from "@/lib/pricing";
 
 interface MasterMaterial {
   id: string;
@@ -115,6 +127,9 @@ export function ProductDetail({ productId }: { productId: string }) {
   type PickerGroup = "生地費" | "資材費" | "梱包資材費";
   const [pickerCategory, setPickerCategory] = useState<PickerGroup | null>(null);
 
+  const [pricing, setPricing] = useState<PricingSettings>(DEFAULT_PRICING_SETTINGS);
+  const [pricingOpen, setPricingOpen] = useState(false);
+
   const load = useCallback(async () => {
     const res = await fetch(`/api/products/${productId}`);
     setProduct(await res.json());
@@ -123,6 +138,26 @@ export function ProductDetail({ productId }: { productId: string }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    fetch("/api/settings/pricing")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => s && setPricing(normalizePricingSettings(s)));
+  }, []);
+
+  async function savePricing(next: PricingSettings) {
+    const res = await fetch("/api/settings/pricing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(next),
+    });
+    if (!res.ok) {
+      alert("価格計算の設定を保存できませんでした");
+      return false;
+    }
+    setPricing(normalizePricingSettings(await res.json()));
+    return true;
+  }
 
   if (!product) return <div className="p-6 text-gray-400">読み込み中...</div>;
 
@@ -141,23 +176,25 @@ export function ProductDetail({ productId }: { productId: string }) {
     costSteps: product.costSteps,
     materials: product.materials,
   });
+  // 生地費（単価×使用M÷取れ数）で端数が出るため、価格計算は円単位に丸めた原価で行う
+  const cost = Math.round(breakdown.total);
   const sellPrice = product.wholesalePrice ?? 0;
-  const { profit, rate } = calcGrossProfit(breakdown.total, sellPrice);
+  const { profit, rate } = calcGrossProfit(cost, sellPrice);
   // 仕入品は「仕入単価＋販管費」だけ。制作・裁断・生地・資材・梱包の内訳UIは出さない
   const isPurchase = product.series === "purchase";
 
-  // 上代と卸価格マトリクス（顧客タイプ別の掛率を使用）
-  const cost = breakdown.total;
+  // 上代と卸価格マトリクス（顧客タイプ別の掛率・経費を使用）
   const costRatio = product.costRatio ?? DEFAULT_COST_RATIO;
   const retail = product.retailPrice ?? 0;
   const actualCostRatio = retail > 0 ? cost / retail : 0;
-  const matrixRows = retail > 0 ? getAllMatrixRows().map((r) => {
-    const price = Math.round(retail * r.ratePct / 100);
-    const profit = price - cost;
-    const profitRate = price > 0 ? (profit / price) * 100 : 0;
-    return { ...r, price, profit, profitRate };
+  const allRows = getAllMatrixRows();
+  const matrixRows = retail > 0 ? allRows.map((r) => {
+    const fee = getChannelFee(pricing, r.typeId);
+    return { ...r, feeSetting: fee, ...calcChannelPrice(retail, r.ratePct, cost, fee) };
   }) : [];
   const suggestedRetail = calcRetailFromCost(cost, costRatio);
+  // 最低掛率の取引タイプ（目標粗利率で上代を逆算する基準）
+  const minRow = allRows.reduce<typeof allRows[number] | null>((m, r) => (!m || r.ratePct < m.ratePct ? r : m), null);
 
   async function saveBasic(data: Partial<Product>) {
     await fetch(`/api/products/${productId}`, {
@@ -372,8 +409,8 @@ export function ProductDetail({ productId }: { productId: string }) {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div className="border-l-4 border-l-slate-500 pl-3 bg-slate-50/40 rounded-r p-2">
               <p className="text-xs text-gray-500">販管費</p>
-              <p className="font-bold">{breakdown.laborCost.toLocaleString()}円</p>
-              <p className="text-[10px] text-gray-400">営業{breakdown.salesCost}+出荷{breakdown.outboundCost}+管理{breakdown.mgmtCost}</p>
+              <p className="font-bold">{Math.round(breakdown.laborCost).toLocaleString()}円</p>
+              <p className="text-[10px] text-gray-400">営業{Math.round(breakdown.salesCost)}+出荷{Math.round(breakdown.outboundCost)}+管理{Math.round(breakdown.mgmtCost)}</p>
             </div>
             {isPurchase ? (
               <div className="border-l-4 border-l-emerald-500 pl-3 bg-emerald-50/40 rounded-r p-2 col-span-2 md:col-span-2">
@@ -388,7 +425,7 @@ export function ProductDetail({ productId }: { productId: string }) {
                 </div>
                 <div className="border-l-4 border-l-blue-500 pl-3 bg-blue-50/40 rounded-r p-2">
                   <p className="text-xs text-gray-500">制作費</p>
-                  <p className="font-bold">{breakdown.productionCost.toLocaleString()}円</p>
+                  <p className="font-bold">{Math.round(breakdown.productionCost).toLocaleString()}円</p>
                 </div>
                 <div className="border-l-4 border-l-purple-500 pl-3 bg-purple-50/40 rounded-r p-2">
                   <p className="text-xs text-gray-500">生地費</p>
@@ -400,7 +437,7 @@ export function ProductDetail({ productId }: { productId: string }) {
                 </div>
                 <div className="border-l-4 border-l-teal-500 pl-3 bg-teal-50/40 rounded-r p-2">
                   <p className="text-xs text-gray-500">裁断費</p>
-                  <p className="font-bold">{breakdown.cuttingCost.toLocaleString()}円</p>
+                  <p className="font-bold">{Math.round(breakdown.cuttingCost).toLocaleString()}円</p>
                 </div>
               </>
             )}
@@ -465,16 +502,26 @@ export function ProductDetail({ productId }: { productId: string }) {
 
       {/* 上代と卸価格マトリクス */}
       <Card className="bg-white shadow-sm">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">上代・卸価格</CardTitle>
+          <Button variant="outline" size="sm" onClick={() => setPricingOpen(true)}>
+            <Pencil className="size-4 mr-1" /> 経費・税率などの設定
+          </Button>
         </CardHeader>
         <CardContent>
+          <PricingSettingsDialog
+            open={pricingOpen}
+            onOpenChange={setPricingOpen}
+            settings={pricing}
+            rows={allRows}
+            onSave={savePricing}
+          />
           {/* 計算フロー図 */}
           <div className="mb-4 p-3 bg-blue-50/50 rounded border border-blue-100 text-xs text-gray-600">
             <p className="font-medium text-gray-700 mb-1">📐 計算の流れ</p>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono bg-white px-2 py-0.5 rounded border">
-                原価 {Math.round(cost).toLocaleString()}円
+                原価 {cost.toLocaleString()}円
               </span>
               <span>÷</span>
               <span className="font-mono bg-white px-2 py-0.5 rounded border">
@@ -507,11 +554,14 @@ export function ProductDetail({ productId }: { productId: string }) {
             suggestedRetail={suggestedRetail}
             onSaveRetail={(v) => saveBasic({ retailPrice: v })}
             onSaveCostRatio={(v) => saveBasic({ costRatio: v })}
+            pricing={pricing}
+            minRow={minRow}
           />
 
           {matrixRows.length > 0 ? (
             <div className="mt-4">
-              <p className="text-sm text-gray-500 mb-2">取引タイプ別の販売価格と粗利</p>
+              <p className="text-sm text-gray-500 mb-2">取引タイプ別の販売価格と粗利（税抜）</p>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm border">
                 <thead className="bg-gray-50 border-b">
                   <tr>
@@ -519,13 +569,19 @@ export function ProductDetail({ productId }: { productId: string }) {
                     <th className="text-center px-3 py-2 font-medium text-gray-500 border-r w-20">掛率</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">計算式</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">販売価格</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">経費</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">粗利</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-500">粗利率</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {matrixRows.map((row, idx) => (
-                    <tr key={`${row.typeId}-${row.ratePct}-${idx}`} className="hover:bg-gray-50">
+                  {matrixRows.map((row, idx) => {
+                    const tone = marginTone(row.profitRate, pricing);
+                    const toneClass = tone === "red" ? "bg-red-50" : tone === "yellow" ? "bg-yellow-50" : "hover:bg-gray-50";
+                    const rateClass = tone === "red" ? "text-red-600" : tone === "yellow" ? "text-yellow-700" : "text-green-600";
+                    const expense = row.fee + row.fixedCost;
+                    return (
+                    <tr key={`${row.typeId}-${row.ratePct}-${idx}`} className={toneClass}>
                       <td className="px-3 py-2 border-r">
                         <Badge className={`text-xs ${row.color}`}>{row.typeLabel}</Badge>
                         {row.kind === "markup" && (
@@ -537,18 +593,35 @@ export function ProductDetail({ productId }: { productId: string }) {
                         {retail.toLocaleString()} × {row.ratePct}%
                       </td>
                       <td className="px-3 py-2 text-right font-bold border-r">{row.price.toLocaleString()}円</td>
-                      <td className={`px-3 py-2 text-right font-medium border-r ${row.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <td className="px-3 py-2 text-right text-xs text-gray-600 border-r">
+                        {expense > 0 ? (
+                          <>
+                            {expense.toLocaleString()}円
+                            <span className="block text-[10px] text-gray-400">
+                              {[
+                                row.feeSetting.feeRate > 0 && `手数料${row.feeSetting.feeRate}%`,
+                                row.fixedCost > 0 && `固定${row.fixedCost.toLocaleString()}円`,
+                              ].filter(Boolean).join("+")}
+                            </span>
+                          </>
+                        ) : "-"}
+                      </td>
+                      <td className={`px-3 py-2 text-right font-medium border-r ${row.profit >= 0 ? "text-gray-800" : "text-red-600"}`}>
                         {row.profit.toLocaleString()}円
                       </td>
-                      <td className={`px-3 py-2 text-right font-medium ${row.profitRate >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <td className={`px-3 py-2 text-right font-bold ${rateClass}`}>
                         {row.profitRate.toFixed(1)}%
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
+              </div>
               <p className="text-xs text-gray-400 mt-2">
-                ※ 販売価格 = 上代 × 掛率 / 粗利 = 販売価格 − 原価 / ↑ = 上代より高い価格設定（マークアップ）
+                ※ 販売価格 = 上代 × 掛率 / 粗利 = 販売価格 −（販売価格×手数料率）− 1個あたり固定費 − 原価 / 粗利率 = 粗利 ÷ 販売価格 / ↑ = 上代より高い価格設定（マークアップ）
+                <br />
+                ※ 粗利率 {pricing.marginRedBelow}%未満は赤、{pricing.marginYellowBelow}%未満は黄色
               </p>
             </div>
           ) : (
@@ -586,7 +659,7 @@ export function ProductDetail({ productId }: { productId: string }) {
               })}
               <tr className="bg-blue-50/30 font-bold">
                 <td className="px-3 py-2">制作費合計</td>
-                <td className="px-3 py-2 text-right">{breakdown.productionCost.toLocaleString()}円</td>
+                <td className="px-3 py-2 text-right">{Math.round(breakdown.productionCost).toLocaleString()}円</td>
               </tr>
             </tbody>
           </table>
@@ -631,7 +704,7 @@ export function ProductDetail({ productId }: { productId: string }) {
                 ))}
                 <tr className="bg-teal-50/30 font-bold">
                   <td className="px-3 py-2" colSpan={4}>裁断費合計</td>
-                  <td className="px-3 py-2 text-right">{breakdown.cuttingCost.toLocaleString()}円</td>
+                  <td className="px-3 py-2 text-right">{Math.round(breakdown.cuttingCost).toLocaleString()}円</td>
                   <td colSpan={2}></td>
                 </tr>
               </tbody>
@@ -951,7 +1024,7 @@ function MaterialPickerDialog({
                           />
                         </td>
                         <td className="px-2 py-1.5 text-right text-gray-600">
-                          {usageNum > 0 ? `${perPiece.toFixed(1)}円` : "-"}
+                          {usageNum > 0 ? `${Math.round(perPiece).toLocaleString()}円` : "-"}
                         </td>
                         <td className="px-2 py-1.5 text-right text-[10px] text-gray-400">
                           {used ? "登録済" : ""}
@@ -1096,6 +1169,8 @@ function PriceSettings({
   suggestedRetail,
   onSaveRetail,
   onSaveCostRatio,
+  pricing,
+  minRow,
 }: {
   cost: number;
   retail: number;
@@ -1104,37 +1179,59 @@ function PriceSettings({
   suggestedRetail: number;
   onSaveRetail: (v: number) => void;
   onSaveCostRatio: (v: number) => void;
+  pricing: PricingSettings;
+  minRow: MatrixRow | null;
 }) {
   const [retailDraft, setRetailDraft] = useState(String(retail));
   const [ratioDraft, setRatioDraft] = useState(String(Math.round(costRatio * 100)));
+  const [marginDraft, setMarginDraft] = useState(String(pricing.targetMarginPct));
+  const [roundUnit, setRoundUnit] = useState(pricing.roundUnit);
 
   // 同期
   useEffect(() => setRetailDraft(String(retail)), [retail]);
   useEffect(() => setRatioDraft(String(Math.round(costRatio * 100))), [costRatio]);
+  useEffect(() => setMarginDraft(String(pricing.targetMarginPct)), [pricing.targetMarginPct]);
+  useEffect(() => setRoundUnit(pricing.roundUnit), [pricing.roundUnit]);
+
+  const retailNum = Number(retailDraft) || 0;
+  const minFee = minRow ? getChannelFee(pricing, minRow.typeId) : null;
+  const rawTarget = minRow && minFee
+    ? calcRetailForTargetMargin(cost, minRow.ratePct, Number(marginDraft) || 0, minFee)
+    : null;
+  const targetRetail = rawTarget != null ? ceilTo(rawTarget, roundUnit) : null;
+  const minFeeLabel = minFee && (minFee.feeRate > 0 || minFee.fixedCost > 0)
+    ? `・経費 手数料${minFee.feeRate}%＋固定${Math.round(minFee.fixedCost).toLocaleString()}円を考慮`
+    : "";
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <div>
-        <label className="text-xs text-gray-500">原価（自動計算）</label>
-        <p className="font-bold text-2xl">{Math.round(cost).toLocaleString()}<span className="text-sm font-normal text-gray-500"> 円</span></p>
+        <label className="text-xs text-gray-500">原価（自動計算・円単位）</label>
+        <p className="font-bold text-2xl">{cost.toLocaleString()}<span className="text-sm font-normal text-gray-500"> 円</span></p>
       </div>
       <div>
-        <label className="text-xs text-gray-500">上代（小売価格）</label>
+        <label className="text-xs text-gray-500">上代（小売価格・税抜）</label>
         <div className="flex items-center gap-2">
           <Input
             type="number"
             value={retailDraft}
             onChange={(e) => setRetailDraft(e.target.value)}
             onBlur={() => {
-              const n = Number(retailDraft);
+              const n = Math.round(Number(retailDraft));
               if (!isNaN(n) && n !== retail) onSaveRetail(n);
             }}
             placeholder="未設定"
             className="text-lg font-bold"
           />
         </div>
+        {retailNum > 0 && (
+          <p className="text-xs text-gray-600 mt-1">
+            税込 {withTax(retailNum, pricing.taxRate).toLocaleString()}円
+            <span className="text-gray-400">（消費税{pricing.taxRate}%）</span>
+          </p>
+        )}
         {cost > 0 && retail > 0 && (
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-gray-400 mt-0.5">
             実原価率: {(actualCostRatio * 100).toFixed(1)}%
           </p>
         )}
@@ -1169,7 +1266,178 @@ function PriceSettings({
           </Button>
         )}
       </div>
+      <div>
+        <label className="text-xs text-gray-500">目標粗利率（逆算用）</label>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            step="0.1"
+            value={marginDraft}
+            onChange={(e) => setMarginDraft(e.target.value)}
+            className="w-20"
+          />
+          <span className="text-sm text-gray-500">%</span>
+          <select
+            value={roundUnit}
+            onChange={(e) => setRoundUnit(Number(e.target.value))}
+            className="border rounded-md px-2 py-1.5 text-xs"
+          >
+            <option value={100}>100円単位</option>
+            <option value={10}>10円単位</option>
+          </select>
+        </div>
+        {cost > 0 && minRow && (
+          targetRetail != null ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSaveRetail(targetRetail)}
+                className="mt-1 text-xs"
+              >
+                推奨上代 {targetRetail.toLocaleString()}円 を上代に入れる
+              </Button>
+              <p className="text-[11px] text-gray-400 mt-1">
+                最低掛率の{minRow.typeLabel}（{minRow.ratePct}%）で粗利率{Number(marginDraft) || 0}%を確保{minFeeLabel}
+                。計算値 {Math.round(rawTarget!).toLocaleString()}円 → {roundUnit}円単位で切り上げ
+              </p>
+            </>
+          ) : (
+            <p className="text-[11px] text-red-500 mt-1">目標粗利率と手数料率の合計が100%以上のため計算できません</p>
+          )
+        )}
+      </div>
     </div>
+  );
+}
+
+// ─── 価格計算の設定（取引タイプ別経費・税率・色分けしきい値） ───
+function PricingSettingsDialog({
+  open,
+  onOpenChange,
+  settings,
+  rows,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  settings: PricingSettings;
+  rows: MatrixRow[];
+  onSave: (s: PricingSettings) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(settings);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (open) setDraft(settings);
+  }, [open, settings]);
+
+  // 取引タイプは重複なしで（掛率の高い順）
+  const types = rows.filter((r, i) => rows.findIndex((x) => x.typeId === r.typeId) === i);
+
+  function setFee(typeId: string, patch: Partial<ChannelFee>) {
+    setDraft((d) => ({
+      ...d,
+      channelFees: { ...d.channelFees, [typeId]: { ...getChannelFee(d, typeId), ...patch } },
+    }));
+  }
+  function setNum<K extends keyof PricingSettings>(key: K, v: string) {
+    setDraft((d) => ({ ...d, [key]: Number(v) || 0 }));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const ok = await onSave(draft);
+    setSaving(false);
+    if (ok) onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>価格計算の設定（全商品共通）</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div>
+            <p className="font-medium mb-1">取引タイプ別の経費</p>
+            <p className="text-[11px] text-gray-400 mb-2">
+              例: AmazonJP＝販売手数料率＋FBA手数料(円) / 海外＝手数料率＋送料・関税等(円) / 卸＝送料・梱包費(円)
+            </p>
+            <table className="w-full border text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left px-2 py-1.5 font-medium text-gray-500">取引タイプ</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-16">掛率</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-32">手数料率(%)</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-36">1個あたり固定費(円)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {types.map((t) => {
+                  const fee = getChannelFee(draft, t.typeId);
+                  return (
+                    <tr key={t.typeId}>
+                      <td className="px-2 py-1"><Badge className={`text-xs ${t.color}`}>{t.typeLabel}</Badge></td>
+                      <td className="px-2 py-1 text-right text-gray-500">{t.ratePct}%</td>
+                      <td className="px-2 py-1">
+                        <Input type="number" step="0.1" min={0} value={fee.feeRate}
+                          onChange={(e) => setFee(t.typeId, { feeRate: Number(e.target.value) || 0 })}
+                          className="h-8 text-right" />
+                      </td>
+                      <td className="px-2 py-1">
+                        <Input type="number" step="1" min={0} value={fee.fixedCost}
+                          onChange={(e) => setFee(t.typeId, { fixedCost: Number(e.target.value) || 0 })}
+                          className="h-8 text-right" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="text-[11px] text-gray-400 mt-1">※ 掛率は顧客タイプの設定（変更なし）。ここでは経費のみ設定します。</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500">消費税率（%）</label>
+              <select value={draft.taxRate} onChange={(e) => setNum("taxRate", e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm">
+                <option value={10}>10%（標準）</option>
+                <option value={8}>8%（軽減税率・食品）</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">目標粗利率の初期値（%）</label>
+              <Input type="number" step="0.1" value={draft.targetMarginPct}
+                onChange={(e) => setNum("targetMarginPct", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">逆算上代の切り上げ単位</label>
+              <select value={draft.roundUnit} onChange={(e) => setNum("roundUnit", e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm">
+                <option value={100}>100円単位</option>
+                <option value={10}>10円単位</option>
+              </select>
+            </div>
+            <div />
+            <div>
+              <label className="text-xs text-gray-500">赤表示：粗利率がこれ未満（%）</label>
+              <Input type="number" step="0.1" value={draft.marginRedBelow}
+                onChange={(e) => setNum("marginRedBelow", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">黄表示：粗利率がこれ未満（%）</label>
+              <Input type="number" step="0.1" value={draft.marginYellowBelow}
+                onChange={(e) => setNum("marginYellowBelow", e.target.value)} />
+            </div>
+          </div>
+
+          <Button className="w-full" onClick={handleSave} disabled={saving}>
+            {saving ? "保存中..." : "保存"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1839,7 +2107,7 @@ function MaterialRow({
         </td>
       )}
       <td className="px-3 py-1 text-right text-gray-700 font-medium">
-        {perPiece.toFixed(1)}円
+        {Math.round(perPiece).toLocaleString()}円
       </td>
       <td className="px-3 py-1 text-right">
         <div className="flex gap-1 justify-end">
