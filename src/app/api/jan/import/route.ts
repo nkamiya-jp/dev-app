@@ -10,6 +10,7 @@ export const maxDuration = 60;
 // POST /api/jan/import { records: CSVの行(列名→値)の配列 }  ※画面から500行ずつ送る
 // JANキーで upsert。チェックデジットが合わない行は取り込まない。
 // 「商品マスタコード」列があれば商品マスタにひも付ける（無い場合は既存のひも付けを残す）。
+// 上代・ブランド・使用先は空欄なら既存の値を残す。GS1登録は列があるときだけ上書きする。
 export async function POST(request: NextRequest) {
   const { records } = await request.json();
   if (!Array.isArray(records)) return Response.json({ error: "records required" }, { status: 400 });
@@ -38,10 +39,12 @@ export async function POST(request: NextRequest) {
   const prefixes = (await prisma.janPrefix.findMany({ select: { prefix: true } })).map((p) => p.prefix);
   const prefixOf = (jan: string) => prefixes.find((p) => jan.startsWith(p)) ?? jan.slice(0, 9);
 
+  const hasGs1 = rows.some((r) => r.gs1Registered !== null);
+
   const CHUNK = 50;
   for (let i = 0; i < rows.length; i += CHUNK) {
     const chunk = rows.slice(i, i + CHUNK);
-    const placeholders = chunk.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").join(",");
+    const placeholders = chunk.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").join(",");
     const args = chunk.flatMap((r) => {
       const prefix = prefixOf(r.jan);
       return [
@@ -60,10 +63,14 @@ export async function POST(request: NextRequest) {
         r.legacyRecordNo,
         r.productCode ? productByCode.get(r.productCode) ?? null : null,
         r.note,
+        r.gs1Registered ? 1 : 0,
+        r.price,
+        r.brand,
+        r.channels,
       ];
     });
     await prisma.$executeRawUnsafe(
-      `INSERT INTO "JanItem" ("id","jan","companyPrefix","itemCode","status","productName","nameOther","patternCode","amazonListed","amazonComolife","pastAmazonListed","pastAmazonCode","legacyRecordNo","productId","note","createdAt","updatedAt")
+      `INSERT INTO "JanItem" ("id","jan","companyPrefix","itemCode","status","productName","nameOther","patternCode","amazonListed","amazonComolife","pastAmazonListed","pastAmazonCode","legacyRecordNo","productId","note","gs1Registered","price","brand","channels","createdAt","updatedAt")
        VALUES ${placeholders}
        ON CONFLICT("jan") DO UPDATE SET
          "status"=excluded."status", "productName"=excluded."productName", "nameOther"=excluded."nameOther",
@@ -72,6 +79,10 @@ export async function POST(request: NextRequest) {
          "legacyRecordNo"=COALESCE(excluded."legacyRecordNo", "JanItem"."legacyRecordNo"),
          "productId"=COALESCE(excluded."productId", "JanItem"."productId"),
          "note"=COALESCE(excluded."note", "JanItem"."note"),
+         "price"=COALESCE(excluded."price", "JanItem"."price"),
+         "brand"=COALESCE(excluded."brand", "JanItem"."brand"),
+         "channels"=COALESCE(excluded."channels", "JanItem"."channels"),
+         ${hasGs1 ? `"gs1Registered"=excluded."gs1Registered",` : ""}
          "updatedAt"=CURRENT_TIMESTAMP`,
       ...args
     );

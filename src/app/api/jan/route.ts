@@ -2,12 +2,13 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { buildJan, isValidEan13 } from "@/lib/ean13";
 import { buildJanWhere, janFilterFromParams } from "@/lib/jan-query";
+import { JAN_STATUSES, JAN_TAKEN_STATUSES, normalizeChannels } from "@/lib/jan-ledger";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE_MAX = 500;
 
-// GET /api/jan?q=&prefix=&status=&linked=&amazon=&page=&pageSize=
+// GET /api/jan?q=&prefix=&status=&linked=&amazon=&gs1=&page=&pageSize=
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const where = buildJanWhere(janFilterFromParams(sp));
@@ -30,14 +31,15 @@ export async function GET(request: NextRequest) {
   const prefixSummary = prefixes.map((p) => {
     const c = (st: string) =>
       counts.find((x) => x.companyPrefix === p.prefix && x.status === st)?._count._all ?? 0;
-    return { ...p, used: c("used"), reserved: c("reserved"), free: c("free") };
+    return { ...p, used: c("used"), reserved: c("reserved"), free: c("free"), discontinued: c("discontinued") };
   });
 
   return Response.json({ items, total, page, pageSize, prefixes: prefixSummary });
 }
 
 // POST /api/jan — 新規登録（空き・確保の番号に割り当てるか、台帳に無い番号を追加する）
-// body: { jan? , prefix?, itemCode?, status?, productName, nameOther, patternCode, productId, amazon*, pastAmazonCode, note }
+// body: { jan? , prefix?, itemCode?, status?, productName, nameOther, patternCode, productId, amazon*, pastAmazonCode,
+//         gs1Registered, price, brand, channels, note }
 export async function POST(request: NextRequest) {
   const b = await request.json();
   let jan: string;
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
   const prefix = String(b.prefix || jan.slice(0, 9));
   if (!jan.startsWith(prefix)) return Response.json({ error: "JANと事業者コードが一致しません" }, { status: 400 });
   const itemCode = Number(jan.slice(prefix.length, 12));
-  const status = ["used", "reserved", "free"].includes(b.status) ? b.status : "used";
+  const status = JAN_STATUSES.some((s) => s.id === b.status) ? b.status : "used";
   const productName = (b.productName || "").trim() || null;
   const nameOther = (b.nameOther || "").trim() || null;
   if (status === "used" && !productName && !nameOther) {
@@ -61,8 +63,9 @@ export async function POST(request: NextRequest) {
   }
 
   const existing = await prisma.janItem.findUnique({ where: { jan } });
-  if (existing?.status === "used") {
-    return Response.json({ error: `${jan} はすでに使用中です（${existing.productName || existing.nameOther || ""}）` }, { status: 409 });
+  if (existing && JAN_TAKEN_STATUSES.includes(existing.status)) {
+    const what = existing.status === "used" ? "使用中" : "廃番（再利用できません）";
+    return Response.json({ error: `${jan} はすでに${what}です（${existing.productName || existing.nameOther || ""}）` }, { status: 409 });
   }
   // 過去にAmazonで使われた番号は再利用しない
   const past = await prisma.janItem.findFirst({ where: { pastAmazonCode: jan }, select: { id: true } });
@@ -78,6 +81,10 @@ export async function POST(request: NextRequest) {
     amazonComolife: !!b.amazonComolife,
     pastAmazonListed: !!b.pastAmazonListed,
     pastAmazonCode: (b.pastAmazonCode || "").replace(/\D/g, "") || null,
+    gs1Registered: !!b.gs1Registered,
+    price: b.price === "" || b.price == null || isNaN(Number(b.price)) ? null : Math.round(Number(b.price)),
+    brand: (b.brand || "").trim() || null,
+    channels: normalizeChannels(b.channels) || null,
     note: (b.note || "").trim() || null,
   };
   const item = existing

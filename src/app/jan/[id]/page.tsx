@@ -1,13 +1,13 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Ean13Barcode } from "@/components/ean13-barcode";
-import { Copy, Printer, Undo2 } from "lucide-react";
+import { Ean13Barcode, downloadBarcode } from "@/components/ean13-barcode";
+import { Archive, ClipboardCopy, Copy, Download, Printer, Undo2 } from "lucide-react";
 import { getJanStatus, LABEL_STORAGE_KEY } from "@/lib/jan-ledger";
 import { JanFormFields, JanFormValues, emptyJanForm } from "../jan-form";
 
@@ -26,6 +26,10 @@ interface JanDetail {
   amazonComolife: boolean;
   pastAmazonListed: boolean;
   pastAmazonCode: string | null;
+  gs1Registered: boolean;
+  price: number | null;
+  brand: string | null;
+  channels: string | null;
   legacyRecordNo: number | null;
   note: string | null;
   updatedAt: string;
@@ -43,6 +47,10 @@ function toForm(d: JanDetail): JanFormValues {
     amazonComolife: d.amazonComolife,
     pastAmazonListed: d.pastAmazonListed,
     pastAmazonCode: d.pastAmazonCode || "",
+    gs1Registered: d.gs1Registered,
+    price: d.price == null ? "" : String(d.price),
+    brand: d.brand || "",
+    channels: d.channels || "",
     note: d.note || "",
   };
 }
@@ -55,6 +63,7 @@ export default function JanDetailPage({ params }: { params: Promise<{ id: string
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const barRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/jan/${id}`);
@@ -92,8 +101,33 @@ export default function JanDetailPage({ params }: { params: Promise<{ id: string
 
   async function release() {
     if (!item) return;
-    if (!confirm(`${item.jan} を空き番号に戻しますか？（商品名・名称他・柄コード・商品マスタのひも付けを消します。GS1側の登録も確認してください）`)) return;
-    await save({ ...form, status: "free", productName: "", nameOther: "", patternCode: "", productId: "", amazonListed: false, amazonComolife: false });
+    const warn = item.gs1Registered || item.status === "discontinued"
+      ? "\n\n※GS1に登録済み・廃番の番号です。GS1の規定で、一度使ったJANは一定期間再利用できません。販売終了なら「廃番にする」を使ってください。"
+      : "";
+    if (!confirm(`${item.jan} を空き番号に戻しますか？（商品名・名称他・柄コード・商品マスタのひも付けを消します。GS1側の登録も確認してください）${warn}`)) return;
+    await save({ ...form, status: "free", productName: "", nameOther: "", patternCode: "", productId: "", amazonListed: false, amazonComolife: false, channels: "" });
+  }
+
+  async function discontinue() {
+    if (!item) return;
+    if (!confirm(`${item.jan} を廃番にしますか？（内容は残し、採番の候補にも出しません）`)) return;
+    await save({ ...form, status: "discontinued", amazonListed: false, amazonComolife: false });
+  }
+
+  async function copyNumber() {
+    if (!item) return;
+    try {
+      await navigator.clipboard.writeText(item.jan);
+      setMessage(`${item.jan} をコピーしました`);
+    } catch {
+      setError("コピーできませんでした。番号を選択してコピーしてください");
+    }
+  }
+
+  function saveImage(type: "svg" | "png") {
+    const svg = barRef.current?.querySelector("svg");
+    if (!svg || !item) return;
+    downloadBarcode(svg, `JAN_${item.jan}`, type);
   }
 
   function printOne() {
@@ -114,13 +148,18 @@ export default function JanDetailPage({ params }: { params: Promise<{ id: string
 
       <Card className="bg-white shadow-sm">
         <CardContent className="py-4 flex flex-col sm:flex-row gap-5 items-start">
-          <div className="shrink-0 border rounded p-2 bg-white">
+          <div ref={barRef} className="shrink-0 border rounded p-2 bg-white">
             <Ean13Barcode jan={item.jan} moduleMm={0.33} heightMm={18} />
           </div>
           <div className="space-y-1.5 text-sm flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-lg">{item.jan}</span>
               <Badge className={st.color}>{st.label}</Badge>
+              {item.gs1Registered ? (
+                <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200">GS1登録済</Badge>
+              ) : item.status === "used" ? (
+                <Badge className="bg-amber-50 text-amber-700 border border-amber-200">GS1未登録</Badge>
+              ) : null}
             </div>
             <p className="text-gray-500 text-xs">
               事業者コード <span className="font-mono">{item.companyPrefix}</span>・品目コード{" "}
@@ -128,6 +167,11 @@ export default function JanDetailPage({ params }: { params: Promise<{ id: string
               {item.legacyRecordNo != null && <>・旧レコード番号 {item.legacyRecordNo}</>}
             </p>
             <p className="font-medium">{item.productName || item.nameOther || <span className="text-gray-400">（商品名なし）</span>}</p>
+            {(item.brand || item.price != null || item.channels) && (
+              <p className="text-xs text-gray-600">
+                {[item.brand, item.price != null && `上代 ¥${item.price.toLocaleString()}`, item.channels && `使用先：${item.channels}`].filter(Boolean).join("・")}
+              </p>
+            )}
             {item.product && (
               <p className="text-xs">
                 商品マスタ：<Link href={`/products/${item.product.id}`} className="text-blue-600 hover:underline">{item.product.name}（{item.product.code}）</Link>
@@ -138,6 +182,12 @@ export default function JanDetailPage({ params }: { params: Promise<{ id: string
                 <Button size="sm" variant="outline"><Copy className="size-4 mr-1" /> コピーして新規</Button>
               </Link>
               <Button size="sm" variant="outline" onClick={printOne}><Printer className="size-4 mr-1" /> ラベル印刷</Button>
+              <Button size="sm" variant="outline" onClick={copyNumber}><ClipboardCopy className="size-4 mr-1" /> 番号をコピー</Button>
+              <Button size="sm" variant="outline" onClick={() => saveImage("png")}><Download className="size-4 mr-1" /> PNG</Button>
+              <Button size="sm" variant="outline" onClick={() => saveImage("svg")}><Download className="size-4 mr-1" /> SVG</Button>
+              {item.status === "used" && (
+                <Button size="sm" variant="outline" onClick={discontinue}><Archive className="size-4 mr-1" /> 廃番にする</Button>
+              )}
               {item.status !== "free" && (
                 <Button size="sm" variant="outline" onClick={release}><Undo2 className="size-4 mr-1" /> 空きに戻す</Button>
               )}

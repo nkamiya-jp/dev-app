@@ -25,6 +25,10 @@ interface JanRow {
   amazonComolife: boolean;
   pastAmazonListed: boolean;
   pastAmazonCode: string | null;
+  gs1Registered: boolean;
+  brand: string | null;
+  price: number | null;
+  channels: string | null;
   product: { id: string; code: string; name: string } | null;
 }
 
@@ -39,6 +43,7 @@ interface PrefixRow {
   used: number;
   reserved: number;
   free: number;
+  discontinued: number;
 }
 
 interface ProductOpt { id: string; code: string; name: string; series: string | null; sortOrder: number; active: boolean }
@@ -58,6 +63,7 @@ export default function JanLedgerPage() {
   const [status, setStatus] = useState("used");
   const [linked, setLinked] = useState("");
   const [amazon, setAmazon] = useState("");
+  const [gs1, setGs1] = useState("");
   const [page, setPage] = useState(1);
 
   const [selected, setSelected] = useState<Map<string, JanRow>>(new Map());
@@ -72,8 +78,9 @@ export default function JanLedgerPage() {
     if (status) p.set("status", status);
     if (linked) p.set("linked", linked);
     if (amazon) p.set("amazon", amazon);
+    if (gs1) p.set("gs1", gs1);
     return p;
-  }, [q, prefix, status, linked, amazon]);
+  }, [q, prefix, status, linked, amazon, gs1]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -183,7 +190,7 @@ export default function JanLedgerPage() {
                   <p className="font-mono font-medium">{p.prefix}</p>
                   {p.label && <p className="text-gray-600 truncate">{p.label}</p>}
                   <p className="text-gray-500">
-                    使用 {p.used}／{cap}（{pct}%）・確保 {p.reserved}・空き {p.free}
+                    使用 {p.used}／{cap}（{pct}%）・確保 {p.reserved}・空き {p.free}{p.discontinued ? `・廃番 ${p.discontinued}` : ""}
                   </p>
                   <div className="w-full bg-gray-100 rounded-full h-1 mt-1">
                     <div className={`h-1 rounded-full ${pct >= 90 ? "bg-red-500" : "bg-emerald-500"}`} style={{ width: `${Math.min(100, pct)}%` }} />
@@ -202,7 +209,7 @@ export default function JanLedgerPage() {
           <Input
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
-            placeholder="JAN・商品名・柄コード・商品マスタで検索（スペースで複数語）"
+            placeholder="JAN・商品名・柄コード・ブランド・使用先・商品マスタで検索（スペースで複数語）"
             className="pl-9"
           />
         </div>
@@ -222,6 +229,11 @@ export default function JanLedgerPage() {
           <option value="listed">Amazon出品</option>
           <option value="comolife">Amazon（コモライフ）</option>
           <option value="past">過去Amazon</option>
+        </select>
+        <select value={gs1} onChange={(e) => { setGs1(e.target.value); setPage(1); }} className="border rounded-md px-2 py-2 text-sm">
+          <option value="">GS1：すべて</option>
+          <option value="yes">GS1登録済み</option>
+          <option value="no">GS1未登録（使用中）</option>
         </select>
       </div>
 
@@ -251,18 +263,19 @@ export default function JanLedgerPage() {
                 </th>
                 <th className="text-left px-2 py-2 font-medium">JAN</th>
                 <th className="text-left px-2 py-2 font-medium">状態</th>
+                <th className="text-left px-2 py-2 font-medium">GS1</th>
                 <th className="text-left px-2 py-2 font-medium min-w-[180px]">商品名</th>
                 <th className="text-left px-2 py-2 font-medium">名称他</th>
                 <th className="text-left px-2 py-2 font-medium">柄コード</th>
                 <th className="text-left px-2 py-2 font-medium min-w-[140px]">商品マスタ</th>
-                <th className="text-left px-2 py-2 font-medium">Amazon</th>
+                <th className="text-left px-2 py-2 font-medium">使用先</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {loading && rows.length === 0 ? (
-                <tr><td colSpan={8} className="text-center text-gray-400 py-8">読み込み中...</td></tr>
+                <tr><td colSpan={9} className="text-center text-gray-400 py-8">読み込み中...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={8} className="text-center text-gray-400 py-8">該当するJANがありません</td></tr>
+                <tr><td colSpan={9} className="text-center text-gray-400 py-8">該当するJANがありません</td></tr>
               ) : (
                 rows.map((r) => {
                   const st = getJanStatus(r.status);
@@ -275,7 +288,15 @@ export default function JanLedgerPage() {
                         <Link href={`/jan/${r.id}`} className="font-mono text-blue-600 hover:underline">{r.jan}</Link>
                       </td>
                       <td className="px-2 py-1.5"><Badge className={`text-[10px] ${st.color}`}>{st.label}</Badge></td>
-                      <td className="px-2 py-1.5">{r.productName || <span className="text-gray-300">-</span>}</td>
+                      <td className="px-2 py-1.5 text-[11px] whitespace-nowrap">
+                        {r.gs1Registered ? <span className="text-emerald-700">登録済</span> : r.status === "used" ? <span className="text-amber-600">未登録</span> : null}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {r.productName || <span className="text-gray-300">-</span>}
+                        {(r.brand || r.price != null) && (
+                          <span className="block text-[11px] text-gray-500">{[r.brand, r.price != null && `¥${r.price.toLocaleString()}`].filter(Boolean).join("・")}</span>
+                        )}
+                      </td>
                       <td className="px-2 py-1.5 text-gray-600">{r.nameOther || ""}</td>
                       <td className="px-2 py-1.5 text-gray-600">{r.patternCode || ""}</td>
                       <td className="px-2 py-1.5 text-xs">
@@ -286,7 +307,8 @@ export default function JanLedgerPage() {
                         ) : null}
                       </td>
                       <td className="px-2 py-1.5 text-[11px] text-gray-600 whitespace-nowrap">
-                        {[r.amazonListed && "出品", r.amazonComolife && "コモライフ", (r.pastAmazonListed || r.pastAmazonCode) && "過去"].filter(Boolean).join("・")}
+                        {r.channels || [r.amazonListed && "Amazon出品", r.amazonComolife && "コモライフ"].filter(Boolean).join("・")}
+                        {(r.pastAmazonListed || r.pastAmazonCode) && <span className="block text-gray-400">過去Amazon</span>}
                       </td>
                     </tr>
                   );

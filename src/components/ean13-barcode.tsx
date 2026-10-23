@@ -61,3 +61,37 @@ export function Ean13Barcode({ jan, moduleMm = 0.3, heightMm = 14, showText = tr
     </svg>
   );
 }
+
+// 画面に描いたバーコード（Ean13Barcode の svg）を SVG / PNG ファイルとして保存する
+export function downloadBarcode(svg: SVGSVGElement, filename: string, type: "svg" | "png", pxPerModule = 6) {
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  const save = (blob: Blob) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${filename}.${type}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  if (type === "svg") {
+    save(new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" }));
+    return;
+  }
+  const vb = svg.viewBox.baseVal;
+  const w = Math.round(vb.width * pxPerModule);
+  const h = Math.round(vb.height * pxPerModule);
+  clone.setAttribute("width", String(w));
+  clone.setAttribute("height", String(h));
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob((b) => b && save(b), "image/png");
+  };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(clone));
+}

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   });
   const header = [
     "状態", "JANコード", "事業者コード", "品目コード", "商品名", "名称他", "柄コード",
-    "商品マスタコード", "商品マスタ名", "Amazon[出品]", "Amazon[コモライフ]", "過去Amazon[出品]", "過去Amazonコード",
+    "商品マスタコード", "商品マスタ名", "GS1登録", "上代", "ブランド", "使用先", "Amazon[出品]", "Amazon[コモライフ]", "過去Amazon[出品]", "過去Amazonコード",
     "レコード番号", "メモ",
   ];
   const lines = items.map((x) => [
@@ -29,6 +29,10 @@ export async function GET(request: NextRequest) {
     x.patternCode,
     x.product?.code,
     x.product?.name,
+    x.gs1Registered ? "登録済み" : "未登録",
+    x.price,
+    x.brand,
+    x.channels,
     x.amazonListed ? "1" : "",
     x.amazonComolife ? "1" : "",
     x.pastAmazonListed ? "1" : "",

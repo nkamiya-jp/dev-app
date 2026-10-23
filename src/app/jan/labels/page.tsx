@@ -14,6 +14,7 @@ interface JanLabel {
   productName: string | null;
   nameOther: string | null;
   patternCode: string | null;
+  price: number | null;
 }
 
 // /labels と同じラベル寸法の設定を共有（TD-2130N：印字幅56mm）
@@ -28,6 +29,9 @@ const SIZE_KEY = "labels-size";
 const JAN_MODULES = 113; // 95 + 左右クワイエットゾーン（11+7）
 const MIN_MODULE_MM = 0.264; // JAN の最小倍率 80%
 const STD_MODULE_MM = 0.33; // 倍率 100%
+// A4シート（4列×8段・余白8mm）。市販のA4ラベル用紙や普通紙に印刷して切る
+const A4 = { cols: 4, rows: 8, margin: 8, w: (210 - 16) / 4, h: (297 - 16) / 8 };
+const LAYOUT_KEY = "jan-labels-layout";
 
 export default function JanLabelsPage() {
   const [items, setItems] = useState<JanLabel[] | null>(null);
@@ -37,9 +41,12 @@ export default function JanLabelsPage() {
   const [h, setH] = useState(30);
   const [showName, setShowName] = useState(true);
   const [showPattern, setShowPattern] = useState(true);
+  const [showPrice, setShowPrice] = useState(false);
+  const [layout, setLayout] = useState<"roll" | "a4">("roll");
 
   useEffect(() => {
     try {
+      if (localStorage.getItem(LAYOUT_KEY) === "a4") setLayout("a4");
       const raw = localStorage.getItem(SIZE_KEY);
       if (raw) {
         const s = JSON.parse(raw);
@@ -74,17 +81,34 @@ export default function JanLabelsPage() {
     try { localStorage.setItem(SIZE_KEY, JSON.stringify({ w: nw, h: nh, presetId: "custom" })); } catch {}
   }
 
+  function changeLayout(l: "roll" | "a4") {
+    setLayout(l);
+    try { localStorage.setItem(LAYOUT_KEY, l); } catch {}
+  }
+
   if (!items) return <div className="p-6 text-gray-400">読み込み中...</div>;
 
   const labels: { item: JanLabel; index: number }[] = [];
   for (const it of items) for (let i = 0; i < (copies[it.id] || 0); i++) labels.push({ item: it, index: i });
 
+  // 1枚の大きさ（ラベラーは設定値、A4は4列×8段のマス）
+  const lw = layout === "a4" ? A4.w : w;
+  const lh = layout === "a4" ? A4.h : h;
   // ラベル幅に収まる最大のモジュール幅（左右1.5mm余白、上限は倍率100%）
-  const moduleMm = Math.min(STD_MODULE_MM, (w - 3) / JAN_MODULES);
-  const textLines = (showName ? 1 : 0) + (showPattern ? 1 : 0);
-  const barHeightMm = Math.max(6, Math.min(h - 3 - 3 - textLines * 3.2, 22.85 * (moduleMm / STD_MODULE_MM)));
+  const moduleMm = Math.min(STD_MODULE_MM, (lw - 3) / JAN_MODULES);
+  const textLines = (showName ? 1 : 0) + (showPattern ? 1 : 0) + (showPrice ? 1 : 0);
+  const barHeightMm = Math.max(6, Math.min(lh - 3 - 3 - textLines * 3.2, 22.85 * (moduleMm / STD_MODULE_MM)));
 
-  const printCss = `
+  const printCss = layout === "a4" ? `
+    @media print {
+      aside, .obp-mobile-header { display: none !important; }
+      main { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+      .no-print { display: none !important; }
+      .label-print-area { display: grid !important; grid-template-columns: repeat(${A4.cols}, ${A4.w}mm); gap: 0 !important; }
+      .label-page { border: 0.2mm dashed #bbb !important; break-inside: avoid; }
+    }
+    @page { size: A4; margin: ${A4.margin}mm; }
+  ` : `
     @media print {
       aside, .obp-mobile-header { display: none !important; }
       main { margin: 0 !important; padding: 0 !important; background: #fff !important; }
@@ -112,7 +136,11 @@ export default function JanLabelsPage() {
 
       <Card className="p-4 no-print space-y-3">
         <div className="flex flex-wrap items-center gap-4 text-sm">
-          <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-md border overflow-hidden">
+            <button type="button" onClick={() => changeLayout("roll")} className={`px-3 py-1.5 ${layout === "roll" ? "bg-blue-600 text-white" : "bg-white text-gray-600"}`}>ラベラー（1枚ずつ）</button>
+            <button type="button" onClick={() => changeLayout("a4")} className={`px-3 py-1.5 border-l ${layout === "a4" ? "bg-blue-600 text-white" : "bg-white text-gray-600"}`}>A4シート（4列×8段）</button>
+          </div>
+          {layout === "roll" && <div className="flex items-center gap-2">
             <span className="text-gray-500">ラベル</span>
             <select value={presetId} onChange={(e) => applyPreset(e.target.value)} className="border rounded-md px-2 py-1.5">
               {SIZE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -123,15 +151,16 @@ export default function JanLabelsPage() {
                 <input type="number" value={h} onChange={(e) => setCustom(w, Number(e.target.value) || 0)} className="border rounded w-16 px-2 py-1" /> mm
               </span>
             )}
-          </div>
+          </div>}
           <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showName} onChange={(e) => setShowName(e.target.checked)} /> 商品名</label>
           <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showPattern} onChange={(e) => setShowPattern(e.target.checked)} /> 柄コード</label>
+          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showPrice} onChange={(e) => setShowPrice(e.target.checked)} /> 上代</label>
           <span className="text-xs text-gray-400">バーコード倍率 {Math.round((moduleMm / STD_MODULE_MM) * 100)}%</span>
         </div>
         {moduleMm < MIN_MODULE_MM && (
           <p className="text-sm text-amber-600">⚠ この幅ではJANの最小倍率（80%）を下回り、読み取れないことがあります。横幅を広くしてください。</p>
         )}
-        {w > MAX_PRINT_WIDTH_MM && (
+        {layout === "roll" && w > MAX_PRINT_WIDTH_MM && (
           <p className="text-sm text-amber-600">⚠ 横 {w}mm は TD-2130N の印字幅（{MAX_PRINT_WIDTH_MM}mm）を超えています。</p>
         )}
 
@@ -160,7 +189,9 @@ export default function JanLabelsPage() {
       </Card>
 
       <p className="text-sm text-gray-500 no-print">
-        プレビュー（実寸 {w}×{h}mm）— 印刷時はラベラーを選び、用紙サイズが {w}×{h}mm になっているか確認してください。
+        {layout === "a4"
+          ? `プレビュー（1マス ${A4.w}×${A4.h.toFixed(1)}mm・1枚に${A4.cols * A4.rows}個）— 印刷の倍率は「100%」（ページに合わせない）にしてください。`
+          : `プレビュー（実寸 ${w}×${h}mm）— 印刷時はラベラーを選び、用紙サイズが ${w}×${h}mm になっているか確認してください。`}
       </p>
 
       <div className="label-print-area flex flex-wrap gap-2 print:gap-0 print:block">
@@ -168,7 +199,7 @@ export default function JanLabelsPage() {
           <div
             key={`${item.id}-${index}`}
             className="label-page bg-white border border-gray-300 print:border-0 overflow-hidden flex flex-col items-center justify-center"
-            style={{ width: `${w}mm`, height: `${h}mm`, padding: "1.5mm" }}
+            style={{ width: `${lw}mm`, height: `${lh}mm`, padding: "1.5mm" }}
           >
             {showName && (
               <div className="text-center leading-tight truncate w-full" style={{ fontSize: "2.6mm" }}>
@@ -178,6 +209,11 @@ export default function JanLabelsPage() {
             <Ean13Barcode jan={item.jan} moduleMm={moduleMm} heightMm={barHeightMm} />
             {showPattern && item.patternCode && (
               <div className="text-center leading-tight truncate w-full" style={{ fontSize: "2.4mm" }}>{item.patternCode}</div>
+            )}
+            {showPrice && item.price != null && (
+              <div className="text-center leading-tight font-bold" style={{ fontSize: "2.8mm" }}>
+                ¥{item.price.toLocaleString()}<span className="font-normal" style={{ fontSize: "2mm" }}>（税抜）</span>
+              </div>
             )}
           </div>
         ))}

@@ -54,8 +54,10 @@ export function PWARegister() {
     // ── ビルドID監視による確実な自動更新 ──
     // 自分に埋め込まれたビルドIDと、サーバの現在のビルドIDを比較。
     // 違えば新しいデプロイがあったとみなして再読込（SWの更新検知に依存しない）。
+    // 開発サーバではビルドID（時刻）が画面側とサーバ側で食い違い、再読込が止まらなくなるので行わない
     const myBuild = process.env.NEXT_PUBLIC_BUILD_ID;
     async function checkVersion() {
+      if (process.env.NODE_ENV !== "production") return;
       if (document.visibilityState !== "visible") return;
       try {
         const res = await fetch("/api/version", { cache: "no-store" });

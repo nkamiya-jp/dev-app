@@ -541,7 +541,7 @@ model JanItem {
   jan              String   @unique
   companyPrefix    String   // GS1事業者コード
   itemCode         Int      // 品目コード
-  status           String   @default("used") // used(使用中) | reserved(確保) | free(空き)
+  status           String   @default("used") // used(使用中) | reserved(確保) | free(空き) | discontinued(廃番：再利用しない)
   productName      String?
   nameOther        String?
   patternCode      String?  // 柄コード（確保の場合は用途メモが入ることもある）
@@ -551,6 +551,10 @@ model JanItem {
   amazonComolife   Boolean  @default(false)
   pastAmazonListed Boolean  @default(false)
   pastAmazonCode   String?
+  gs1Registered    Boolean  @default(false) // GS1(GJDB)に登録済み。JANの正はGS1
+  price            Int?     // 上代（税抜・円）
+  brand            String?
+  channels         String?  // 使用先（カンマ区切り。例：Amazon JP, よしや）
   legacyRecordNo   Int?     // 旧台帳のレコード番号
   note             String?
   createdAt        DateTime @default(now())

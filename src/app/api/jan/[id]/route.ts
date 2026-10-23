@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { JAN_STATUSES, normalizeChannels } from "@/lib/jan-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   const str = (k: string) => (b[k] === undefined ? undefined : String(b[k] ?? "").trim() || null);
   const status = b.status === undefined ? cur.status : b.status;
-  if (!["used", "reserved", "free"].includes(status)) return Response.json({ error: "invalid status" }, { status: 400 });
+  if (!JAN_STATUSES.some((s) => s.id === status)) return Response.json({ error: "invalid status" }, { status: 400 });
 
   const productName = str("productName") === undefined ? cur.productName : str("productName");
   const nameOther = str("nameOther") === undefined ? cur.nameOther : str("nameOther");
@@ -56,6 +57,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ...(b.amazonComolife !== undefined && { amazonComolife: !!b.amazonComolife }),
       ...(b.pastAmazonListed !== undefined && { pastAmazonListed: !!b.pastAmazonListed }),
       ...(b.pastAmazonCode !== undefined && { pastAmazonCode: String(b.pastAmazonCode || "").replace(/\D/g, "") || null }),
+      ...(b.gs1Registered !== undefined && { gs1Registered: !!b.gs1Registered }),
+      ...(b.price !== undefined && { price: b.price === "" || b.price == null || isNaN(Number(b.price)) ? null : Math.round(Number(b.price)) }),
+      ...(b.brand !== undefined && { brand: str("brand") }),
+      ...(b.channels !== undefined && { channels: normalizeChannels(b.channels) || null }),
       ...(b.note !== undefined && { note: str("note") }),
     },
   });

@@ -9,6 +9,7 @@ export interface JanFilter {
   amazon?: string | null; // "listed" | "comolife" | "past"
   productId?: string | null;
   ids?: string[] | null;
+  gs1?: string | null; // "yes" | "no"（no = 使用中で GS1 未登録）
 }
 
 export function janFilterFromParams(sp: URLSearchParams): JanFilter {
@@ -19,6 +20,7 @@ export function janFilterFromParams(sp: URLSearchParams): JanFilter {
     linked: sp.get("linked"),
     amazon: sp.get("amazon"),
     productId: sp.get("productId"),
+    gs1: sp.get("gs1"),
     ids: sp.get("ids") ? sp.get("ids")!.split(",").filter(Boolean) : null,
   };
 }
@@ -31,6 +33,8 @@ export function buildJanWhere(f: JanFilter): Prisma.JanItemWhereInput {
   if (f.productId) and.push({ productId: f.productId });
   if (f.linked === "yes") and.push({ productId: { not: null } });
   if (f.linked === "no") and.push({ productId: null, status: "used" });
+  if (f.gs1 === "yes") and.push({ gs1Registered: true });
+  if (f.gs1 === "no") and.push({ gs1Registered: false, status: "used" });
   if (f.amazon === "listed") and.push({ amazonListed: true });
   if (f.amazon === "comolife") and.push({ amazonComolife: true });
   if (f.amazon === "past") and.push({ OR: [{ pastAmazonListed: true }, { pastAmazonCode: { not: null } }] });
@@ -45,6 +49,8 @@ export function buildJanWhere(f: JanFilter): Prisma.JanItemWhereInput {
         { patternCode: { contains: w } },
         { pastAmazonCode: { contains: w } },
         { note: { contains: w } },
+        { brand: { contains: w } },
+        { channels: { contains: w } },
         { product: { is: { OR: [{ code: { contains: w } }, { name: { contains: w } }] } } },
       ],
     });
