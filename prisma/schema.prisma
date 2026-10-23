@@ -132,6 +132,7 @@ model Product {
   materials       ProductMaterial[]
   customerPrices  CustomerPrice[]
   aliases         ProductAlias[]
+  janItems        JanItem[]
 }
 
 // 顧客の取扱商品＋個別卸価格。行が存在する = その顧客が取り扱う商品。
@@ -532,4 +533,43 @@ model OrderDraft {
   updatedAt     DateTime  @updatedAt
 
   @@index([status])
+}
+
+// JAN台帳（社内台帳。JANの正はGS1のGJDB）
+model JanItem {
+  id               String   @id @default(cuid())
+  jan              String   @unique
+  companyPrefix    String   // GS1事業者コード
+  itemCode         Int      // 品目コード
+  status           String   @default("used") // used(使用中) | reserved(確保) | free(空き)
+  productName      String?
+  nameOther        String?
+  patternCode      String?  // 柄コード（確保の場合は用途メモが入ることもある）
+  productId        String?  // 商品マスタ（価格計算の商品）へのひも付け
+  product          Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  amazonListed     Boolean  @default(false)
+  amazonComolife   Boolean  @default(false)
+  pastAmazonListed Boolean  @default(false)
+  pastAmazonCode   String?
+  legacyRecordNo   Int?     // 旧台帳のレコード番号
+  note             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([companyPrefix, itemCode])
+  @@index([productId])
+  @@index([status])
+}
+
+// GS1事業者コードと採番に使う品目コードの範囲
+model JanPrefix {
+  id         String   @id @default(cuid())
+  prefix     String   @unique
+  label      String?
+  rangeStart Int      @default(0)
+  rangeEnd   Int      @default(999)
+  active     Boolean  @default(true)
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
