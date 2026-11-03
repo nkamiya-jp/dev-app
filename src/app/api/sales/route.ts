@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { salesMonth, paymentMonth } from "@/lib/sales-month";
+import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,10 @@ function ensure(map: Map<string, Agg>, key: string, base: Omit<Agg, "total" | "m
 // 受注を「売上月（締日ベース）」と「着金予定月（支払サイトベース）」の2軸で集計。
 // それぞれ顧客軸・商品軸を返す。
 export async function GET() {
+  // 売上の数字はパートには送らない（ロードマップの権限と同じ）
+  const v = await getViewer();
+  if (!v) return unauthorized();
+  if (v.isPart) return forbidden("売上の数字は表示できません");
   const orders = await prisma.order.findMany({
     where: { status: { not: "cancelled" } },
     include: {

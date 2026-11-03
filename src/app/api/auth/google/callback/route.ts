@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionToken, decodeJwtPayload, SESSION_COOKIE } from "@/lib/auth";
+import { resolveLogin } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,10 @@ export async function GET(request: NextRequest) {
   const emailDomain = email.split("@")[1] || "";
   const allowed = (!!domain && emailDomain === domain) || allowlist.includes(email);
   if (!allowed) return fail("not_allowed");
+
+  // メンバー台帳で照合（いない・退職・権限なしは入れない）
+  const login = await resolveLogin(email);
+  if (login !== "ok") return fail(login);
 
   // セッション発行
   const token = await createSessionToken(email, SESSION_MAX_AGE, secret);

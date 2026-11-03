@@ -8,6 +8,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   state: "セッションの検証に失敗しました。もう一度お試しください。",
   token: "Google認証に失敗しました。もう一度お試しください。",
   not_allowed: "このアカウントではログインできません（@kamiya-craft.com のアカウントが必要です）。",
+  not_member: "このアカウントはメンバーに登録されていません。社長に連絡してください。",
+  retired: "このアカウントは現在ログインできません（退職・権限なし）。社長に連絡してください。",
 };
 
 function LoginForm() {

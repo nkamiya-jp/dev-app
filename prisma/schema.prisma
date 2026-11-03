@@ -84,9 +84,70 @@ model Member {
   phone       String?
   specialties String?  // 内職の得意商品（カンマ区切り）
   active      Boolean  @default(true)
+  email       String?  @unique // ログインの照合キー（内職さんは空）
+  permission  String?  // president(社長) | staff(スタッフ) | part(パート)。空＝ログイン不可
+  departments String?  // 営業、制作、出荷（「、」区切り）
+  employment  String   @default("在籍") // 在籍 | 退職（退職はログイン不可）
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   productionAssignments ProductionAssignment[]
+  personalGoals         PersonalGoal[]
+}
+
+// ロードマップ：会社の事業目標（年間・四半期）
+model BizGoal {
+  id        String   @id @default(cuid())
+  legacyId  String?  @unique // GAS版の ID（移行の照合用）
+  term      String   // 期（例：第10期）
+  grain     String   // 年間 | 四半期
+  period    String   // 年間 | Q1〜Q4
+  goal      String
+  kpi       String?
+  target    String?
+  actual    String?
+  owner     String?  // 担当
+  status    String?  // 未着手 | 進行中 | 達成 | 未達
+  comment   String?  // 社長コメント（全員に見える）
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  personalGoals PersonalGoal[]
+
+  @@index([term])
+}
+
+// ロードマップ：個人目標（年間 → 四半期マイルストーン → 月目標）。本人と社長だけが見る
+model PersonalGoal {
+  id          String   @id @default(cuid())
+  legacyId    String?  @unique // GAS版の ID（移行の照合用）
+  memberId    String
+  member      Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  term        String   // 期（例：第10期）
+  kind        String   // 年間 | 四半期 | 月
+  quarter     String?  // Q1〜Q4（月目標は月から決まる）
+  month       String?  // YYYY-MM（月目標）
+  parentId    String?  // 月→四半期、四半期→年間
+  bizGoalId   String?  // どの会社の四半期目標に効くか（四半期マイルストーン）
+  bizGoal     BizGoal? @relation(fields: [bizGoalId], references: [id], onDelete: SetNull)
+  qtype       String   @default("定量") // 定量 | 定性
+  goal        String
+  criteria    String?  // 達成基準（定性）／補足（定量）
+  kpi         String?
+  target      String?
+  result      String?  // 実績・結果
+  progress    String?  // 未着手 | 進行中 | 達成 | 未達（年間・月）
+  weight      Int?     // ウェイト%（四半期）
+  selfGrade   String?  // 本人評価 S〜D
+  selfComment String?  // 振り返り
+  fb          String?  // 社長FB（いつでも本人に見える）
+  ceoGrade    String?  // 社長評価（確定後に本人に見える）
+  ceoComment  String?  // 社長コメント（確定後に本人に見える）
+  status      String   @default("設定中") // 設定中 | 合意済 | 評価中 | 確定
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([memberId, term])
+  @@index([bizGoalId])
 }
 
 model Product {

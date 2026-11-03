@@ -26,6 +26,8 @@ import {
   ListChecks,
   Scale,
   Barcode,
+  Flag,
+  Crown,
   ChevronDown,
   Coins,
   ClipboardList,
@@ -41,11 +43,23 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-const navSections = [
+// need: そのメニューを出す条件（サーバー側でも同じ判定で止めている）
+type Need = "president" | "sales";
+interface NavItem { href: string; label: string; icon: typeof BarChart3; need?: Need }
+
+const navSections: { label: string; items: NavItem[] }[] = [
   {
     label: "ホーム",
     items: [
       { href: "/dashboard", label: "ダッシュボード", icon: BarChart3 },
+    ],
+  },
+  {
+    // 社内ポータル（目標・評価）。個人目標は本人と社長だけが見られる
+    label: "ロードマップ",
+    items: [
+      { href: "/roadmap/my-goals", label: "私の目標", icon: Flag },
+      { href: "/roadmap/president", label: "社長ページ", icon: Crown, need: "president" },
     ],
   },
   {
@@ -74,7 +88,7 @@ const navSections = [
       { href: "/shipping-plan", label: "出荷計画", icon: CalendarDays },
       { href: "/shipments", label: "出荷", icon: Truck },
       { href: "/labels", label: "ラベル印刷", icon: Tags },
-      { href: "/sales", label: "月次売上", icon: Coins },
+      { href: "/sales", label: "月次売上", icon: Coins, need: "sales" },
     ],
   },
   {
@@ -103,6 +117,14 @@ const COLLAPSE_KEY = "sidebar-collapsed-sections";
 
 function NavContent({ pathname }: { pathname: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [can, setCan] = useState<Record<Need, boolean>>({ president: false, sales: false });
+
+  useEffect(() => {
+    fetch("/api/roadmap/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => me && setCan({ president: !!me.can?.president, sales: !!me.can?.sales }));
+  }, []);
+  const visible = (i: NavItem) => !i.need || can[i.need];
 
   // localStorage から復元
   useEffect(() => {
@@ -151,7 +173,7 @@ function NavContent({ pathname }: { pathname: string }) {
                 )}
               />
             </button>
-            {showItems && section.items.map((item) => {
+            {showItems && section.items.filter(visible).map((item) => {
               const isActive = item.href === activeHref;
               const Icon = item.icon;
               return (

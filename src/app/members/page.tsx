@@ -26,7 +26,14 @@ interface Member {
   phone: string | null;
   specialties: string | null;
   active: boolean;
+  email: string | null;
+  permission: string | null;
+  departments: string | null;
+  employment: string;
 }
+
+const PERMISSION_LABEL: Record<string, string> = { president: "社長", staff: "スタッフ", part: "パート" };
+const DEPARTMENTS = ["営業", "制作", "出荷"];
 
 interface Task {
   id: string;
@@ -53,6 +60,14 @@ export default function MembersPage() {
   const [editMember, setEditMember] = useState<Member | null>(null);
   const [tab, setTab] = useState("board");
   const [typeFilter, setTypeFilter] = useState<"staff" | "worker" | "">("staff");
+  const [isPresident, setIsPresident] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/roadmap/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => setIsPresident(!!me?.isPresident));
+  }, []);
 
   const loadMembers = useCallback(async () => {
     const params = new URLSearchParams();
@@ -81,19 +96,23 @@ export default function MembersPage() {
       type: (form.get("type") as string) || "staff",
       phone: (form.get("phone") as string) || null,
       specialties: (form.get("specialties") as string) || null,
+      // ログイン・権限（社長だけが変えられる）
+      ...(isPresident && {
+        email: (form.get("email") as string) || null,
+        permission: (form.get("permission") as string) || null,
+        departments: form.getAll("departments").map(String),
+        employment: (form.get("employment") as string) || "在籍",
+      }),
     };
-    if (editMember) {
-      await fetch("/api/members", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editMember.id, ...data }),
-      });
-    } else {
-      await fetch("/api/members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+    setSaveError("");
+    const res = await fetch("/api/members", {
+      method: editMember ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editMember ? { id: editMember.id, ...data } : data),
+    });
+    if (!res.ok) {
+      setSaveError((await res.json().catch(() => ({}))).error || "保存に失敗しました");
+      return;
     }
     setDialogOpen(false);
     setEditMember(null);
@@ -179,7 +198,7 @@ export default function MembersPage() {
               全員
             </button>
           </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditMember(null); }}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditMember(null); setSaveError(""); } }}>
           <DialogTrigger
             className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
@@ -219,6 +238,43 @@ export default function MembersPage() {
                   ))}
                 </div>
               </div>
+              {isPresident && (
+                <div className="rounded-md border bg-gray-50 p-3 space-y-2">
+                  <p className="text-xs font-medium text-gray-600">ログイン・権限（社長だけが変更できます）</p>
+                  <Input name="email" type="email" placeholder="会社のメール（例: name@kamiya-craft.com）" defaultValue={editMember?.email || ""} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-500">権限</label>
+                      <select name="permission" defaultValue={editMember?.permission || ""} className="w-full border rounded-md px-2 py-2 text-sm bg-white">
+                        <option value="">ログインなし</option>
+                        <option value="president">社長</option>
+                        <option value="staff">スタッフ</option>
+                        <option value="part">パート</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">在籍</label>
+                      <select name="employment" defaultValue={editMember?.employment || "在籍"} className="w-full border rounded-md px-2 py-2 text-sm bg-white">
+                        <option value="在籍">在籍</option>
+                        <option value="退職">退職（ログイン不可）</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">部門</label>
+                    <div className="flex gap-4 mt-1 text-sm">
+                      {DEPARTMENTS.map((d) => (
+                        <label key={d} className="inline-flex items-center gap-1.5">
+                          <input type="checkbox" name="departments" value={d} defaultChecked={(editMember?.departments || "").includes(d)} className="size-4" />
+                          {d}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-400">役割に「リーダー」「代行」を含む人は部門リーダー、「経理」を含む人は営業成績を入力できます。</p>
+                </div>
+              )}
+              {saveError && <p className="text-sm text-red-600">{saveError}</p>}
               <Button type="submit" className="w-full">{editMember ? "更新" : "追加"}</Button>
             </form>
           </DialogContent>
@@ -237,6 +293,11 @@ export default function MembersPage() {
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: m.color }} />
             <span className="font-medium">{m.name}</span>
             {m.role && <span className="text-gray-400 text-xs">{m.role}</span>}
+            {m.permission && (
+              <span className={`text-[10px] px-1.5 rounded ${m.employment === "退職" ? "bg-gray-100 text-gray-400 line-through" : "bg-blue-50 text-blue-700"}`}>
+                {PERMISSION_LABEL[m.permission] || m.permission}
+              </span>
+            )}
             <span className="text-xs text-gray-400">
               ({activeTasks.filter((t) => t.assignee === m.name).length})
             </span>

@@ -43,3 +43,6 @@ next-env.d.ts
 /src/generated/prisma
 dev.db
 dev.db-journal
+
+# ロードマップの移行データ（売上・評価を含む。commitしない）
+roadmap-data/
