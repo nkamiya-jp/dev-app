@@ -51,6 +51,9 @@ export function OemCard({ productId, costKey }: { productId: string; costKey: st
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // 決めた単価を直接変更する（交渉で決まった額など）
+  const [editPrice, setEditPrice] = useState<string | null>(null);
+  const [priceNote, setPriceNote] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/products/${productId}/oem`);
@@ -94,6 +97,23 @@ export function OemCard({ productId, costKey }: { productId: string; costKey: st
     setMult("");
     setExtras([]);
     setNote("");
+    load();
+  }
+
+  async function changePrice() {
+    const price = Math.round(Number(editPrice));
+    if (!price) return;
+    const res = await fetch(`/api/products/${productId}/oem`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ price, note: priceNote }),
+    });
+    if (!res.ok) {
+      alert((await res.json().catch(() => ({}))).error || "変更できませんでした");
+      return;
+    }
+    setEditPrice(null);
+    setPriceNote("");
     load();
   }
 
@@ -144,6 +164,9 @@ export function OemCard({ productId, costKey }: { productId: string; costKey: st
             <p className="text-[11px] text-gray-500">決めた単価</p>
             <p className="text-xl font-bold">{yen(data.price)}</p>
             {data.pricedAt && <p className="text-[11px] text-gray-400">{fmtDate(data.pricedAt)}・×{data.multiplier}</p>}
+            {data.price != null && editPrice === null && (
+              <button type="button" onClick={() => setEditPrice(String(data.price))} className="text-xs text-blue-600">変更</button>
+            )}
           </div>
           <div>
             <p className="text-[11px] text-gray-500">今の原価</p>
@@ -165,6 +188,33 @@ export function OemCard({ productId, costKey }: { productId: string; costKey: st
             {data.pricedCost != null && <p className="text-[11px] text-gray-400">決めた時 {yen(data.pricedCost)}</p>}
           </div>
         </div>
+        {editPrice !== null && (
+          <div className="rounded-md border border-violet-200 bg-violet-50/50 p-3 space-y-2 text-sm">
+            <p className="font-medium">単価を変更</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value.replace(/[^\d]/g, ""))}
+                inputMode="numeric"
+                className="w-32 bg-white"
+                autoFocus
+              />
+              <span>円</span>
+              {Number(editPrice) > 0 && (
+                <span className={`text-xs ${(marginRate(Number(editPrice), data.cost.current) ?? 0) < s.minMarginRate ? "text-rose-600" : "text-gray-600"}`}>
+                  今の原価 {yen(data.cost.current)} で 粗利率 {marginRate(Number(editPrice), data.cost.current)}%・×
+                  {data.cost.current > 0 ? Math.round((Number(editPrice) / data.cost.current) * 100) / 100 : "-"}
+                </span>
+              )}
+            </div>
+            <Input value={priceNote} onChange={(e) => setPriceNote(e.target.value)} placeholder="変更の理由（例：交渉で決定、原価の値上がり分を反映）" className="bg-white" />
+            <p className="text-[11px] text-gray-500">変更すると、この顧客の顧客別価格も更新され、次の受注からこの単価で入ります。変更は見積の履歴にも残ります。</p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={changePrice} disabled={!(Number(editPrice) > 0)}>この単価に変更</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setEditPrice(null); setPriceNote(""); }}>キャンセル</Button>
+            </div>
+          </div>
+        )}
         {data.belowMin && (
           <p className="flex items-center gap-1.5 rounded bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">
             <AlertTriangle className="size-4 shrink-0" />
