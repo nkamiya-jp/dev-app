@@ -41,6 +41,8 @@ model Contact {
   orders         Order[]
   shipments      Shipment[]
   customerPrices CustomerPrice[]
+  oemProducts    Product[]      @relation("OemProducts")
+  oemQuotes      OemQuote[]
 }
 
 model Deal {
@@ -194,6 +196,38 @@ model Product {
   customerPrices  CustomerPrice[]
   aliases         ProductAlias[]
   janItems        JanItem[]
+  // OEM：顧客専用の商品（空＝自社商品）。商品一覧・価格表・原価比較には出さない
+  ownerContactId      String?
+  ownerContact        Contact?   @relation("OemProducts", fields: [ownerContactId], references: [id], onDelete: SetNull)
+  oemMultiplier       Float?     // 決めた倍率（普段の量で決めて固定）
+  oemIncludePackaging Boolean    @default(false) // 梱包資材を原価に含めるか
+  oemPrice            Int?       // 決めたOEM単価（顧客別価格にも入れる）
+  oemPricedCost       Int?       // 単価を決めた時の原価（値上がりに気づくため）
+  oemPricedAt         DateTime?
+  oemQuotes           OemQuote[]
+
+  @@index([ownerContactId])
+}
+
+// OEM見積の履歴（見積を出した時点の原価を控える）
+model OemQuote {
+  id               String   @id @default(cuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  contactId        String?
+  contact          Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  quantity         Int      // 普段の注文量（倍率を決める）
+  multiplier       Float
+  includePackaging Boolean  @default(false)
+  unitCost         Int      // 見積時の原価（梱包資材を除く場合は除いた額）
+  unitPrice        Int      // 単価（原価×倍率を10円単位に切り上げ）
+  extras           String?  // 別途の行 JSON [{label, amount}]
+  note             String?
+  adopted          Boolean  @default(false) // この見積で単価を決めたか
+  createdBy        String?
+  createdAt        DateTime @default(now())
+
+  @@index([productId])
 }
 
 // 顧客の取扱商品＋個別卸価格。行が存在する = その顧客が取り扱う商品。

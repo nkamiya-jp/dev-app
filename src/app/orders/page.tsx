@@ -56,6 +56,7 @@ interface Product {
   name: string;
   series: string | null;
   wholesalePrice: number | null;
+  ownerContactId: string | null; // OEM商品の依頼主（その顧客の注文にだけ出す）
 }
 
 export default function OrdersPage() {
@@ -718,7 +719,7 @@ function AddItemForm({
           required
         >
           <option value="">選択...</option>
-          {products.map((p) => (
+          {products.filter((p) => !p.ownerContactId || p.ownerContactId === contactId).map((p) => (
             <option key={p.id} value={p.id}>
               {p.code} - {p.name}
             </option>

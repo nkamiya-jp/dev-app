@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
 
   const [products, overrides] = await Promise.all([
     prisma.product.findMany({
-      where: { active: true, ...(productId ? { id: productId } : {}) },
+      // OEM商品は依頼主の顧客にだけ出す
+      where: { active: true, OR: [{ ownerContactId: null }, { ownerContactId: contactId }], ...(productId ? { id: productId } : {}) },
       select: { id: true, retailPrice: true, wholesalePrice: true },
     }),
     prisma.customerPrice.findMany({

@@ -35,7 +35,8 @@ export function CustomerProductsCard({
       fetch("/api/products").then((r) => r.json()),
       fetch(`/api/customer-prices?contactId=${contactId}`).then((r) => r.json()),
     ]);
-    setProducts(Array.isArray(ps) ? ps.filter((p: Product) => p.active) : []);
+    // OEM商品は依頼主のこの顧客の分だけ
+    setProducts(Array.isArray(ps) ? ps.filter((p: Product & { ownerContactId?: string | null }) => p.active && (!p.ownerContactId || p.ownerContactId === contactId)) : []);
     const m: Record<string, Entry> = {};
     if (Array.isArray(cps)) {
       cps.forEach((x: { productId: string; price: number | null; note: string | null }) => {

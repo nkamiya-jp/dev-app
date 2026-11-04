@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ContactEditButton } from "./contact-edit";
 import { getContactTypeLabel, getContactTypeColor, getContactTypeMeta } from "@/lib/contact-meta";
 import { CustomerProductsCard } from "./customer-products";
+import { OemProductsCard } from "./oem-products";
 
 export const dynamic = "force-dynamic";
 
@@ -251,6 +252,8 @@ export default async function ContactDetailPage({
           </Card>
         </div>
       </div>
+
+      <OemProductsCard contactId={contact.id} />
 
       <CustomerProductsCard
         contactId={contact.id}

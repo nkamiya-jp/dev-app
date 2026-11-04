@@ -21,6 +21,7 @@ interface Product {
   id: string;
   code: string;
   name: string;
+  ownerContact?: { id: string; name: string; company: string | null } | null; // OEMの依頼主
   series: string | null;
   size: string | null;
   retailPrice: number | null;
@@ -51,6 +52,8 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [seriesFilter, setSeriesFilter] = useState("");
+  // 自社商品（既定）か、OEM（顧客専用の商品）か
+  const [oemView, setOemView] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
   // 比較用に選んだ商品
@@ -68,9 +71,10 @@ export default function ProductsPage() {
     if (search) params.set("search", search);
     if (seriesFilter) params.set("series", seriesFilter);
     params.set("includeInactive", "1");
+    params.set("oem", oemView ? "only" : "exclude");
     const res = await fetch(`/api/products?${params.toString()}`);
     setProducts(await res.json());
-  }, [search, seriesFilter]);
+  }, [search, seriesFilter, oemView]);
 
   useEffect(() => {
     load();
@@ -241,6 +245,10 @@ export default function ProductsPage() {
               <option key={s.id} value={s.id}>{s.label}</option>
             ))}
           </select>
+          <div className="flex border rounded-md overflow-hidden text-sm" title="OEM＝顧客専用の商品。顧客の画面から作ります">
+            <button type="button" onClick={() => setOemView(false)} className={`px-3 py-1.5 ${!oemView ? "bg-zinc-900 text-white" : "hover:bg-gray-50"}`}>自社商品</button>
+            <button type="button" onClick={() => setOemView(true)} className={`px-3 py-1.5 border-l ${oemView ? "bg-zinc-900 text-white" : "hover:bg-gray-50"}`}>OEM</button>
+          </div>
           <CsvImportDialog
             title="商品マスタ"
             endpoint="/api/products/import"
@@ -675,6 +683,11 @@ function ProductGroup({
                   </Link>
                   {p.size && <span className="text-[10px] text-gray-400 ml-1">{p.size}</span>}
                   {!p.active && <Badge variant="outline" className="ml-2 text-[10px]">取扱終了</Badge>}
+                  {p.ownerContact && (
+                    <Link href={`/contacts/${p.ownerContact.id}`} className="ml-2 text-[10px] rounded bg-violet-50 text-violet-700 px-1.5 py-0.5 hover:underline">
+                      OEM：{p.ownerContact.company || p.ownerContact.name}
+                    </Link>
+                  )}
                 </td>
                 <EditCell value={p.retailPrice} onSave={(v) => onSaveField(p.id, "retailPrice", v)} className="font-medium" />
                 <td className="px-2 py-1.5 text-right font-medium tabular-nums bg-emerald-50/40">

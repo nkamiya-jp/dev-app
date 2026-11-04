@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OemCard, OemOwnerPicker } from "./oem-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +108,8 @@ interface Product {
   fnsku: string | null;
   hasNonwoven: boolean;
   active: boolean;
+  ownerContactId: string | null; // OEMの依頼主（空＝自社商品）
+  ownerContact: { id: string; name: string; company: string | null } | null;
   costSteps: CostStep[];
   materials: Material[];
   inventory?: { stock: number } | null;
@@ -330,7 +333,13 @@ export function ProductDetail({ productId }: { productId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Link href="/products" className="text-gray-500 hover:text-gray-700">← 商品マスタ</Link>
+        {product.ownerContact ? (
+          <Link href={`/contacts/${product.ownerContact.id}`} className="text-gray-500 hover:text-gray-700">
+            ← {product.ownerContact.company || product.ownerContact.name}（OEM商品）
+          </Link>
+        ) : (
+          <Link href="/products" className="text-gray-500 hover:text-gray-700">← 商品マスタ</Link>
+        )}
       </div>
 
       {/* 基本情報 */}
@@ -395,10 +404,18 @@ export function ProductDetail({ productId }: { productId: string }) {
                   <p className="font-medium">{product.usedMeters ? `${product.usedMeters}m` : "-"}</p>
                 </div>
               </div>
+              <div className="pt-3 border-t max-w-md">
+                <OemOwnerPicker productId={product.id} owner={product.ownerContact} onChanged={load} />
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* OEM（顧客専用の商品）の単価・見積 */}
+      {product.ownerContactId && (
+        <OemCard productId={product.id} costKey={`${Math.round(breakdown.total)}-${Math.round(breakdown.packagingMaterialCost)}`} />
+      )}
 
       {/* 原価計算サマリー */}
       <Card className="bg-white shadow-sm">

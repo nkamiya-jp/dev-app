@@ -9,10 +9,13 @@ export async function GET(request: NextRequest) {
   const search = request.nextUrl.searchParams.get("search") || "";
   const series = request.nextUrl.searchParams.get("series") || "";
   const includeInactive = request.nextUrl.searchParams.get("includeInactive") === "1";
+  const oem = request.nextUrl.searchParams.get("oem"); // exclude=自社商品だけ / only=OEM商品だけ / 省略=すべて
 
   const where: Record<string, unknown> = {};
   if (!includeInactive) where.active = true;
   if (series) where.series = series;
+  if (oem === "exclude") where.ownerContactId = null;
+  if (oem === "only") where.ownerContactId = { not: null };
   if (search) {
     where.OR = [
       { name: { contains: search } },
@@ -28,6 +31,7 @@ export async function GET(request: NextRequest) {
       inventory: true,
       costSteps: true,
       materials: { include: { material: { select: { fabricWidth: true, unitPrice: true } } } },
+      ownerContact: { select: { id: true, name: true, company: true } },
     },
   })).sort(compareProductOrder);
 

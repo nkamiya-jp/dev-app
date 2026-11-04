@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { loadProductWithCost } from "@/lib/product-server";
 
 export const dynamic = "force-dynamic";
 
@@ -9,44 +10,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const productRaw = await prisma.product.findUnique({
-    where: { id },
-    include: {
-      costSteps: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
-      materials: {
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        include: { material: { select: { fabricWidth: true, unitPrice: true } } },
-      },
-      inventory: true,
-    },
-  });
-  if (!productRaw) return Response.json({ error: "Not found" }, { status: 404 });
-
-  // カテゴリ階層を読み込み、leaf → top のマッピングを作る
-  const cats = await prisma.materialCategory.findMany();
-  const byId = new Map(cats.map((c) => [c.id, c]));
-  function getTopName(leafName: string): string {
-    let cur = cats.find((c) => c.name === leafName);
-    while (cur && cur.parentId) {
-      const p = byId.get(cur.parentId);
-      if (!p) break;
-      cur = p;
-    }
-    return cur?.name ?? leafName;
-  }
-
-  // material リレーション の fabricWidth と topCategory をフラットに展開
-  const product = {
-    ...productRaw,
-    materials: productRaw.materials.map((m) => ({
-      ...m,
-      // マスタ連動の行は単価をマスタから解決（商品側のコピーは表示・計算に使わない）
-      unitPrice: m.material?.unitPrice ?? m.unitPrice,
-      isMasterLinked: m.materialId != null && m.material != null,
-      fabricWidth: m.material?.fabricWidth ?? null,
-      topCategory: getTopName(m.category),
-    })),
-  };
+  const product = await loadProductWithCost(id);
+  if (!product) return Response.json({ error: "Not found" }, { status: 404 });
   return Response.json(product);
 }
 
@@ -88,6 +53,8 @@ export async function PUT(
       ...(data.fnsku !== undefined && { fnsku: data.fnsku || null }),
       ...(data.hasNonwoven !== undefined && { hasNonwoven: !!data.hasNonwoven }),
       ...(data.active !== undefined && { active: data.active }),
+      // OEMの依頼主（空にすると自社商品に戻る）
+      ...(data.ownerContactId !== undefined && { ownerContactId: data.ownerContactId || null }),
     },
   });
   return Response.json(product);

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // GET /api/price-list - 現在のリアルタイム価格表（全商品 × 顧客タイプ別掛率）
 export async function GET() {
   const products = await prisma.product.findMany({
-    where: { active: true },
+    where: { active: true, ownerContactId: null }, // OEM（顧客専用の商品）は価格表に出さない
     include: {
       costSteps: true,
       materials: { include: { material: { select: { fabricWidth: true, unitPrice: true } } } },

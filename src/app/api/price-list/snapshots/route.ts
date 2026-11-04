@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   // 現在の商品データを取得（原価計算に必要な関連も）
   const products = await prisma.product.findMany({
-    where: { active: true },
+    where: { active: true, ownerContactId: null }, // OEM（顧客専用の商品）は価格表に出さない
     include: {
       costSteps: true,
       materials: { include: { material: { select: { fabricWidth: true, unitPrice: true } } } },
