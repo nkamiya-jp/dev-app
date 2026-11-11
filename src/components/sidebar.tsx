@@ -97,7 +97,7 @@ const navSections: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/production", label: "製造", icon: Hammer },
       { href: "/forecast", label: "需要予測", icon: TrendingUp },
-      { href: "/sales-plans", label: "販売計画", icon: Calculator, need: "sales" },
+      { href: "/monthly-plan", label: "月の収支計画", icon: Calculator, need: "sales" },
       { href: "/inventory", label: "在庫", icon: Boxes },
     ],
   },

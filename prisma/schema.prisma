@@ -43,7 +43,7 @@ model Contact {
   customerPrices CustomerPrice[]
   oemProducts    Product[]      @relation("OemProducts")
   oemQuotes      OemQuote[]
-  salesPlanCells SalesPlanCell[]
+  forecasts      CustomerForecast[]
 }
 
 model Deal {
@@ -206,7 +206,8 @@ model Product {
   oemPricedCost       Int?       // 単価を決めた時の原価（値上がりに気づくため）
   oemPricedAt         DateTime?
   oemQuotes           OemQuote[]
-  salesPlans          SalesPlan[]
+  customerForecasts   CustomerForecast[]
+  monthlyProductions  MonthlyProduction[]
 
   @@index([ownerContactId])
 }
@@ -675,36 +676,43 @@ model JanPrefix {
   updatedAt  DateTime @updatedAt
 }
 
-// 販売計画シミュレーション：1商品の生産と販売を月ごとに置いてみる（シナリオごとに1件）
-model SalesPlan {
-  id        String          @id @default(cuid())
-  name      String          // 例：3.3寸 2,000個・Amazon重視
-  term      String          // 期（例：第10期）。月は期首日から12か月
-  adopted   Boolean         @default(false) // 採用したシナリオ（顧客予算の合計に入れる）
-  openingStock Int          @default(0)     // 期首の在庫（作ってある分。資金は出ていかない）
+// 月の収支計画：顧客ごとの数（顧客×商品×月）。kind=forecast（見込み：今見えている分）| push（攻め：不足を埋めに行く分）
+model CustomerForecast {
+  id        String   @id @default(cuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
   productId String
-  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  note      String?
-  createdBy String?
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  cells     SalesPlanCell[]
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  month     String   // YYYY-MM
+  kind      String   @default("forecast")
+  qty       Int      @default(0)
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([term])
+  @@unique([contactId, productId, month, kind])
+  @@index([month])
 }
 
-// 月ごとの数。kind=production（生産）| sale（販売：channel＝顧客カテゴリ、contact＝顧客。顧客未定は空）
-model SalesPlanCell {
-  id        String    @id @default(cuid())
-  planId    String
-  plan      SalesPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-  kind      String
-  channel   String?
-  contactId String?
-  contact   Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  month     String    // YYYY-MM
-  qty       Int       @default(0)
+// 月の収支計画：生産の予定（今は手入力。後で生産計画から読む）
+model MonthlyProduction {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  month     String   // YYYY-MM
+  qty       Int      @default(0)
+  updatedAt DateTime @updatedAt
 
-  @@index([planId])
-  @@index([contactId])
+  @@unique([productId, month])
+}
+
+// 月の収支計画：不足を埋めるためにカテゴリへ振り分けた攻めの予算（売上）
+model MonthlyChannelBudget {
+  id        String   @id @default(cuid())
+  month     String   // YYYY-MM
+  channel   String   // 顧客カテゴリ（取引タイプ）
+  amount    Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([month, channel])
 }

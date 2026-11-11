@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
-import { getChannelCosts, saveChannelCosts } from "@/lib/sales-plan-server";
+import { getChannelCosts, saveChannelCosts } from "@/lib/monthly-plan-server";
 
 export const dynamic = "force-dynamic";
 
-// GET/PUT /api/sales-plans/channel-costs — 顧客カテゴリごとの販売コスト { [カテゴリ]: { pct, perUnit } }
+// GET/PUT /api/monthly-plan/channel-costs — 顧客カテゴリごとの販売コスト { [カテゴリ]: { pct, perUnit } }
 // 例：AmazonJP＝手数料・広告で％＋FBA配送料を1個あたり。後で Seller Central の実データで更新する
 export async function GET() {
   const v = await getViewer();
