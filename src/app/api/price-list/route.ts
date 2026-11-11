@@ -32,6 +32,7 @@ export async function GET() {
   const matrixRows = getAllMatrixRows();
 
   const items = products.map((p) => {
+    const isPurchase = p.series === "purchase";
     const breakdown = calcCostBreakdown({
       salesCost: p.salesCost,
       packagingCost: p.packagingCost,
@@ -39,7 +40,7 @@ export async function GET() {
       outboundCost: p.outboundCost,
       mgmtCost: p.mgmtCost,
       purchaseCost: p.purchaseCost,
-      isPurchase: p.series === "purchase",
+      isPurchase,
       cutHeight: p.cutHeight,
       cutWidth: p.cutWidth,
       usedMeters: p.usedMeters,
@@ -107,6 +108,36 @@ export async function GET() {
       steps: breakdown.stepBreakdown
         .filter((s) => s.category === "制作費")
         .map((s) => ({ step: s.step, cost: Math.round(s.cost) })),
+      cuttingSteps: breakdown.stepBreakdown
+        .filter((s) => s.category === "裁断費")
+        .map((s) => ({ step: s.step, cost: Math.round(s.cost) })),
+      // 生地・資材・梱包資材の1行ずつの計算（一覧で検算できるように）
+      // materialBreakdown は入力の materials と同じ順で並ぶ
+      materials: p.materials.map((m, i) => {
+        const mb = breakdown.materialBreakdown[i];
+        const unitPrice = m.material?.unitPrice ?? m.unitPrice;
+        const isFabric = mb.topCategory === "生地費";
+        const warnings: string[] = [];
+        if (!unitPrice) warnings.push("単価が0");
+        if (isFabric && !(m.yieldCount > 0)) warnings.push("取れ数が未入力");
+        return {
+          name: m.name,
+          topCategory: mb.topCategory,
+          unitPrice,
+          unitType: m.unitType,
+          usedMeters: m.usedMeters,
+          yieldCount: m.yieldCount,
+          usageCount: m.usageCount,
+          perPiece: isPurchase ? 0 : mb.perPiece,
+          linked: !!m.materialId,
+          warnings,
+        };
+      }),
+      sales: {
+        salesCost: Math.round(breakdown.salesCost),
+        outboundCost: Math.round(breakdown.outboundCost),
+        mgmtCost: Math.round(breakdown.mgmtCost),
+      },
       retailPrice: retail,
       wholesalePrice: p.wholesalePrice,
       costRatioVsRetail,   // 上代ベース原価率

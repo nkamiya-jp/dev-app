@@ -22,6 +22,19 @@ interface Step {
   cost: number;
 }
 
+interface MaterialLine {
+  name: string;
+  topCategory: string;
+  unitPrice: number;
+  unitType: string;
+  usedMeters: number | null;
+  yieldCount: number;
+  usageCount: number | null;
+  perPiece: number;
+  linked: boolean;
+  warnings: string[];
+}
+
 interface Item {
   productId: string;
   code: string | null;
@@ -31,9 +44,44 @@ interface Item {
   cost: number;
   breakdown: Breakdown;
   steps: Step[];
+  cuttingSteps: Step[];
+  materials: MaterialLine[];
+  sales: { salesCost: number; outboundCost: number; mgmtCost: number };
   retailPrice: number;
   costRatioVsRetail: number;
 }
+
+const UNIT_LABEL: Record<string, string> = { meter: "m", piece: "個", set: "セット" };
+
+function yen(v: number) {
+  return `${Math.round(v).toLocaleString()}円`;
+}
+
+// 生地: 単価×使用M÷取れ数×使用数 / 資材・梱包資材: 単価×使用数
+function formulaOf(m: MaterialLine) {
+  const unit = UNIT_LABEL[m.unitType] ?? m.unitType;
+  const price = `${m.unitPrice.toLocaleString()}円/${unit}`;
+  if (m.topCategory === "生地費") {
+    return `${price} × ${m.usedMeters ?? 1}m ÷ ${m.yieldCount || "?"}取 × ${m.usageCount ?? 1}枚`;
+  }
+  return `${price} × ${m.usageCount ?? 1}`;
+}
+
+// 一覧で「この数字おかしいかも」を拾う目安
+function warningsOf(it: Item): string[] {
+  const w = it.materials.flatMap((m) => m.warnings.map((x) => `${m.name}: ${x}`));
+  if (it.series !== "purchase") {
+    if (it.breakdown.fabricCost === 0) w.push("生地費が0円");
+    if (it.breakdown.productionCost === 0) w.push("制作費が0円");
+  }
+  return w;
+}
+
+const MATERIAL_GROUPS = [
+  { top: "生地費", cls: "text-purple-700" },
+  { top: "資材費", cls: "text-amber-700" },
+  { top: "梱包資材費", cls: "text-pink-700" },
+] as const;
 
 // 表の列定義。key は並び替えに使う
 const COLS = [
@@ -196,7 +244,7 @@ export default function CostListPage() {
         <div>
           <h2 className="text-2xl font-bold">原価比較</h2>
           <p className="text-xs text-gray-500 mt-1">
-            左のチェックで2〜3商品を選ぶと、上に横並びの比較パネルが出ます。列見出しで並び替え、商品行クリックで工程内訳を表示。
+            左のチェックで2〜3商品を選ぶと、上に横並びの比較パネルが出ます。列見出しで並び替え、商品行クリックで原価の中身（生地・資材ごとの計算）を表示。
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -344,6 +392,7 @@ export default function CostListPage() {
               ) : (
                 sorted.map((it) => {
                   const isOpen = expanded.has(it.productId);
+                  const warns = warningsOf(it);
                   return (
                     <Fragment key={it.productId}>
                       <tr
@@ -359,8 +408,7 @@ export default function CostListPage() {
                           />
                         </td>
                         <td className="px-1 print:hidden text-gray-300">
-                          {it.steps.length > 0 &&
-                            (isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />)}
+                          {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
                         </td>
                         <td className="px-2 py-1.5">
                           <Link
@@ -370,6 +418,11 @@ export default function CostListPage() {
                           >
                             {it.name}
                           </Link>
+                          {warns.length > 0 && (
+                            <span className="ml-1 text-amber-600 text-[11px]" title={warns.join("\n")}>
+                              ⚠{warns.length}
+                            </span>
+                          )}
                           <div className="text-[10px] font-mono text-gray-400">{it.code || "-"}</div>
                         </td>
                         {COLS.map((c) => {
@@ -403,21 +456,13 @@ export default function CostListPage() {
                         </td>
                       </tr>
 
-                      {/* 制作費の工程内訳 */}
-                      {isOpen && it.steps.length > 0 && (
-                        <tr className="bg-blue-50/30">
+                      {/* 原価の中身（検算用） */}
+                      {isOpen && (
+                        <tr className="bg-slate-50/60">
                           <td className="print:hidden"></td>
                           <td className="print:hidden"></td>
-                          <td colSpan={COLS.length + 4} className="px-2 py-2">
-                            <p className="text-[10px] text-gray-500 mb-1">制作費の工程内訳</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {it.steps.map((s, i) => (
-                                <span key={i} className="text-[11px] bg-white border rounded px-2 py-0.5">
-                                  {s.step}
-                                  <span className="ml-1.5 font-medium text-blue-700">{s.cost.toLocaleString()}円</span>
-                                </span>
-                              ))}
-                            </div>
+                          <td colSpan={COLS.length + 4} className="px-2 py-3">
+                            <CostDetail it={it} warns={warns} />
                           </td>
                         </tr>
                       )}
@@ -455,7 +500,90 @@ export default function CostListPage() {
       </Card>
 
       <p className="text-xs text-gray-400 print:hidden">
-        赤字は各項目の最高値。原価率は上代に対する合計原価の割合（40%超で赤）。
+        赤字は各項目の最高値。原価率は上代に対する合計原価の割合（40%超で赤）。⚠は入力漏れの可能性（取れ数・単価が空、生地費や制作費が0円）。
+      </p>
+    </div>
+  );
+}
+
+function StepChips({ title, cls, steps }: { title: string; cls: string; steps: Step[] }) {
+  const total = steps.reduce((s, x) => s + x.cost, 0);
+  return (
+    <div>
+      <p className={`text-[11px] font-medium ${cls}`}>
+        {title} <span className="text-gray-500 font-normal">計 {yen(total)}</span>
+      </p>
+      {steps.length === 0 ? (
+        <p className="text-[11px] text-gray-400">なし</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5 mt-1">
+          {steps.map((s, i) => (
+            <span key={i} className="text-[11px] bg-white border rounded px-2 py-0.5">
+              {s.step}
+              <span className={`ml-1.5 font-medium ${cls}`}>{yen(s.cost)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CostDetail({ it, warns }: { it: Item; warns: string[] }) {
+  const isPurchase = it.series === "purchase";
+  return (
+    <div className="space-y-3">
+      {warns.length > 0 && (
+        <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          ⚠ 確認してください：{warns.join(" ／ ")}
+        </div>
+      )}
+      {isPurchase ? (
+        <p className="text-[11px] text-gray-600">仕入品：仕入 {yen(it.breakdown.purchaseCost)} ＋ 販管費 {yen(it.breakdown.laborCost)}（生地・資材は原価に含めません）</p>
+      ) : (
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            <StepChips title="制作費" cls="text-blue-700" steps={it.steps} />
+            <StepChips title="裁断費" cls="text-teal-700" steps={it.cuttingSteps} />
+          </div>
+          {MATERIAL_GROUPS.map((g) => {
+            const lines = it.materials.filter((m) => m.topCategory === g.top);
+            const total = lines.reduce((s, m) => s + m.perPiece, 0);
+            return (
+              <div key={g.top}>
+                <p className={`text-[11px] font-medium ${g.cls}`}>
+                  {g.top} <span className="text-gray-500 font-normal">計 {yen(total)}</span>
+                </p>
+                {lines.length === 0 ? (
+                  <p className="text-[11px] text-gray-400">登録なし</p>
+                ) : (
+                  <table className="mt-1 text-[11px] bg-white border rounded">
+                    <tbody className="divide-y">
+                      {lines.map((m, i) => (
+                        <tr key={i} className={m.warnings.length ? "bg-amber-50" : ""}>
+                          <td className="px-2 py-1 min-w-[160px]">
+                            {m.name}
+                            {!m.linked && <span className="ml-1 text-[9px] text-gray-400">（手入力）</span>}
+                          </td>
+                          <td className="px-2 py-1 font-mono text-gray-500 whitespace-nowrap">{formulaOf(m)}</td>
+                          <td className={`px-2 py-1 text-right font-medium whitespace-nowrap ${g.cls}`}>＝ {yen(m.perPiece)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
+      <p className="text-[11px] text-gray-600">
+        販管費 {yen(it.breakdown.laborCost)}
+        <span className="text-gray-400">（営業 {yen(it.sales.salesCost)} ＋ 出荷 {yen(it.sales.outboundCost)} ＋ 管理 {yen(it.sales.mgmtCost)}）</span>
+      </p>
+      <p className="text-[11px]">
+        <span className="font-medium">合計原価 {yen(it.cost)}</span>
+        <Link href={`/products/${it.productId}`} className="ml-2 text-blue-600 hover:underline">商品ページで直す →</Link>
       </p>
     </div>
   );
