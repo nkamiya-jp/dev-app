@@ -43,6 +43,7 @@ model Contact {
   customerPrices CustomerPrice[]
   oemProducts    Product[]      @relation("OemProducts")
   oemQuotes      OemQuote[]
+  salesPlanCells SalesPlanCell[]
 }
 
 model Deal {
@@ -205,6 +206,7 @@ model Product {
   oemPricedCost       Int?       // 単価を決めた時の原価（値上がりに気づくため）
   oemPricedAt         DateTime?
   oemQuotes           OemQuote[]
+  salesPlans          SalesPlan[]
 
   @@index([ownerContactId])
 }
@@ -671,4 +673,38 @@ model JanPrefix {
   note       String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+// 販売計画シミュレーション：1商品の生産と販売を月ごとに置いてみる（シナリオごとに1件）
+model SalesPlan {
+  id        String          @id @default(cuid())
+  name      String          // 例：3.3寸 2,000個・Amazon重視
+  term      String          // 期（例：第10期）。月は期首日から12か月
+  adopted   Boolean         @default(false) // 採用したシナリオ（顧客予算の合計に入れる）
+  openingStock Int          @default(0)     // 期首の在庫（作ってある分。資金は出ていかない）
+  productId String
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  note      String?
+  createdBy String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  cells     SalesPlanCell[]
+
+  @@index([term])
+}
+
+// 月ごとの数。kind=production（生産）| sale（販売：channel＝顧客カテゴリ、contact＝顧客。顧客未定は空）
+model SalesPlanCell {
+  id        String    @id @default(cuid())
+  planId    String
+  plan      SalesPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  kind      String
+  channel   String?
+  contactId String?
+  contact   Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  month     String    // YYYY-MM
+  qty       Int       @default(0)
+
+  @@index([planId])
+  @@index([contactId])
 }
