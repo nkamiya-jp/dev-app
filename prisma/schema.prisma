@@ -31,6 +31,7 @@ model Contact {
   // 毎日注文の取引先（受注進捗ボード・Slack取り込みの対象外）と、Slack投稿での呼び名（カンマ区切り）
   dailyOrder   Boolean  @default(false)
   orderAliases String?
+  flamCode     String?  @unique // FLAM（販売管理）の得意先コード
   developments Development[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -196,6 +197,7 @@ model Product {
   materials       ProductMaterial[]
   customerPrices  CustomerPrice[]
   aliases         ProductAlias[]
+  flamCodes       FlamProductMap[]
   janItems        JanItem[]
   // OEM：顧客専用の商品（空＝自社商品）。商品一覧・価格表・原価比較には出さない
   ownerContactId      String?
@@ -715,4 +717,35 @@ model MonthlyChannelBudget {
   updatedAt DateTime @updatedAt
 
   @@unique([month, channel])
+}
+
+// FLAM（販売管理）の商品コード → DEV商品。FLAMは同じ商品に複数コードがあるので多対1。未登録は productId なし
+model FlamProductMap {
+  flamCode  String   @id
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  flamName  String
+  spec      String?
+  status    String   @default("unmapped") // mapped | unmapped | excluded(運賃・手数料など商品でない行)
+  note      String?
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([productId])
+}
+
+// FLAMの得意先×商品の単価。DEVに顧客・商品が無いものも保持し、FLAMコードで紐づいたら顧客別単価に使う
+model FlamPrice {
+  flamCustomerCode String
+  flamProductCode  String
+  flamCustomerName String
+  flamProductName  String
+  spec             String?
+  registeredPrice  Int?     // FLAMに登録された単価（古いことが多い）
+  lastPrice        Int?     // 直近月の出荷実績単価
+  lastMonth        String?  // 直近の出荷月 YYYY/MM
+  qty12            Int      @default(0) // 直近12ヶ月の出荷数
+  importedAt       DateTime @default(now())
+
+  @@id([flamCustomerCode, flamProductCode])
+  @@index([flamProductCode])
 }
