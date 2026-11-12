@@ -94,6 +94,9 @@ export function FlamCodePicker({
                   onClick={() => {
                     onChange([...value, { flamCode: c.flamCode, flamName: c.flamName, spec: c.spec }]);
                     setSearch("");
+                    // 選んだら閉じる（開いたままだと下の保存ボタンに重なって誤クリックになる）
+                    setOpen(false);
+                    (document.activeElement as HTMLElement | null)?.blur();
                   }}
                 >
                   <span className="font-mono text-xs text-gray-500 w-20 shrink-0">{c.flamCode}</span>
