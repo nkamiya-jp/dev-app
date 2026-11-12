@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OemCard, OemOwnerPicker } from "./oem-card";
+import { FlamCodePicker, describeFlamResult, type FlamCode } from "../flam-code-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,6 +111,7 @@ interface Product {
   active: boolean;
   ownerContactId: string | null; // OEMの依頼主（空＝自社商品）
   ownerContact: { id: string; name: string; company: string | null } | null;
+  flamCodes: FlamCode[]; // FLAM（販売管理）の商品コード（1商品に複数あり）
   costSteps: CostStep[];
   materials: Material[];
   inventory?: { stock: number } | null;
@@ -199,12 +201,32 @@ export function ProductDetail({ productId }: { productId: string }) {
   // 最低掛率の取引タイプ（目標粗利率で上代を逆算する基準）
   const minRow = allRows.reduce<typeof allRows[number] | null>((m, r) => (!m || r.ratePct < m.ratePct ? r : m), null);
 
-  async function saveBasic(data: Partial<Product>) {
-    await fetch(`/api/products/${productId}`, {
+  async function saveBasic(data: Partial<Product>, flamCodes?: string[]) {
+    const res = await fetch(`/api/products/${productId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
+    if (!res.ok) {
+      alert("基本情報を保存できませんでした");
+      return;
+    }
+    // FLAMコードが変わったときだけ紐づけ直す（顧客別単価の補完もここで）
+    const before = (product?.flamCodes ?? []).map((f) => f.flamCode).sort().join(",");
+    if (flamCodes && [...flamCodes].sort().join(",") !== before) {
+      const fr = await fetch(`/api/products/${productId}/flam`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codes: flamCodes }),
+      });
+      const body = await fr.json().catch(() => null);
+      if (!fr.ok) {
+        alert(`FLAMコードを保存できませんでした${body?.error ? `\n${body.error}` : ""}`);
+        load();
+        return;
+      }
+      if (flamCodes.length > 0 || body?.removed?.length) alert(describeFlamResult(body));
+    }
     setEditBasic(false);
     load();
   }
@@ -403,6 +425,20 @@ export function ProductDetail({ productId }: { productId: string }) {
                   <p className="text-[11px] text-gray-400">生地 使用M</p>
                   <p className="font-medium">{product.usedMeters ? `${product.usedMeters}m` : "-"}</p>
                 </div>
+              </div>
+              <div className="pt-3 border-t text-sm">
+                <p className="text-[11px] text-gray-400">FLAMコード（販売管理）</p>
+                {product.flamCodes.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {product.flamCodes.map((f) => (
+                      <span key={f.flamCode} className="rounded-full bg-indigo-50 text-indigo-800 text-xs px-2 py-0.5">
+                        <span className="font-mono">{f.flamCode}</span> {f.flamName}{f.spec ? `（${f.spec}）` : ""}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-400">未設定（「基本情報を編集」から紐づけると顧客別単価が入ります）</p>
+                )}
               </div>
               <div className="pt-3 border-t max-w-md">
                 <OemOwnerPicker productId={product.id} owner={product.ownerContact} onChanged={load} />
@@ -1465,10 +1501,11 @@ function BasicEditForm({
   onCancel,
 }: {
   product: Product;
-  onSave: (d: Partial<Product>) => void;
+  onSave: (d: Partial<Product>, flamCodes: string[]) => void;
   onCancel: () => void;
 }) {
   const [code, setCode] = useState(product.code);
+  const [flamCodes, setFlamCodes] = useState<FlamCode[]>(product.flamCodes);
   const [name, setName] = useState(product.name);
   const [series, setSeries] = useState(product.series || "");
   const [size, setSize] = useState(product.size || "");
@@ -1512,7 +1549,7 @@ function BasicEditForm({
           fnsku: fnsku || null,
           hasNonwoven,
           active,
-        });
+        }, flamCodes.map((f) => f.flamCode));
       }}
       className="space-y-3"
     >
@@ -1600,6 +1637,10 @@ function BasicEditForm({
           <label className="text-xs text-gray-500">Amazon FNSKU（バーコード用）</label>
           <Input value={fnsku} onChange={(e) => setFnsku(e.target.value)} placeholder="例: X00ABC1234" />
         </div>
+      </div>
+      <div>
+        <label className="text-xs text-gray-500">FLAMコード（販売管理・複数可）</label>
+        <FlamCodePicker value={flamCodes} onChange={setFlamCodes} />
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={hasNonwoven} onChange={(e) => setHasNonwoven(e.target.checked)} />

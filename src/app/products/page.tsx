@@ -16,6 +16,7 @@ import {
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor } from "@/lib/product-meta";
 import { Search, Pencil, Plus, Package, Copy, Trash2, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
 import { CsvImportDialog } from "@/components/csv-import-dialog";
+import { FlamCodePicker, describeFlamResult, type FlamCode } from "./flam-code-picker";
 
 interface Product {
   id: string;
@@ -55,6 +56,7 @@ export default function ProductsPage() {
   // 自社商品（既定）か、OEM（顧客専用の商品）か
   const [oemView, setOemView] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createFlam, setCreateFlam] = useState<FlamCode[]>([]);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
   // 比較用に選んだ商品
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -113,7 +115,7 @@ export default function ProductsPage() {
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await fetch("/api/products", {
+    const res = await fetch("/api/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -124,8 +126,17 @@ export default function ProductsPage() {
         wholesalePrice: form.get("wholesalePrice") ? Number(form.get("wholesalePrice")) : null,
         workerCost: form.get("workerCost") ? Number(form.get("workerCost")) : null,
         description: form.get("description") || null,
+        flamCodes: createFlam.map((f) => f.flamCode),
       }),
     });
+    if (!res.ok) {
+      alert("商品を追加できませんでした（商品コードの重複など）");
+      return;
+    }
+    const created = await res.json().catch(() => null);
+    if (created?.flamError) alert(`商品は追加しましたが、FLAMコードを紐づけられませんでした\n${created.flamError}`);
+    else if (created?.flam) alert(describeFlamResult(created.flam));
+    setCreateFlam([]);
     setCreateOpen(false);
     load();
   }
@@ -316,6 +327,10 @@ export default function ProductsPage() {
                 <div>
                   <label className="text-xs text-gray-500">備考</label>
                   <textarea name="description" rows={2} className="w-full border rounded-md px-3 py-2 text-sm resize-y" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">FLAMコード（販売管理・複数可）</label>
+                  <FlamCodePicker value={createFlam} onChange={setCreateFlam} />
                 </div>
                 <Button type="submit" className="w-full">追加</Button>
               </form>

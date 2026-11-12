@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { effectiveStepCost, calcCostBreakdown } from "@/lib/product-cost";
 import { compareProductOrder } from "@/lib/product-meta";
+import { setProductFlamCodes, FlamLinkError } from "@/lib/flam-server";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +128,16 @@ export async function POST(request: NextRequest) {
       active: data.active ?? true,
     },
   });
+  // FLAMコードを一緒に入れたら紐づけて顧客別単価を作る（商品は作れているので失敗は flamError で返す）
+  if (Array.isArray(data.flamCodes) && data.flamCodes.length > 0) {
+    try {
+      const flam = await setProductFlamCodes(product.id, data.flamCodes);
+      return Response.json({ ...product, flam });
+    } catch (e) {
+      if (e instanceof FlamLinkError) return Response.json({ ...product, flamError: e.message });
+      throw e;
+    }
+  }
   return Response.json(product);
 }
 

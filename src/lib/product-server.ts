@@ -15,6 +15,7 @@ export async function loadProductWithCost(id: string) {
       },
       inventory: true,
       ownerContact: { select: { id: true, name: true, company: true } },
+      flamCodes: { select: { flamCode: true, flamName: true, spec: true }, orderBy: { flamCode: "asc" } },
     },
   });
   if (!productRaw) return null;
