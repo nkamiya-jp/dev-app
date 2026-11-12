@@ -62,7 +62,8 @@ const PROD_CATEGORY_ORDER = ["有", "無", "友禅", "別注", "その他"] as c
 function prodCategory(product: { series: string | null; hasNonwoven?: boolean }): string {
   if (product.series === "yuzen") return "友禅";
   if (product.series === "nishijin") return product.hasNonwoven ? "有" : "無";
-  if (product.series === "other") return "別注";
+  // 旧「その他」を分けた 正絹・西陣織B・OEM も、製造ではこれまでどおり別注に入れる
+  if (["other", "silk", "nishijin_b", "oem"].includes(product.series ?? "")) return "別注";
   return "その他";
 }
 
