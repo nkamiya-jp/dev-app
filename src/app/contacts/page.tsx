@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,22 @@ interface Contact {
   _count: { deals: number; tasks: number };
 }
 
+// 並べ替えできる列。既定（sortKey なし）は更新が新しい順（APIの並び）
+type SortKey = "company" | "name" | "type" | "discountRate" | "deals" | "tasks";
+const TYPE_RANK = new Map<string, number>(CONTACT_TYPES.map((t, i) => [t.id, i]));
+
+function sortValue(c: Contact, key: SortKey): string | number | null {
+  switch (key) {
+    // 「（株）」「株式会社」などは飛ばして、社名そのもので並べる
+    case "company": return (c.company || c.name || "").replace(/[（(]\s*[株有]\s*[）)]|株式会社|有限会社|合同会社/g, "").trim() || null;
+    case "name": return c.company ? c.name || null : null;
+    case "type": return c.type ? TYPE_RANK.get(c.type) ?? CONTACT_TYPES.length : null;
+    case "discountRate": return c.discountRate;
+    case "deals": return c._count.deals;
+    case "tasks": return c._count.tasks;
+  }
+}
+
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState("");
@@ -48,9 +64,53 @@ export default function ContactsPage() {
     setContacts(await res.json());
   }, [search]);
 
-  const filtered = typeFilter
-    ? contacts.filter((c) => c.type === typeFilter)
-    : contacts;
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // 見出しを押すたびに 昇順 → 降順 → 解除（更新順）と切り替える
+  const toggleSort = (key: SortKey) => {
+    if (sortKey !== key) {
+      setSortKey(key);
+      // 数字の列は大きい順から始めるほうが使いやすい
+      setSortDir(key === "deals" || key === "tasks" ? "desc" : "asc");
+    } else if (sortDir === (key === "deals" || key === "tasks" ? "desc" : "asc")) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(null);
+    }
+  };
+
+  const filtered = useMemo(() => {
+    const list = typeFilter ? contacts.filter((c) => c.type === typeFilter) : contacts;
+    if (!sortKey) return list;
+    const sign = sortDir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const va = sortValue(a, sortKey);
+      const vb = sortValue(b, sortKey);
+      // 未入力は昇順・降順どちらでも最後
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * sign;
+      return String(va).localeCompare(String(vb), "ja") * sign;
+    });
+  }, [contacts, typeFilter, sortKey, sortDir]);
+
+  const sortHead = (key: SortKey, label: string, className = "") => (
+    <TableHead className={className} aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className={`inline-flex items-center gap-1 hover:text-blue-600 ${sortKey === key ? "text-blue-600 font-semibold" : ""}`}
+        title="クリックで並べ替え"
+      >
+        {label}
+        <span className={`text-xs ${sortKey === key ? "" : "text-gray-300"}`}>
+          {sortKey === key ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+        </span>
+      </button>
+    </TableHead>
+  );
 
   useEffect(() => {
     loadContacts();
@@ -83,21 +143,24 @@ export default function ContactsPage() {
             <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>
+        <span className="text-sm text-gray-500">
+          {filtered.length}件{sortKey ? "" : "（更新が新しい順）"}
+        </span>
       </div>
 
       <div className="bg-white shadow-sm border rounded-lg overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>社名</TableHead>
-            <TableHead>担当者</TableHead>
-            <TableHead>タイプ</TableHead>
-            <TableHead className="text-right">掛率</TableHead>
+            {sortHead("company", "社名")}
+            {sortHead("name", "担当者")}
+            {sortHead("type", "タイプ")}
+            {sortHead("discountRate", "掛率", "text-right")}
             <TableHead>部署 / 役職</TableHead>
             <TableHead>メール</TableHead>
             <TableHead>電話</TableHead>
-            <TableHead>案件</TableHead>
-            <TableHead>タスク</TableHead>
+            {sortHead("deals", "案件")}
+            {sortHead("tasks", "タスク")}
             <TableHead className="w-12"></TableHead>
           </TableRow>
         </TableHeader>
@@ -128,7 +191,7 @@ export default function ContactsPage() {
                   ) : "-"}
                 </TableCell>
                 <TableCell className="text-right text-sm">
-                  {c.discountRate != null ? `${c.discountRate}%` : "-"}
+                  {c.discountRate != null ? `${Math.round(c.discountRate * 10) / 10}%` : "-"}
                 </TableCell>
                 <TableCell>
                   {[c.department, c.title].filter(Boolean).join(" / ") || "-"}
