@@ -55,6 +55,8 @@ export default function ProductsPage() {
   const [seriesFilter, setSeriesFilter] = useState("");
   // 自社商品（既定）か、OEM（顧客専用の商品）か
   const [oemView, setOemView] = useState(false);
+  // 取扱終了の商品は普段は畳んでおき、一覧の最後の別欄で開いて見る
+  const [showEnded, setShowEnded] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createFlam, setCreateFlam] = useState<FlamCode[]>([]);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
@@ -225,11 +227,14 @@ export default function ProductsPage() {
   }
 
   // シリーズごとにグループ化
+  // 取扱終了はシリーズの欄に混ぜず、最後の「取扱終了」欄にまとめる
+  const activeProducts = products.filter((p) => p.active);
+  const endedProducts = products.filter((p) => !p.active);
   const grouped = PRODUCT_SERIES.map((s) => ({
     series: s,
-    items: products.filter((p) => p.series === s.id),
+    items: activeProducts.filter((p) => p.series === s.id),
   })).filter((g) => g.items.length > 0);
-  const noSeries = products.filter((p) => !p.series);
+  const noSeries = activeProducts.filter((p) => !p.series);
   const compareItems = products.filter((p) => selected.has(p.id));
 
   return (
@@ -386,6 +391,37 @@ export default function ProductsPage() {
             onSaveField={saveField}
             onSaveStep={saveProductionStep}
           />
+        )}
+        {endedProducts.length > 0 && (
+          <div className="border-t pt-4">
+            <button
+              type="button"
+              onClick={() => setShowEnded((v) => !v)}
+              className="text-sm text-gray-600 hover:text-gray-900 inline-flex items-center gap-2"
+              aria-expanded={showEnded}
+            >
+              <span>{showEnded ? "▼" : "▶"}</span>
+              取扱終了の商品（{endedProducts.length}件）を{showEnded ? "隠す" : "表示"}
+            </button>
+            {showEnded && (
+              <div className="mt-3">
+                <ProductGroup
+                  title="取扱終了"
+                  color="bg-gray-200 text-gray-600"
+                  items={endedProducts}
+                  selected={selected}
+                  onToggleSelect={toggleSelect}
+                  onEdit={setEditTarget}
+                  onDuplicate={duplicateProduct}
+                  onDelete={deleteProduct}
+                  onReorder={reorderProduct}
+                  onMove={moveProduct}
+                  onSaveField={saveField}
+                  onSaveStep={saveProductionStep}
+                />
+              </div>
+            )}
+          </div>
         )}
       </div>
 
