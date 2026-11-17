@@ -88,9 +88,40 @@ export async function GET(request: NextRequest) {
     });
     const cost = Math.round(breakdown.total);
 
+    // 比較パネル用の明細（裁断・生地・資材・梱包資材を1行ずつ。式つき）
+    const UNIT: Record<string, string> = { meter: "m", piece: "個", set: "セット" };
+    const GROUP: Record<string, string> = { 生地費: "fabricCost", 資材費: "materialCost", 梱包資材費: "packagingMaterialCost" };
+    const lines: { group: string; label: string; cost: number; formula: string }[] = [];
+    if (p.series !== "purchase") {
+      for (const s of p.costSteps) {
+        if (s.category !== "裁断費") continue;
+        const q = s.quantity ?? 1;
+        lines.push({
+          group: "cuttingCost",
+          label: s.step,
+          cost: effectiveStepCost({ id: s.id, step: s.step, unitCost: s.unitCost, quantity: s.quantity, subType: s.subType }),
+          formula: q !== 1 ? `${s.unitCost.toLocaleString()}円 × ${q}` : "",
+        });
+      }
+      p.materials.forEach((m, i) => {
+        const b = breakdown.materialBreakdown[i];
+        const price = `${(m.material?.unitPrice ?? m.unitPrice).toLocaleString()}円/${UNIT[m.unitType] ?? m.unitType}`;
+        lines.push({
+          group: GROUP[b.topCategory] ?? "materialCost",
+          label: m.category && m.category !== m.name ? `${m.category}：${m.name}` : m.name,
+          cost: b.perPiece,
+          formula:
+            b.topCategory === "生地費"
+              ? `${price} × ${m.usedMeters ?? 1}m ÷ ${m.yieldCount || "?"}取 × ${m.usageCount ?? 1}枚`
+              : `${price} × ${m.usageCount ?? 1}`,
+        });
+      });
+    }
+
     const { costSteps: _omit, materials: _omit2, ...rest } = p;
     return {
       ...rest,
+      lines,
       productionCost,
       cost,
       production: {

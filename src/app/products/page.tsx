@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,8 @@ interface Product {
     purchaseCost: number;
     laborCost: number;
   };
+  // 比較パネル用の明細（裁断・生地・資材・梱包資材の1行ずつ）
+  lines?: { group: string; label: string; cost: number; formula: string }[];
   description: string | null;
   active: boolean;
   inventory?: { stock: number } | null;
@@ -500,22 +502,92 @@ function CostComparePanel({ items, onClear }: { items: Product[]; onClear: () =>
   const multi = items.length > 1;
   const ratio = (p: Product) =>
     p.retailPrice && p.retailPrice > 0 && p.cost != null ? (p.cost / p.retailPrice) * 100 : null;
+  // 違いのある行だけに絞る（2商品以上の時）
+  const [diffOnly, setDiffOnly] = useState(false);
+  const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString();
+  const same = (vals: (number | null)[]) => vals.every((v) => v != null && Math.abs(v - (vals[0] ?? 0)) < 0.05);
+
+  // 明細行：同じ名前の行を商品間で横に揃える（同名が複数あれば出てきた順に対応させる）
+  type Line = NonNullable<Product["lines"]>[number];
+  function detailRows(group: string) {
+    const order: string[] = [];
+    const perItem = items.map((it) => {
+      const m = new Map<string, Line>();
+      const seen = new Map<string, number>();
+      for (const l of it.lines ?? []) {
+        if (l.group !== group) continue;
+        const n = (seen.get(l.label) ?? 0) + 1;
+        seen.set(l.label, n);
+        const key = n > 1 ? `${l.label} (${n})` : l.label;
+        m.set(key, l);
+        if (!order.includes(key)) order.push(key);
+      }
+      return m;
+    });
+    return order.map((key) => {
+      const cells = perItem.map((m) => m.get(key) ?? null);
+      const differs = multi && !same(cells.map((c) => (c ? c.cost : null)));
+      return { key, cells, differs };
+    });
+  }
+  // 制作費・販管費の内訳も同じ形で並べる
+  function fixedRows(group: string) {
+    const defs: { key: string; get: (p: Product) => number }[] =
+      group === "productionCost"
+        ? (["口金", "貼り", "縫製", "その他"] as const).map((k) => ({ key: k, get: (p: Product) => p.production[k] }))
+        : group === "laborCost"
+          ? [
+              { key: "営業", get: (p: Product) => p.salesCost ?? 0 },
+              { key: "出荷", get: (p: Product) => p.outboundCost ?? 0 },
+              { key: "管理", get: (p: Product) => p.mgmtCost ?? 0 },
+            ]
+          : [];
+    return defs
+      .map((d) => {
+        const vals = items.map(d.get);
+        return {
+          key: d.key,
+          cells: vals.map((v) => (v ? ({ group, label: d.key, cost: v, formula: "" } as Line) : null)),
+          differs: multi && !same(vals),
+        };
+      })
+      .filter((r) => r.cells.some((c) => c));
+  }
+  const groups = COMPARE_ROWS.map((r) => {
+    const vals = items.map((it) => val(it, r.key));
+    const rows = r.key === "productionCost" || r.key === "laborCost" ? fixedRows(r.key) : detailRows(r.key);
+    return { r, vals, rows, differs: multi && !same(vals) };
+  });
+  const diffCount = groups.reduce((n, g) => n + g.rows.filter((x) => x.differs).length, 0);
 
   return (
-    <Card className="bg-white shadow-sm border-blue-300">
-      <CardContent className="p-0 overflow-x-auto">
-        <div className="flex items-center justify-between px-3 py-2 border-b bg-blue-50/60">
+    <Card className="bg-white shadow-md border-blue-300 sticky top-2 z-20">
+      <CardContent className="p-0 overflow-auto max-h-[60vh]">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-blue-50 sticky top-0 left-0 z-10">
           <p className="text-sm font-medium text-blue-900">
             {multi ? `商品比較（${items.length}商品）` : "原価内訳"}
+            {multi && (
+              <span className={`ml-2 text-xs font-normal ${diffCount ? "text-amber-700" : "text-emerald-700"}`}>
+                {diffCount ? `違いのある明細 ${diffCount}行（黄色）` : "明細に違いはありません"}
+              </span>
+            )}
           </p>
-          <Button variant="outline" size="sm" onClick={onClear}>クリア</Button>
+          <div className="flex items-center gap-3 shrink-0">
+            {multi && (
+              <label className="flex items-center gap-1 text-xs text-gray-700">
+                <input type="checkbox" checked={diffOnly} onChange={(e) => setDiffOnly(e.target.checked)} />
+                違いだけ表示
+              </label>
+            )}
+            <Button variant="outline" size="sm" onClick={onClear}>クリア</Button>
+          </div>
         </div>
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b bg-gray-50">
-              <th className="text-left px-3 py-2 font-medium text-gray-500 min-w-[92px] sticky left-0 bg-gray-50">項目</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-500 min-w-[150px] sticky left-0 bg-gray-50">項目</th>
               {items.map((it) => (
-                <th key={it.id} className="text-right px-3 py-2 font-medium min-w-[110px]">
+                <th key={it.id} className="text-right px-3 py-2 font-medium min-w-[170px]">
                   <Link href={`/products/${it.id}`} className="text-blue-600 hover:underline">{it.name}</Link>
                   <div className="text-[10px] font-mono text-gray-400 font-normal">{it.code}</div>
                 </th>
@@ -523,22 +595,40 @@ function CostComparePanel({ items, onClear }: { items: Product[]; onClear: () =>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {COMPARE_ROWS.map((r) => {
-              const vals = items.map((it) => val(it, r.key));
-              const mx = Math.max(0, ...vals);
+            {groups.map(({ r, vals, rows, differs }) => {
+              if (diffOnly && multi && !differs && !rows.some((x) => x.differs)) return null;
               return (
-                <tr key={r.key}>
-                  <td className="px-3 py-1.5 sticky left-0 bg-white"><span className={r.cls}>{r.label}</span></td>
-                  {items.map((it, i) => {
-                    const v = vals[i];
-                    const isMax = multi && v > 0 && v === mx;
-                    return (
-                      <td key={it.id} className={`px-3 py-1.5 text-right ${isMax ? "font-bold text-red-600" : "text-gray-700"}`}>
-                        {v.toLocaleString()}
+                <Fragment key={r.key}>
+                  <tr className="bg-gray-50/70">
+                    <td className="px-3 py-1.5 sticky left-0 bg-gray-50 font-medium"><span className={r.cls}>{r.label}</span></td>
+                    {items.map((it, i) => (
+                      <td key={it.id} className={`px-3 py-1.5 text-right font-medium tabular-nums ${differs ? "text-red-600" : "text-gray-700"}`}>
+                        {vals[i].toLocaleString()}
                       </td>
+                    ))}
+                  </tr>
+                  {rows.map((row) => {
+                    if (diffOnly && multi && !row.differs) return null;
+                    const bg = row.differs ? "bg-amber-50" : "bg-white";
+                    return (
+                      <tr key={`${r.key}-${row.key}`} className={bg}>
+                        <td className={`pl-6 pr-3 py-1 sticky left-0 text-gray-600 ${bg}`}>{row.key}</td>
+                        {row.cells.map((c, i) => (
+                          <td key={items[i].id} className="px-3 py-1 text-right tabular-nums">
+                            {c ? (
+                              <>
+                                <span className={row.differs ? "font-bold text-amber-800" : "text-gray-700"}>{fmt(c.cost)}</span>
+                                {c.formula && <div className="text-[10px] text-gray-400 font-mono whitespace-nowrap">{c.formula}</div>}
+                              </>
+                            ) : (
+                              <span className={row.differs ? "text-red-500" : "text-gray-300"}>{multi ? "なし" : "-"}</span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
                     );
                   })}
-                </tr>
+                </Fragment>
               );
             })}
             <tr className="border-t-2 bg-gray-50/60">
