@@ -45,7 +45,16 @@ interface Product {
     laborCost: number;
   };
   // 比較パネル用の明細（裁断・生地・資材・梱包資材の1行ずつ）
-  lines?: { group: string; label: string; cost: number; formula: string }[];
+  lines?: {
+    group: string; label: string; cost: number; formula: string;
+    kind?: "step" | "fabric" | "material" | "fixed";
+    id?: string;
+    priceText?: string;
+    usedMeters?: number; yieldCount?: number; usageCount?: number;
+    unitCost?: number; quantity?: number;
+    copy?: Record<string, unknown>;
+    save?: (v: number | null) => void; // 制作費・販管費の行（一覧と同じ保存）
+  }[];
   description: string | null;
   active: boolean;
   inventory?: { stock: number } | null;
@@ -357,7 +366,13 @@ export default function ProductsPage() {
       )}
 
       {compareItems.length >= 1 && (
-        <CostComparePanel items={compareItems} onClear={() => setSelected(new Set())} />
+        <CostComparePanel
+          items={compareItems}
+          onClear={() => setSelected(new Set())}
+          onReload={load}
+          onSaveField={saveField}
+          onSaveStep={saveProductionStep}
+        />
       )}
 
       <div className="space-y-6">
@@ -496,7 +511,27 @@ const COMPARE_ROWS = [
   { key: "laborCost", label: "販管費", cls: "text-gray-600" },
 ] as const;
 
-function CostComparePanel({ items, onClear }: { items: Product[]; onClear: () => void }) {
+function CostComparePanel({
+  items,
+  onClear,
+  onReload,
+  onSaveField,
+  onSaveStep,
+}: {
+  items: Product[];
+  onClear: () => void;
+  onReload: () => void;
+  onSaveField: (id: string, field: string, value: number | null) => void;
+  onSaveStep: (id: string, step: "口金" | "貼り" | "縫製" | "その他", value: number | null) => void;
+}) {
+  // 明細の保存・追加・削除。失敗は必ず知らせ、成功したら一覧ごと読み直す。
+  async function send(url: string, method: string, body: Record<string, unknown>) {
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) alert("保存できませんでした。もう一度お試しください。");
+    onReload();
+  }
+  const lineUrl = (l: { kind?: string }) => (l.kind === "step" ? "/api/products/cost-steps" : "/api/products/materials");
+
   const val = (p: Product, key: string) =>
     p.breakdown ? ((p.breakdown as unknown as Record<string, number>)[key] ?? 0) : 0;
   const multi = items.length > 1;
@@ -532,26 +567,30 @@ function CostComparePanel({ items, onClear }: { items: Product[]; onClear: () =>
   }
   // 制作費・販管費の内訳も同じ形で並べる
   function fixedRows(group: string) {
-    const defs: { key: string; get: (p: Product) => number }[] =
+    const defs: { key: string; get: (p: Product) => number; save: (p: Product, v: number | null) => void }[] =
       group === "productionCost"
-        ? (["口金", "貼り", "縫製", "その他"] as const).map((k) => ({ key: k, get: (p: Product) => p.production[k] }))
+        ? (["口金", "貼り", "縫製", "その他"] as const).map((k) => ({
+            key: k,
+            get: (p: Product) => p.production[k],
+            save: (p: Product, v: number | null) => onSaveStep(p.id, k, v),
+          }))
         : group === "laborCost"
-          ? [
-              { key: "営業", get: (p: Product) => p.salesCost ?? 0 },
-              { key: "出荷", get: (p: Product) => p.outboundCost ?? 0 },
-              { key: "管理", get: (p: Product) => p.mgmtCost ?? 0 },
-            ]
+          ? ([["営業", "salesCost"], ["出荷", "outboundCost"], ["管理", "mgmtCost"]] as const).map(([k, f]) => ({
+              key: k,
+              get: (p: Product) => p[f] ?? 0,
+              save: (p: Product, v: number | null) => onSaveField(p.id, f, v),
+            }))
           : [];
-    return defs
-      .map((d) => {
-        const vals = items.map(d.get);
-        return {
-          key: d.key,
-          cells: vals.map((v) => (v ? ({ group, label: d.key, cost: v, formula: "" } as Line) : null)),
-          differs: multi && !same(vals),
-        };
-      })
-      .filter((r) => r.cells.some((c) => c));
+    return defs.map((d) => {
+      const vals = items.map(d.get);
+      return {
+        key: d.key,
+        cells: items.map((p, i): Line | null => ({
+          group, label: d.key, cost: vals[i], formula: "", kind: "fixed", save: (v) => d.save(p, v),
+        })),
+        differs: multi && !same(vals),
+      };
+    });
   }
   const groups = COMPARE_ROWS.map((r) => {
     const vals = items.map((it) => val(it, r.key));
@@ -616,13 +655,59 @@ function CostComparePanel({ items, onClear }: { items: Product[]; onClear: () =>
                         {row.cells.map((c, i) => (
                           <td key={items[i].id} className="px-3 py-1 text-right tabular-nums">
                             {c ? (
-                              <>
-                                <span className={row.differs ? "font-bold text-amber-800" : "text-gray-700"}>{fmt(c.cost)}</span>
-                                {c.formula && <div className="text-[10px] text-gray-400 font-mono whitespace-nowrap">{c.formula}</div>}
-                              </>
-                            ) : (
-                              <span className={row.differs ? "text-red-500" : "text-gray-300"}>{multi ? "なし" : "-"}</span>
-                            )}
+                              c.kind === "fixed" ? (
+                                <Num value={c.cost} onSave={(v) => c.save?.(v)} bold={row.differs} />
+                              ) : (
+                                <>
+                                  <span className={row.differs ? "font-bold text-amber-800" : "text-gray-700"}>{fmt(c.cost)}</span>
+                                  <button
+                                    onClick={() => {
+                                      if (confirm(`「${items[i].name}」から「${row.key}」を外しますか？`)) send(lineUrl(c), "DELETE", { id: c.id });
+                                    }}
+                                    className="ml-1 text-gray-300 hover:text-red-600"
+                                    title="この行を外す"
+                                  >
+                                    ×
+                                  </button>
+                                  <div className="text-[10px] text-gray-500 font-mono whitespace-nowrap">
+                                    {c.kind === "fabric" && (
+                                      <>
+                                        {c.priceText} × <Num value={c.usedMeters ?? 1} decimal onSave={(v) => v && send(lineUrl(c), "PUT", { id: c.id, usedMeters: v })} />m ÷{" "}
+                                        <Num value={c.yieldCount ?? 0} onSave={(v) => v && send(lineUrl(c), "PUT", { id: c.id, yieldCount: v })} />取 ×{" "}
+                                        <Num value={c.usageCount ?? 1} decimal onSave={(v) => v && send(lineUrl(c), "PUT", { id: c.id, usageCount: v })} />枚
+                                      </>
+                                    )}
+                                    {c.kind === "material" && (
+                                      <>
+                                        {c.priceText} × <Num value={c.usageCount ?? 1} decimal onSave={(v) => v && send(lineUrl(c), "PUT", { id: c.id, usageCount: v })} />
+                                      </>
+                                    )}
+                                    {c.kind === "step" && (
+                                      <>
+                                        <Num value={c.unitCost ?? 0} decimal onSave={(v) => send(lineUrl(c), "PUT", { id: c.id, unitCost: v ?? 0 })} />円 ×{" "}
+                                        <Num value={c.quantity ?? 1} decimal onSave={(v) => v && send(lineUrl(c), "PUT", { id: c.id, quantity: v })} />
+                                      </>
+                                    )}
+                                  </div>
+                                </>
+                              )
+                            ) : (() => {
+                              const src = row.cells.find((x) => x && x.copy);
+                              return (
+                                <>
+                                  <span className={row.differs ? "text-red-500" : "text-gray-300"}>{multi ? "なし" : "-"}</span>
+                                  {src && (
+                                    <button
+                                      onClick={() => send(lineUrl(src), "POST", { ...src.copy, productId: items[i].id })}
+                                      className="ml-2 text-[10px] text-blue-600 hover:underline"
+                                      title="他の商品と同じ内容で追加"
+                                    >
+                                      ＋同じものを入れる
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </td>
                         ))}
                       </tr>
@@ -871,6 +956,54 @@ function ProductGroup({
         </table>
       </div>
     </div>
+  );
+}
+
+// 比較パネル内の小さな数値入力。クリックで入力、blur/Enterで保存。
+function Num({
+  value,
+  onSave,
+  decimal = false,
+  bold = false,
+}: {
+  value: number;
+  onSave: (v: number | null) => void;
+  decimal?: boolean;
+  bold?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+  function commit() {
+    setEditing(false);
+    if (val !== "" && isNaN(Number(val))) return;
+    const n = val === "" ? null : decimal ? Number(val) : Math.round(Number(val));
+    if ((n ?? 0) !== (value ?? 0)) onSave(n);
+  }
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="number"
+        step="any"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        className="w-14 px-1 py-0 border rounded text-right text-xs bg-white"
+      />
+    );
+  }
+  return (
+    <button
+      onClick={() => { setVal(value ? String(value) : ""); setEditing(true); }}
+      className={`px-1 rounded border-b border-dashed border-gray-300 hover:bg-white hover:ring-1 hover:ring-blue-300 ${bold ? "font-bold text-amber-800" : "text-gray-700"}`}
+      title="クリックで編集"
+    >
+      {value ? (Math.round(value * 100) / 100).toLocaleString() : <span className="text-gray-300">-</span>}
+    </button>
   );
 }
 

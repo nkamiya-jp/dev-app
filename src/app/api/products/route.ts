@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
     // 比較パネル用の明細（裁断・生地・資材・梱包資材を1行ずつ。式つき）
     const UNIT: Record<string, string> = { meter: "m", piece: "個", set: "セット" };
     const GROUP: Record<string, string> = { 生地費: "fabricCost", 資材費: "materialCost", 梱包資材費: "packagingMaterialCost" };
-    const lines: { group: string; label: string; cost: number; formula: string }[] = [];
+    const lines: Record<string, unknown>[] = [];
     if (p.series !== "purchase") {
       for (const s of p.costSteps) {
         if (s.category !== "裁断費") continue;
@@ -101,6 +101,11 @@ export async function GET(request: NextRequest) {
           label: s.step,
           cost: effectiveStepCost({ id: s.id, step: s.step, unitCost: s.unitCost, quantity: s.quantity, subType: s.subType }),
           formula: q !== 1 ? `${s.unitCost.toLocaleString()}円 × ${q}` : "",
+          kind: "step",
+          id: s.id,
+          unitCost: s.unitCost,
+          quantity: q,
+          copy: { step: s.step, unitCost: s.unitCost, quantity: q, category: s.category, subType: s.subType },
         });
       }
       p.materials.forEach((m, i) => {
@@ -114,6 +119,16 @@ export async function GET(request: NextRequest) {
             b.topCategory === "生地費"
               ? `${price} × ${m.usedMeters ?? 1}m ÷ ${m.yieldCount || "?"}取 × ${m.usageCount ?? 1}枚`
               : `${price} × ${m.usageCount ?? 1}`,
+          kind: b.topCategory === "生地費" ? "fabric" : "material",
+          id: m.id,
+          priceText: price,
+          usedMeters: m.usedMeters ?? 1,
+          yieldCount: m.yieldCount,
+          usageCount: m.usageCount ?? 1,
+          copy: {
+            materialId: m.materialId, name: m.name, category: m.category, unitPrice: m.unitPrice,
+            unitType: m.unitType, yieldCount: m.yieldCount, usedMeters: m.usedMeters ?? 1, usageCount: m.usageCount ?? 1,
+          },
         });
       });
     }
