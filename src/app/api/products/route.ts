@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     include: {
       inventory: true,
       costSteps: true,
-      materials: { include: { material: { select: { fabricWidth: true, unitPrice: true } } } },
+      materials: { include: { material: { select: { fabricWidth: true, unitPrice: true, name: true } } } },
       ownerContact: { select: { id: true, name: true, company: true } },
     },
   })).sort(compareProductOrder);
@@ -113,7 +113,8 @@ export async function GET(request: NextRequest) {
         const price = `${(m.material?.unitPrice ?? m.unitPrice).toLocaleString()}円/${UNIT[m.unitType] ?? m.unitType}`;
         lines.push({
           group: GROUP[b.topCategory] ?? "materialCost",
-          label: m.category && m.category !== m.name ? `${m.category}：${m.name}` : m.name,
+          // 資材マスタに紐づく明細はマスタの今の名前で出す（明細側に残った古い名前で別物に見えないように）
+          label: ((n: string) => (m.category && m.category !== n ? `${m.category}：${n}` : n))(m.material?.name ?? m.name),
           cost: b.perPiece,
           formula:
             b.topCategory === "生地費"
