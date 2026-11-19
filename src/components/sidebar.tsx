@@ -247,7 +247,13 @@ export function Sidebar() {
           >
             <SheetTitle className="sr-only">ナビゲーション</SheetTitle>
             <SidebarLogo />
-            <div className="py-2" onClick={() => setOpen(false)}>
+            {/* メニューが長いのでこの中だけスクロール。閉じるのはメニュー（リンク）を押したときだけ（セクションの折りたたみでは閉じない） */}
+            <div
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-2"
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest("a")) setOpen(false);
+              }}
+            >
               <NavContent pathname={pathname} />
             </div>
           </SheetContent>
