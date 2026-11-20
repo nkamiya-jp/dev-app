@@ -24,7 +24,6 @@ import {
   CalendarDays,
   Layers,
   ListChecks,
-  Scale,
   Barcode,
   Flag,
   Crown,
@@ -106,7 +105,6 @@ const navSections: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/products", label: "商品", icon: Package },
       { href: "/price-list", label: "価格表", icon: ListChecks },
-      { href: "/cost-list", label: "原価比較", icon: Scale },
       { href: "/jan", label: "JAN台帳", icon: Barcode },
       { href: "/materials", label: "資材", icon: Layers },
       { href: "/contacts", label: "顧客", icon: Users },
