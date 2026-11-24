@@ -4,6 +4,7 @@ import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
 import { getRoadmapSettings, todayJst } from "@/lib/roadmap/settings";
 import { achievement, fiscalMonths } from "@/lib/roadmap/goal-rules";
 import { BIZ_PERIODS, canEditBizOwner, canEditDept, pickFields } from "@/lib/roadmap/portal";
+import { ensureStage3Tables } from "@/lib/roadmap/ensure-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const v = await getViewer();
   if (!v) return unauthorized();
+  await ensureStage3Tables();
   const { term, termStart, departments } = await getRoadmapSettings();
 
   const [goals, monthGoals] = await Promise.all([
@@ -70,6 +72,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const v = await getViewer();
   if (!v) return unauthorized();
+  await ensureStage3Tables();
   if (!v.isPresident) return forbidden("事業目標を追加できるのは社長だけです");
   const b = await request.json();
   const { term } = await getRoadmapSettings();

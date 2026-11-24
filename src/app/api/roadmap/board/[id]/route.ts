@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
+import { ensureStage3Tables } from "@/lib/roadmap/ensure-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const v = await getViewer();
   if (!v) return unauthorized();
+  await ensureStage3Tables();
   if (!v.isPresident) return forbidden("掲示板を編集できるのは社長だけです");
   const { id } = await params;
   const b = await request.json();
@@ -28,6 +30,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const v = await getViewer();
   if (!v) return unauthorized();
+  await ensureStage3Tables();
   if (!v.isPresident) return forbidden("掲示板を削除できるのは社長だけです");
   const { id } = await params;
   await prisma.boardPost.deleteMany({ where: { id } });

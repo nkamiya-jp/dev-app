@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
 import { isYmd, parseEvent } from "@/lib/roadmap/portal";
+import { ensureStage3Tables } from "@/lib/roadmap/ensure-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const v = await getViewer();
   if (!v) return unauthorized();
+  await ensureStage3Tables();
   const sp = request.nextUrl.searchParams;
   const from = sp.get("from");
   const to = sp.get("to");
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const v = await getViewer();
   if (!v) return unauthorized();
+  await ensureStage3Tables();
   if (!v.isPresident) return forbidden("会社カレンダーに書き込めるのは社長だけです");
   const r = parseEvent(await request.json());
   if ("error" in r) return Response.json({ error: r.error }, { status: 400 });

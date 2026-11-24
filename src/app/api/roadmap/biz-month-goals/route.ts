@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
 import { getRoadmapSettings } from "@/lib/roadmap/settings";
 import { isYm, pickFields } from "@/lib/roadmap/portal";
+import { ensureStage3Tables } from "@/lib/roadmap/ensure-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const v = await getViewer();
   if (!v) return unauthorized();
+  await ensureStage3Tables();
   if (!v.isPresident) return forbidden("月目標を追加できるのは社長だけです");
   const b = await request.json();
   const { term } = await getRoadmapSettings();

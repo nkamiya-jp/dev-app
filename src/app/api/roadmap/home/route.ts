@@ -3,6 +3,7 @@ import { getViewer, unauthorized } from "@/lib/viewer";
 import { getRoadmapSettings, todayJst } from "@/lib/roadmap/settings";
 import { QUARTER_STYLE, achievement, goalForViewer, quarterOfMonth } from "@/lib/roadmap/goal-rules";
 import { addDays } from "@/lib/roadmap/portal";
+import { ensureStage3Tables } from "@/lib/roadmap/ensure-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ const RECENT_POSTS = 5;
 export async function GET() {
   const v = await getViewer();
   if (!v) return unauthorized();
+  await ensureStage3Tables();
   const { term, raw } = await getRoadmapSettings();
   const today = todayJst();
   const month = today.slice(0, 7);
