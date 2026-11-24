@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X, Package } from "lucide-react";
 import { compareProductOrder } from "@/lib/product-meta";
+import { roundSellPrice } from "@/lib/pricing";
+import { parseTypeRates } from "@/lib/contact-meta";
 
 interface Product {
   id: string;
@@ -12,6 +14,7 @@ interface Product {
   name: string;
   series: string | null;
   retailPrice: number | null;
+  typeRates: string | null;
   sortOrder: number;
   active: boolean;
 }
@@ -22,9 +25,11 @@ type Entry = { price: number | null; note: string | null };
 export function CustomerProductsCard({
   contactId,
   rate,
+  contactType,
 }: {
   contactId: string;
   rate: number | null;
+  contactType: string | null;
 }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [entries, setEntries] = useState<Record<string, Entry>>({});
@@ -137,7 +142,8 @@ export function CustomerProductsCard({
               <tbody className="divide-y">
                 {handled.map((p) => {
                   const e = entries[p.id];
-                  const auto = rate != null && p.retailPrice ? Math.round((p.retailPrice * rate) / 100) : 0;
+                  const itemRate = (contactType ? parseTypeRates(p.typeRates)[contactType] : undefined) ?? rate;
+                  const auto = itemRate != null && p.retailPrice ? roundSellPrice((p.retailPrice * itemRate) / 100) : 0;
                   const override = e?.price ?? null;
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">

@@ -9,7 +9,7 @@ export interface PricingSettings {
   channelFees: Record<string, ChannelFee>; // 取引タイプid → 経費
   taxRate: number;          // 消費税率 %
   targetMarginPct: number;  // 目標粗利率 %（上代逆算の初期値）
-  roundUnit: number;        // 逆算上代の切り上げ単位（10 or 100）
+  roundUnit: number;        // 逆算上代の切り上げ単位（10 / 20 / 100）
   marginRedBelow: number;   // 粗利率がこれ未満なら赤 %
   marginYellowBelow: number; // 粗利率がこれ未満なら黄 %
 }
@@ -18,7 +18,7 @@ export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   channelFees: {},
   taxRate: 10,
   targetMarginPct: 30,
-  roundUnit: 100,
+  roundUnit: 20,
   marginRedBelow: 30,
   marginYellowBelow: 40,
 };
@@ -42,7 +42,7 @@ export function normalizePricingSettings(raw: unknown): PricingSettings {
     channelFees: fees,
     taxRate: num(r.taxRate, d.taxRate),
     targetMarginPct: num(r.targetMarginPct, d.targetMarginPct),
-    roundUnit: num(r.roundUnit, d.roundUnit) === 10 ? 10 : 100,
+    roundUnit: [10, 20, 100].includes(num(r.roundUnit, d.roundUnit)) ? num(r.roundUnit, d.roundUnit) : d.roundUnit,
     marginRedBelow: num(r.marginRedBelow, d.marginRedBelow),
     marginYellowBelow: num(r.marginYellowBelow, d.marginYellowBelow),
   };
@@ -52,8 +52,34 @@ export function getChannelFee(s: PricingSettings, typeId: string): ChannelFee {
   return s.channelFees[typeId] ?? { feeRate: 0, fixedCost: 0 };
 }
 
+// ─── 販売価格の端数 ───
+// 上代×掛率で出した販売価格は、1円の位を切り上げ、十の位を偶数にそろえる（＝20円単位で切り上げ）。
+// 例: 1,234 → 1,240 / 1,251 → 1,260 / 1,261 → 1,280。画面には実数値をカッコで添える。
+export const SELL_PRICE_UNIT = 20;
+
+export function roundSellPrice(raw: number): number {
+  if (!(raw > 0)) return 0;
+  // 浮動小数の誤差（例: 1240.0000001）で1段上がらないように、先に小数2桁で丸める
+  const r = Math.round(raw * 100) / 100;
+  return Math.ceil(r / SELL_PRICE_UNIT) * SELL_PRICE_UNIT;
+}
+
+// 上代×掛率の販売価格（price=表示・請求する価格、raw=実数値）
+export function calcSellPrice(retail: number | null | undefined, ratePct: number): { price: number; raw: number } {
+  const raw = retail && retail > 0 ? (retail * ratePct) / 100 : 0;
+  return { price: roundSellPrice(raw), raw };
+}
+
+// 「1,240円（1,234円）」の形。端数がなければカッコは付けない
+export function formatSellPrice(price: number, raw: number, unit = ""): string {
+  const p = `${price.toLocaleString()}${unit}`;
+  const r = Math.round(raw);
+  return r > 0 && r !== price ? `${p}（${r.toLocaleString()}${unit}）` : p;
+}
+
 export interface ChannelPrice {
-  price: number;   // 販売価格（円・整数）
+  price: number;   // 販売価格（円・20円単位に切り上げ済み）
+  raw: number;     // 上代×掛率の実数値（丸め前）
   fee: number;     // 手数料（円・整数）
   fixedCost: number;
   profit: number;  // 粗利（円・整数）
@@ -63,12 +89,12 @@ export interface ChannelPrice {
 // 粗利 = 販売価格 −（販売価格×手数料率）− 1個あたり固定費 − 原価
 // 金額はすべて円単位に丸めてから計算する（表示と合計が食い違わないように）
 export function calcChannelPrice(retail: number, ratePct: number, cost: number, fee: ChannelFee): ChannelPrice {
-  const price = Math.round((retail * ratePct) / 100);
+  const { price, raw } = calcSellPrice(retail, ratePct);
   const feeYen = Math.round((price * fee.feeRate) / 100);
   const fixedCost = Math.round(fee.fixedCost);
   const profit = price - feeYen - fixedCost - Math.round(cost);
   const profitRate = price > 0 ? (profit / price) * 100 : 0;
-  return { price, fee: feeYen, fixedCost, profit, profitRate };
+  return { price, raw, fee: feeYen, fixedCost, profit, profitRate };
 }
 
 // 目標粗利率を確保できる上代（切り上げ前）。

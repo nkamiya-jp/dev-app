@@ -258,6 +258,7 @@ export default async function ContactDetailPage({
       <CustomerProductsCard
         contactId={contact.id}
         rate={contact.discountRate ?? getContactTypeMeta(contact.type)?.defaultRate ?? null}
+        contactType={contact.type}
       />
     </div>
   );

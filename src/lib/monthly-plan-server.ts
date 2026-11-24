@@ -1,7 +1,8 @@
 // 月の収支計画（サーバー側専用）
 import { prisma } from "@/lib/db";
-import { CONTACT_TYPES, getContactTypeLabel, getContactTypeMeta } from "@/lib/contact-meta";
+import { CONTACT_TYPES, getContactTypeLabel, resolveRate } from "@/lib/contact-meta";
 import { breakdownOf, loadProductWithCost } from "@/lib/product-server";
+import { roundSellPrice } from "@/lib/pricing";
 import { getRoadmapSettings, todayJst } from "@/lib/roadmap/settings";
 import {
   CHANNEL_COST_KEY, MONTHLY_OVERRIDES_KEY, normalizeChannelCosts, requiredSales, sellingCostPerUnit, termMonths,
@@ -52,13 +53,13 @@ export async function saveOverride(month: string, o: MonthOverride) {
 
 // 顧客の単価（受注画面と同じ優先順：顧客別価格 → 上代×顧客の掛率 → 標準卸価格）
 export function contactUnitPrice(
-  product: { retailPrice: number | null; wholesalePrice: number | null },
+  product: { retailPrice: number | null; wholesalePrice: number | null; typeRates?: string | null },
   contact: { type: string | null; discountRate: number | null } | null | undefined,
   override: number | null | undefined
 ): { price: number; source: "individual" | "auto" | "standard" | "none" } {
   if (override != null) return { price: override, source: "individual" };
-  const rate = contact?.discountRate ?? getContactTypeMeta(contact?.type)?.defaultRate ?? null;
-  if (rate != null && product.retailPrice && product.retailPrice > 0) return { price: Math.round((product.retailPrice * rate) / 100), source: "auto" };
+  const rate = resolveRate(contact, product.typeRates);
+  if (rate != null && product.retailPrice && product.retailPrice > 0) return { price: roundSellPrice((product.retailPrice * rate) / 100), source: "auto" };
   if (product.wholesalePrice != null) return { price: product.wholesalePrice, source: "standard" };
   return { price: 0, source: "none" };
 }
@@ -77,6 +78,7 @@ interface ProductInfo {
   stock: number;
   retailPrice: number | null;
   wholesalePrice: number | null;
+  typeRates: string | null;
 }
 
 async function loadProducts(ids: string[]): Promise<Map<string, ProductInfo>> {
@@ -94,6 +96,7 @@ async function loadProducts(ids: string[]): Promise<Map<string, ProductInfo>> {
       stock: p.inventory?.stock ?? 0,
       retailPrice: p.retailPrice,
       wholesalePrice: p.wholesalePrice,
+      typeRates: p.typeRates ?? null,
     });
   }
   return out;

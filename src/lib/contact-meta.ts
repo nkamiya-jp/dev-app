@@ -76,8 +76,8 @@ export const CONTACT_TYPES: ContactTypeMeta[] = [
     id: "retail_kyoto",
     label: "京都小売",
     color: "bg-rose-100 text-rose-700",
-    defaultRate: 42,
-    rateOptions: [42],
+    defaultRate: 45,
+    rateOptions: [45],
     kind: "discount",
     description: "京都府内の小売店",
   },
@@ -138,4 +138,40 @@ export function getAllMatrixRows(): MatrixRow[] {
   // 掛率の高い順
   rows.sort((a, b) => b.ratePct - a.ratePct);
   return rows;
+}
+
+// ─── 商品×顧客カテゴリの掛率（上書き） ───
+// Product.typeRates に JSON で持つ。例: {"retail_kyoto": 42}（この商品だけ京都小売は42%）
+// 値のないカテゴリは、顧客の掛率 → カテゴリの既定掛率 の順で決まる。
+export type TypeRates = Record<string, number>;
+
+export function parseTypeRates(raw: unknown): TypeRates {
+  let obj: unknown = raw;
+  if (typeof raw === "string") {
+    try { obj = JSON.parse(raw); } catch { return {}; }
+  }
+  if (!obj || typeof obj !== "object") return {};
+  const out: TypeRates = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    const n = Number(v);
+    if (CONTACT_TYPES.some((t) => t.id === k) && Number.isFinite(n) && n > 0) out[k] = n;
+  }
+  return out;
+}
+
+// 保存用に正規化（空なら null）
+export function serializeTypeRates(rates: TypeRates): string | null {
+  const clean = parseTypeRates(rates);
+  return Object.keys(clean).length > 0 ? JSON.stringify(clean) : null;
+}
+
+// 顧客×商品の掛率。優先順位: 商品×カテゴリの掛率 > 顧客の掛率 > カテゴリの既定掛率
+export function resolveRate(
+  contact: { type: string | null | undefined; discountRate: number | null | undefined } | null | undefined,
+  typeRates: TypeRates | string | null | undefined,
+): number | null {
+  const rates = typeof typeRates === "string" || typeRates == null ? parseTypeRates(typeRates) : typeRates;
+  const type = contact?.type ?? null;
+  if (type && rates[type] != null) return rates[type];
+  return contact?.discountRate ?? getDefaultRate(type);
 }
