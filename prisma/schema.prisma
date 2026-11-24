@@ -154,6 +154,57 @@ model PersonalGoal {
   @@index([bizGoalId])
 }
 
+// ロードマップ：事業別（部門別）の月目標。見るのは全員、実績・コメントは社長と自部門の人が入れる
+model BizMonthGoal {
+  id           String   @id @default(cuid())
+  legacyId     String?  @unique // GAS版の ID（移行の照合用）
+  term         String   // 期（例：第10期）
+  month        String   // YYYY-MM
+  dept         String   // 事業・部門（営業／制作／出荷 など）
+  goal         String
+  kpi          String?
+  target       String?
+  actual       String?
+  ownerComment String?  // 担当コメント
+  ceoFb        String?  // 社長FB
+  status       String?  // 未着手 | 進行中 | 達成 | 未達
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([term, month])
+}
+
+// ロードマップ：社内掲示板（投稿・編集は社長、読むのは全員）
+model BoardPost {
+  id         String   @id @default(cuid())
+  title      String
+  body       String   @default("")
+  pinned     Boolean  @default(false)
+  authorId   String?  // Member.id（社長がメンバー未登録のときは空）
+  authorName String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([pinned, createdAt])
+}
+
+// ロードマップ：会社カレンダー。visibility=社長のみ の予定は社長にだけ返す
+model CompanyEvent {
+  id         String   @id @default(cuid())
+  startDate  String   // YYYY-MM-DD
+  endDate    String?  // YYYY-MM-DD（1日だけなら空）
+  category   String?  // 休業日・行事・展示会・締め など
+  title      String
+  detail     String?
+  visibility String   @default("全員") // 全員 | 社長のみ
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([startDate, title]) // 移行の照合キー（開始日＋タイトル）
+  @@index([startDate])
+}
+
 model Product {
   id              String       @id @default(cuid())
   code            String       @unique
