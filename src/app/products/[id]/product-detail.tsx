@@ -22,7 +22,7 @@ import {
   calcRetailFromCost,
   DEFAULT_COST_RATIO,
 } from "@/lib/product-cost";
-import { getAllMatrixRows, type MatrixRow } from "@/lib/contact-meta";
+import { getAllMatrixRows, parseTypeRates, serializeTypeRates, type MatrixRow } from "@/lib/contact-meta";
 import {
   DEFAULT_PRICING_SETTINGS,
   normalizePricingSettings,
@@ -88,6 +88,7 @@ interface Product {
   retailPrice: number | null;
   costRatio: number | null;
   wholesalePrice: number | null;
+  typeRates: string | null; // 顧客カテゴリ別の掛率の上書き（JSON）
   workerCost: number | null;
   salesCost: number | null;
   packagingCost: number | null;
@@ -192,7 +193,14 @@ export function ProductDetail({ productId }: { productId: string }) {
   const costRatio = product.costRatio ?? DEFAULT_COST_RATIO;
   const retail = product.retailPrice ?? 0;
   const actualCostRatio = retail > 0 ? cost / retail : 0;
-  const allRows = getAllMatrixRows();
+  // 商品×顧客カテゴリの掛率（上書き）があれば、そのカテゴリはその掛率で計算する
+  const typeRates = parseTypeRates(product.typeRates);
+  const allRows = getAllMatrixRows().map((r) => ({
+    ...r,
+    defaultRate: r.ratePct,
+    ratePct: typeRates[r.typeId] ?? r.ratePct,
+    overridden: typeRates[r.typeId] != null,
+  }));
   const matrixRows = retail > 0 ? allRows.map((r) => {
     const fee = getChannelFee(pricing, r.typeId);
     return { ...r, feeSetting: fee, ...calcChannelPrice(retail, r.ratePct, cost, fee) };
@@ -200,6 +208,23 @@ export function ProductDetail({ productId }: { productId: string }) {
   const suggestedRetail = calcRetailFromCost(cost, costRatio);
   // 最低掛率の取引タイプ（目標粗利率で上代を逆算する基準）
   const minRow = allRows.reduce<typeof allRows[number] | null>((m, r) => (!m || r.ratePct < m.ratePct ? r : m), null);
+
+  // 顧客カテゴリ別の掛率を保存（null＝既定に戻す）
+  async function saveTypeRate(typeId: string, ratePct: number | null) {
+    const next = { ...typeRates };
+    if (ratePct == null || !(ratePct > 0)) delete next[typeId];
+    else next[typeId] = ratePct;
+    const res = await fetch(`/api/products/${productId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ typeRates: serializeTypeRates(next) }),
+    });
+    if (!res.ok) {
+      alert("掛率を保存できませんでした");
+      return;
+    }
+    load();
+  }
 
   async function saveBasic(data: Partial<Product>, flamCodes?: string[]) {
     const res = await fetch(`/api/products/${productId}`, {
@@ -641,7 +666,14 @@ export function ProductDetail({ productId }: { productId: string }) {
                           <span className="ml-1 text-[10px] text-orange-600">↑</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-center font-medium border-r">{row.ratePct}%</td>
+                      <td className="px-2 py-1 text-center font-medium border-r">
+                        <TypeRateInput
+                          key={`${row.typeId}-${row.overridden ? row.ratePct : "default"}`}
+                          value={row.overridden ? row.ratePct : null}
+                          defaultRate={row.defaultRate}
+                          onSave={(v) => saveTypeRate(row.typeId, v)}
+                        />
+                      </td>
                       <td className="px-3 py-2 text-right text-[11px] font-mono text-gray-500 border-r">
                         {retail.toLocaleString()} × {row.ratePct}%
                       </td>
@@ -2190,5 +2222,36 @@ function MaterialRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+// 商品×顧客カテゴリの掛率。空欄＝カテゴリの既定（placeholder に表示）、数字を入れるとこの商品だけその掛率
+function TypeRateInput({ value, defaultRate, onSave }: { value: number | null; defaultRate: number; onSave: (v: number | null) => void }) {
+  // 保存後の値の変化は親の key で作り直して反映する
+  const [draft, setDraft] = useState(value != null ? String(value) : "");
+  function commit() {
+    const n = draft.trim() === "" ? null : Number(draft);
+    if (n != null && !(n > 0)) { setDraft(value != null ? String(value) : ""); return; }
+    if (n === value || (n === defaultRate && value == null)) return;
+    onSave(n === defaultRate ? null : n);
+  }
+  return (
+    <div className="flex flex-col items-center">
+      <div className="flex items-center gap-0.5">
+        <input
+          type="number"
+          step="1"
+          value={draft}
+          placeholder={String(defaultRate)}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          className={`w-14 border rounded px-1 py-0.5 text-center text-sm ${value != null ? "border-orange-400 text-orange-700 font-bold" : "text-gray-800"}`}
+          title="空欄＝このカテゴリの既定の掛率。数字を入れるとこの商品だけその掛率になります"
+        />
+        <span className="text-xs text-gray-500">%</span>
+      </div>
+      {value != null && <span className="text-[10px] text-orange-600">既定 {defaultRate}%</span>}
+    </div>
   );
 }

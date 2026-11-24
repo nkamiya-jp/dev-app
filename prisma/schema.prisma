@@ -163,6 +163,7 @@ model Product {
   retailPrice     Int?         // 上代（小売価格、税抜）
   costRatio       Float?       // 原価率（上代逆算用、デフォルト 0.30 = 30%）
   wholesalePrice  Int?         // [標準] 標準卸価格（顧客別未設定時の参考値）
+  typeRates       String?      // 顧客カテゴリ別の掛率の上書き JSON 例 {"retail_kyoto":42}（空=カテゴリの既定）
   workerCost      Int?         // [legacy] 旧 内職単価（後方互換用）
   salesCost       Int?         // 営業費（個あたり、運賃含む）
   packagingCost   Int?         // [legacy] 梱包費 → 出荷費に統合済み

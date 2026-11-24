@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { calcCostBreakdown } from "@/lib/product-cost";
-import { getAllMatrixRows, getContactTypeMeta } from "@/lib/contact-meta";
+import { getAllMatrixRows, getContactTypeMeta, parseTypeRates } from "@/lib/contact-meta";
 import { NextRequest } from "next/server";
 import { roundSellPrice } from "@/lib/pricing";
 
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       if (!p) continue; // 非アクティブ/削除済みはスキップ
       const cost = costOf(p);
       const retail = p.retailPrice ?? 0;
-      const auto = roundSellPrice((retail * rate) / 100);
+      const auto = roundSellPrice((retail * (parseTypeRates(p.typeRates)[contact.type ?? ""] ?? rate)) / 100);
       const override = cp.price ?? null;
       const wholesale = override ?? auto;
       await prisma.priceListItem.create({
@@ -155,9 +155,10 @@ export async function POST(request: NextRequest) {
     const cost = costOf(p);
     const retail = p.retailPrice ?? 0;
     const prices: Record<string, number> = {};
+    const typeRates = parseTypeRates(p.typeRates);
     for (const r of matrixRows) {
       const key = `${r.typeId}_${r.ratePct}`;
-      prices[key] = roundSellPrice((retail * r.ratePct) / 100);
+      prices[key] = roundSellPrice((retail * (typeRates[r.typeId] ?? r.ratePct)) / 100);
     }
     await prisma.priceListItem.create({
       data: {
