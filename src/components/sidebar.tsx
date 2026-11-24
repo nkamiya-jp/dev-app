@@ -33,6 +33,7 @@ import {
   ClipboardList,
   Tags,
   Activity,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,6 +90,7 @@ const navSections: { label: string; items: NavItem[] }[] = [
       { href: "/shipments", label: "出荷", icon: Truck },
       { href: "/labels", label: "ラベル印刷", icon: Tags },
       { href: "/sales", label: "月次売上", icon: Coins, need: "sales" },
+      { href: "/cashflow", label: "入金見込み", icon: Wallet, need: "sales" },
     ],
   },
   {
