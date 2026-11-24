@@ -45,7 +45,7 @@ export default function RootLayout({
       <body className="min-h-full font-sans">
         <PWARegister />
         <Sidebar />
-        <main className="md:ml-60 min-h-screen p-4 md:p-6 overflow-auto bg-gray-50">{children}</main>
+        <main className="md:ml-60 min-h-screen p-4 md:p-6 overflow-auto bg-gray-50 print:ml-0 print:p-0 print:bg-white print:min-h-0 print:overflow-visible">{children}</main>
       </body>
     </html>
   );

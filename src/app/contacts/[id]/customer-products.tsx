@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { X, Package } from "lucide-react";
+import { X, Package, FileText, Save, TrendingUp, Check } from "lucide-react";
 import { compareProductOrder } from "@/lib/product-meta";
-import { roundSellPrice } from "@/lib/pricing";
+import { roundSellPrice, formatSellPrice } from "@/lib/pricing";
 import { parseTypeRates } from "@/lib/contact-meta";
 
 interface Product {
@@ -21,6 +21,14 @@ interface Product {
 
 type Entry = { price: number | null; note: string | null };
 
+interface SnapshotSummary {
+  id: string;
+  name: string;
+  note: string | null;
+  snappedAt: string;
+  _count?: { items: number };
+}
+
 // 顧客の取扱商品＋個別卸価格を編集するカード（価格表の顧客別ビューと同じデータ）
 export function CustomerProductsCard({
   contactId,
@@ -34,12 +42,30 @@ export function CustomerProductsCard({
   const [products, setProducts] = useState<Product[]>([]);
   const [entries, setEntries] = useState<Record<string, Entry>>({});
   const [loading, setLoading] = useState(true);
+  // 価格改定：新価格の下書き（productId → 新価格）。確定するまで卸価格は変わらない
+  const [draft, setDraft] = useState<Record<string, number>>({});
+  const [revising, setRevising] = useState(false);
+  const [snaps, setSnaps] = useState<SnapshotSummary[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; href?: string; error?: boolean } | null>(null);
+
+  const loadSnaps = useCallback(async () => {
+    const res = await fetch(`/api/price-list/snapshots?contactId=${contactId}`);
+    if (res.ok) {
+      const d = await res.json();
+      setSnaps(Array.isArray(d) ? d : []);
+    }
+  }, [contactId]);
 
   const load = useCallback(async () => {
-    const [ps, cps] = await Promise.all([
+    const [ps, cps, rv] = await Promise.all([
       fetch("/api/products").then((r) => r.json()),
       fetch(`/api/customer-prices?contactId=${contactId}`).then((r) => r.json()),
+      fetch(`/api/customer-prices/revision?contactId=${contactId}`).then((r) => (r.ok ? r.json() : null)),
     ]);
+    const dp = (rv?.prices ?? {}) as Record<string, number>;
+    setDraft(dp);
+    if (Object.keys(dp).length > 0) setRevising(true);
     // OEM商品は依頼主のこの顧客の分だけ
     setProducts(Array.isArray(ps) ? ps.filter((p: Product & { ownerContactId?: string | null }) => p.active && (!p.ownerContactId || p.ownerContactId === contactId)) : []);
     const m: Record<string, Entry> = {};
@@ -54,7 +80,74 @@ export function CustomerProductsCard({
 
   useEffect(() => {
     load();
-  }, [load]);
+    loadSnaps();
+  }, [load, loadSnaps]);
+
+  async function putDraft(body: Record<string, unknown>) {
+    const res = await fetch("/api/customer-prices/revision", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId, ...body }),
+    });
+    if (!res.ok) {
+      setMsg({ text: "新価格の保存に失敗しました。もう一度入れてください", error: true });
+      return;
+    }
+    const d = await res.json();
+    setDraft(d.prices ?? {});
+  }
+
+  function setNewPrice(productId: string, price: number | null) {
+    setDraft((p) => {
+      const n = { ...p };
+      if (price != null && price > 0) n[productId] = price;
+      else delete n[productId];
+      return n;
+    });
+    putDraft({ productId, price });
+  }
+
+  // いまの価格表を保存（PDFの元になる控え）
+  async function saveSnapshot() {
+    setBusy(true);
+    setMsg(null);
+    const res = await fetch("/api/price-list/snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "customer", contactId, stage: "current" }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      setMsg({ text: `保存できませんでした${e.error ? `（${e.error}）` : ""}`, error: true });
+      return;
+    }
+    const d = await res.json();
+    setMsg({ text: `いまの価格表を保存しました（${d.itemCount}商品）`, href: `/price-list/snapshots/${d.snapshot.id}?print=1` });
+    loadSnaps();
+  }
+
+  async function confirmRevision(changeCount: number) {
+    if (!window.confirm(`${changeCount}商品の卸価格を新価格に変えます。\n改定前と改定後の価格表を履歴に保存します。よろしいですか？`)) return;
+    setBusy(true);
+    setMsg(null);
+    const res = await fetch("/api/customer-prices/revision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      setMsg({ text: `確定できませんでした${e.error ? `（${e.error}）` : ""}`, error: true });
+      return;
+    }
+    const d = await res.json();
+    setRevising(false);
+    setMsg({ text: `新価格で確定しました（${d.changed}商品）。改定後の価格表を保存しました`, href: `/price-list/snapshots/${d.afterId}?print=1` });
+    await load();
+    loadSnaps();
+  }
 
   async function save(productId: string, patch: Partial<Entry>) {
     setEntries((p) => ({
@@ -91,19 +184,108 @@ export function CustomerProductsCard({
   const handled = ordered.filter((p) => p.id in entries);
   const addable = ordered.filter((p) => !(p.id in entries));
 
+  function priceOf(p: Product) {
+    const e = entries[p.id];
+    const itemRate = (contactType ? parseTypeRates(p.typeRates)[contactType] : undefined) ?? rate;
+    const autoRaw = itemRate != null && p.retailPrice ? (p.retailPrice * itemRate) / 100 : 0;
+    const auto = roundSellPrice(autoRaw);
+    const override = e?.price ?? null;
+    return { auto, autoRaw, override, current: override ?? auto };
+  }
+
+  // 新価格が入っていて、いまと違う商品
+  const changed = handled.filter((p) => draft[p.id] != null && draft[p.id] !== priceOf(p).current);
+  const sumCur = changed.reduce((a, p) => a + priceOf(p).current, 0);
+  const sumNew = changed.reduce((a, p) => a + draft[p.id], 0);
+
+  function fillWithAuto() {
+    const next: Record<string, number> = { ...draft };
+    for (const p of handled) {
+      const { auto } = priceOf(p);
+      if (auto > 0 && next[p.id] == null) next[p.id] = auto;
+    }
+    setDraft(next);
+    putDraft({ prices: next });
+  }
+
+  function clearDraft() {
+    if (!window.confirm("入れた新価格をすべて消します。よろしいですか？")) return;
+    setDraft({});
+    putDraft({ prices: {} });
+  }
+
+  const yen = (n: number) => `${n.toLocaleString()}円`;
+
   return (
+    <>
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
         <CardTitle className="text-lg flex items-center gap-2">
           <Package className="size-5" />
           取扱商品
           <span className="text-sm font-normal text-gray-500">{handled.length}件</span>
         </CardTitle>
-        <Link href="/price-list" className="text-xs text-blue-600 hover:underline">
-          価格表で見る →
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={saveSnapshot}
+            disabled={busy || loading || handled.length === 0}
+            className="text-xs border rounded-md px-2 py-1 flex items-center gap-1 hover:bg-gray-50 disabled:opacity-50"
+            title="いまの卸価格の価格表を履歴に保存します（PDFにできます）"
+          >
+            <Save className="size-3.5" /> いまの価格表を保存
+          </button>
+          <button
+            onClick={() => setRevising((v) => !v)}
+            className={`text-xs border rounded-md px-2 py-1 flex items-center gap-1 ${revising ? "bg-amber-100 border-amber-300 text-amber-800" : "hover:bg-gray-50"}`}
+          >
+            <TrendingUp className="size-3.5" /> 価格改定{revising ? "中" : ""}
+          </button>
+          <Link href="/price-list" className="text-xs text-blue-600 hover:underline">
+            価格表で見る →
+          </Link>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {msg && (
+          <div className={`text-sm rounded-md px-3 py-2 ${msg.error ? "bg-red-50 text-red-700" : "bg-green-50 text-green-800"}`}>
+            {msg.text}
+            {msg.href && (
+              <Link href={msg.href} target="_blank" className="ml-2 text-blue-600 hover:underline">
+                PDFを開く →
+              </Link>
+            )}
+          </div>
+        )}
+
+        {revising && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm space-y-2">
+            <p className="text-amber-900">
+              「新価格」に改定後の卸価格を入れてください。確定するまで、いまの卸価格（受注に入る価格）は変わりません。
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={fillWithAuto} disabled={loading} className="text-xs border border-amber-300 bg-white rounded px-2 py-1 hover:bg-amber-100">
+                空欄を 上代×掛率 で埋める
+              </button>
+              <button onClick={clearDraft} disabled={Object.keys(draft).length === 0} className="text-xs border border-amber-300 bg-white rounded px-2 py-1 hover:bg-amber-100 disabled:opacity-50">
+                新価格を全部消す
+              </button>
+              <span className="text-xs text-amber-900">
+                変わる商品 {changed.length}件
+                {changed.length > 0 && sumCur > 0 && (
+                  <>（合計 {yen(sumCur)} → {yen(sumNew)}、{sumNew >= sumCur ? "+" : ""}{(((sumNew - sumCur) / sumCur) * 100).toFixed(1)}%）</>
+                )}
+              </span>
+              <button
+                onClick={() => confirmRevision(changed.length)}
+                disabled={busy || changed.length === 0}
+                className="ml-auto text-xs rounded px-3 py-1 bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1"
+              >
+                <Check className="size-3.5" /> 新価格で確定
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 flex-wrap">
           <select
             value=""
@@ -134,7 +316,13 @@ export function CustomerProductsCard({
                 <tr>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-500 min-w-[150px]">商品</th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-20 whitespace-nowrap">上代</th>
-                  <th className="text-right px-2 py-1.5 font-medium text-gray-700 w-28 whitespace-nowrap">卸価格</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-700 w-28 whitespace-nowrap">{revising ? "いまの卸価格" : "卸価格"}</th>
+                  {revising && (
+                    <>
+                      <th className="text-right px-2 py-1.5 font-medium text-amber-800 w-28 whitespace-nowrap bg-amber-50">新価格</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24 whitespace-nowrap">差</th>
+                    </>
+                  )}
                   <th className="text-left px-2 py-1.5 font-medium text-gray-500 min-w-[130px]">メモ（理由）</th>
                   <th className="w-8"></th>
                 </tr>
@@ -142,9 +330,9 @@ export function CustomerProductsCard({
               <tbody className="divide-y">
                 {handled.map((p) => {
                   const e = entries[p.id];
-                  const itemRate = (contactType ? parseTypeRates(p.typeRates)[contactType] : undefined) ?? rate;
-                  const auto = itemRate != null && p.retailPrice ? roundSellPrice((p.retailPrice * itemRate) / 100) : 0;
-                  const override = e?.price ?? null;
+                  const { auto, autoRaw, override, current } = priceOf(p);
+                  const np = draft[p.id] ?? null;
+                  const diff = np != null ? np - current : null;
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">
                       <td className="px-2 py-1.5">
@@ -184,9 +372,46 @@ export function CustomerProductsCard({
                           )}
                         </div>
                       </td>
+                      {revising && (
+                        <>
+                          <td className="px-2 py-1.5 text-right bg-amber-50/50">
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                key={`n_${p.id}_${np ?? ""}`}
+                                type="text"
+                                inputMode="numeric"
+                                defaultValue={np ?? ""}
+                                placeholder={current > 0 ? current.toLocaleString() : ""}
+                                onBlur={(ev) => {
+                                  const raw = ev.target.value.replace(/[^\d]/g, "");
+                                  const val = raw === "" ? null : parseInt(raw, 10);
+                                  if (val === np) return;
+                                  setNewPrice(p.id, val);
+                                }}
+                                onKeyDown={(ev) => { if (ev.key === "Enter") (ev.target as HTMLInputElement).blur(); }}
+                                className="w-16 text-right border border-amber-300 rounded px-1 py-0.5 font-medium bg-white"
+                              />
+                              <span className="text-gray-400 text-xs">円</span>
+                            </div>
+                            {auto > 0 && (
+                              <div className="text-[10px] text-right mt-0.5 text-gray-400 whitespace-nowrap" title="上代×掛率（20円単位に切り上げ／カッコ内は実数値）">
+                                計算 {formatSellPrice(auto, autoRaw)}
+                              </div>
+                            )}
+                          </td>
+                          <td className={`px-2 py-1.5 text-right whitespace-nowrap text-xs ${diff == null || diff === 0 ? "text-gray-300" : diff > 0 ? "text-red-600" : "text-blue-600"}`}>
+                            {diff == null ? "-" : diff === 0 ? "±0" : (
+                              <>
+                                {diff > 0 ? "+" : ""}{diff.toLocaleString()}円
+                                {current > 0 && <div className="text-[10px]">{diff > 0 ? "+" : ""}{((diff / current) * 100).toFixed(1)}%</div>}
+                              </>
+                            )}
+                          </td>
+                        </>
+                      )}
                       <td className="px-2 py-1.5">
                         <input
-                          key={`n_${p.id}_${e?.note ?? ""}`}
+                          key={`m_${p.id}_${e?.note ?? ""}`}
                           type="text"
                           defaultValue={e?.note ?? ""}
                           placeholder="例: 長年の取引先価格"
@@ -217,5 +442,45 @@ export function CustomerProductsCard({
         )}
       </CardContent>
     </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <FileText className="size-5" />
+          価格表の履歴
+          <span className="text-sm font-normal text-gray-500">{snaps.length}件</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {snaps.length === 0 ? (
+          <p className="text-sm text-gray-400 py-3 text-center">
+            まだありません。「いまの価格表を保存」で、いまの卸価格の価格表を残せます
+          </p>
+        ) : (
+          <ul className="divide-y text-sm">
+            {snaps.map((s, i) => (
+              <li key={s.id} className="flex items-center gap-3 py-2 flex-wrap">
+                <span className="text-gray-500 w-24 shrink-0">
+                  {new Date(s.snappedAt).toLocaleDateString("ja-JP")}
+                </span>
+                <Link href={`/price-list/snapshots/${s.id}`} className="text-blue-600 hover:underline flex-1 min-w-[200px]">
+                  {s.name}
+                </Link>
+                {i === 0 && <span className="text-[10px] rounded bg-green-100 text-green-700 px-1.5 py-0.5">最新</span>}
+                <span className="text-xs text-gray-400">{s._count?.items ?? 0}商品</span>
+                <Link
+                  href={`/price-list/snapshots/${s.id}?print=1`}
+                  target="_blank"
+                  className="text-xs border rounded px-2 py-0.5 hover:bg-gray-50 flex items-center gap-1"
+                >
+                  <FileText className="size-3.5" /> PDF
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+    </>
   );
 }
