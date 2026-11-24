@@ -2,6 +2,7 @@
 import { prisma } from "@/lib/db";
 import { CONTACT_TYPES, getContactTypeLabel, getContactTypeMeta } from "@/lib/contact-meta";
 import { breakdownOf, loadProductWithCost } from "@/lib/product-server";
+import { roundSellPrice } from "@/lib/pricing";
 import { getRoadmapSettings, todayJst } from "@/lib/roadmap/settings";
 import {
   CHANNEL_COST_KEY, MONTHLY_OVERRIDES_KEY, normalizeChannelCosts, requiredSales, sellingCostPerUnit, termMonths,
@@ -58,7 +59,7 @@ export function contactUnitPrice(
 ): { price: number; source: "individual" | "auto" | "standard" | "none" } {
   if (override != null) return { price: override, source: "individual" };
   const rate = contact?.discountRate ?? getContactTypeMeta(contact?.type)?.defaultRate ?? null;
-  if (rate != null && product.retailPrice && product.retailPrice > 0) return { price: Math.round((product.retailPrice * rate) / 100), source: "auto" };
+  if (rate != null && product.retailPrice && product.retailPrice > 0) return { price: roundSellPrice((product.retailPrice * rate) / 100), source: "auto" };
   if (product.wholesalePrice != null) return { price: product.wholesalePrice, source: "standard" };
   return { price: 0, source: "none" };
 }

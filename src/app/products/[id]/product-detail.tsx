@@ -645,7 +645,12 @@ export function ProductDetail({ productId }: { productId: string }) {
                       <td className="px-3 py-2 text-right text-[11px] font-mono text-gray-500 border-r">
                         {retail.toLocaleString()} × {row.ratePct}%
                       </td>
-                      <td className="px-3 py-2 text-right font-bold border-r">{row.price.toLocaleString()}円</td>
+                      <td className="px-3 py-2 text-right font-bold border-r">
+                        {row.price.toLocaleString()}円
+                        {Math.round(row.raw) !== row.price && row.raw > 0 && (
+                          <span className="block text-[10px] font-normal text-gray-400">（{Math.round(row.raw).toLocaleString()}円）</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right text-xs text-gray-600 border-r">
                         {expense > 0 ? (
                           <>
@@ -1336,6 +1341,7 @@ function PriceSettings({
             className="border rounded-md px-2 py-1.5 text-xs"
           >
             <option value={100}>100円単位</option>
+            <option value={20}>20円単位</option>
             <option value={10}>10円単位</option>
           </select>
         </div>
@@ -1469,6 +1475,7 @@ function PricingSettingsDialog({
               <select value={draft.roundUnit} onChange={(e) => setNum("roundUnit", e.target.value)}
                 className="w-full border rounded-md px-3 py-2 text-sm">
                 <option value={100}>100円単位</option>
+                <option value={20}>20円単位</option>
                 <option value={10}>10円単位</option>
               </select>
             </div>

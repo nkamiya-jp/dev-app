@@ -1,5 +1,6 @@
 "use client";
 
+import { roundSellPrice } from "@/lib/pricing";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ interface MatrixRow {
 interface PriceCell {
   ratePct: number;
   price: number;
+  raw?: number;
   profit: number;
   profitRate: number;
   costRatio: number;
@@ -257,7 +259,7 @@ export default function PriceListPage() {
       rows = visibleItems
         .filter((it) => it.productId in custPrices)
         .map((it) => {
-          const auto = Math.round(it.retailPrice * contactRate / 100);
+          const auto = roundSellPrice(it.retailPrice * contactRate / 100);
           const override = custPrices[it.productId]?.price ?? null;
           const wholesale = override ?? auto;
           const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
@@ -439,10 +441,14 @@ export default function PriceListPage() {
                         {visibleRows.map((r) => {
                           const cell = it.prices[`${r.typeId}_${r.ratePct}`];
                           const price = cell?.price ?? 0;
+                          const raw = Math.round(cell?.raw ?? 0);
                           const profit = cell?.profit ?? 0;
                           return (
                             <td key={`${r.typeId}_${r.ratePct}`} className="px-2 py-1.5 text-right">
                               <div className="font-medium">{price > 0 ? price.toLocaleString() : "-"}</div>
+                              {price > 0 && raw > 0 && raw !== price && (
+                                <div className="text-[10px] text-gray-400">（{raw.toLocaleString()}）</div>
+                              )}
                               {price > 0 && (
                                 <div className={`text-[10px] ${profit >= 0 ? "text-green-600" : "text-red-500"}`}>
                                   {profit >= 0 ? "+" : ""}{profit.toLocaleString()}
@@ -724,14 +730,14 @@ function CustomerPriceTable({
               </thead>
               <tbody className="divide-y">
                 {handled.map((it, idx) => {
-                  const auto = it.retailPrice > 0 ? Math.round(it.retailPrice * contactRate / 100) : 0;
+                  const auto = roundSellPrice(it.retailPrice * contactRate / 100);
                   const override = custPrices[it.productId]?.price ?? null;
                   const wholesale = override ?? auto;
                   const profit = wholesale - it.cost;
                   const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
                   // 顧客カテゴリー（タイプ）の標準掛率での基本価格
                   const typeBaseRate = getDefaultRate(selectedContact.type);
-                  const basePrice = it.retailPrice > 0 && typeBaseRate != null ? Math.round(it.retailPrice * typeBaseRate / 100) : 0;
+                  const basePrice = it.retailPrice > 0 && typeBaseRate != null ? roundSellPrice(it.retailPrice * typeBaseRate / 100) : 0;
                   return (
                     <tr key={it.productId} className="hover:bg-gray-50">
                       <td className="px-1 py-1 print:hidden">

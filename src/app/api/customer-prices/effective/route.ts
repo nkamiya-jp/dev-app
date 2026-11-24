@@ -1,13 +1,14 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { getContactTypeMeta } from "@/lib/contact-meta";
+import { roundSellPrice } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/customer-prices/effective?contactId=xxx[&productId=yyy]
 // 顧客に対する実効単価を返す。優先順位:
 //   1. individual : CustomerPrice.price（個別設定）
-//   2. auto       : 上代 × 掛率（顧客のdiscountRate、無ければ顧客タイプの既定掛率）
+//   2. auto       : 上代 × 掛率（20円単位に切り上げ）（顧客のdiscountRate、無ければ顧客タイプの既定掛率）
 //   3. standard   : 商品の標準卸価格（wholesalePrice）
 // handled = その顧客の取扱商品に登録済みか
 export async function GET(request: NextRequest) {
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
       price = ov.price;
       source = "individual";
     } else if (rate != null && p.retailPrice && p.retailPrice > 0) {
-      price = Math.round((p.retailPrice * rate) / 100);
+      price = roundSellPrice((p.retailPrice * rate) / 100);
       source = "auto";
     } else if (p.wholesalePrice != null) {
       price = p.wholesalePrice;

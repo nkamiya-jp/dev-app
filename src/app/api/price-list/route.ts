@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { calcCostBreakdown } from "@/lib/product-cost";
 import { getAllMatrixRows } from "@/lib/contact-meta";
 import { compareProductOrder } from "@/lib/product-meta";
+import { calcSellPrice } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -73,18 +74,19 @@ export async function GET() {
 
     const prices: Record<string, {
       ratePct: number;
-      price: number;       // 卸価格 = 上代 × 掛率
+      price: number;       // 卸価格 = 上代 × 掛率（20円単位に切り上げ）
+      raw: number;         // 上代 × 掛率の実数値（丸め前）
       profit: number;      // 卸価格 − 原価
       profitRate: number;  // 粗利率（卸価格ベース）
       costRatio: number;   // 原価率（卸価格ベース）= 原価 ÷ 卸価格
     }> = {};
     for (const r of matrixRows) {
       const key = `${r.typeId}_${r.ratePct}`;
-      const price = retail > 0 ? Math.round(retail * r.ratePct / 100) : 0;
+      const { price, raw } = calcSellPrice(retail, r.ratePct);
       const profit = price - cost;
       const profitRate = price > 0 ? (profit / price) * 100 : 0;
       const costRatio = price > 0 ? (cost / price) * 100 : 0;
-      prices[key] = { ratePct: r.ratePct, price, profit, profitRate, costRatio };
+      prices[key] = { ratePct: r.ratePct, price, raw, profit, profitRate, costRatio };
     }
     return {
       productId: p.id,
