@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X, Package, FileText, Save, TrendingUp, Check } from "lucide-react";
 import { compareProductOrder } from "@/lib/product-meta";
 import { roundSellPrice, formatSellPrice } from "@/lib/pricing";
-import { parseTypeRates } from "@/lib/contact-meta";
+import { parseTypeRates, getDefaultRate, getContactTypeLabel } from "@/lib/contact-meta";
 
 interface Product {
   id: string;
@@ -190,7 +190,11 @@ export function CustomerProductsCard({
     const autoRaw = itemRate != null && p.retailPrice ? (p.retailPrice * itemRate) / 100 : 0;
     const auto = roundSellPrice(autoRaw);
     const override = e?.price ?? null;
-    return { auto, autoRaw, override, current: override ?? auto };
+    // カテゴリの標準価格（顧客ごとの掛率は使わず、カテゴリの既定掛率／商品×カテゴリの掛率）
+    const baseRate = (contactType ? parseTypeRates(p.typeRates)[contactType] : undefined) ?? getDefaultRate(contactType);
+    const baseRaw = baseRate != null && p.retailPrice ? (p.retailPrice * baseRate) / 100 : 0;
+    const base = roundSellPrice(baseRaw);
+    return { auto, autoRaw, override, current: override ?? auto, base, baseRaw, baseRate };
   }
 
   // 新価格が入っていて、いまと違う商品
@@ -215,6 +219,18 @@ export function CustomerProductsCard({
   }
 
   const yen = (n: number) => `${n.toLocaleString()}円`;
+
+  // 標準（カテゴリの掛率）との比較：問屋なら最新の問屋価格と並べる
+  const typeLabel = contactType ? getContactTypeLabel(contactType) : "";
+  const baseHeader = contactType?.startsWith("wholesale")
+    ? `${typeLabel}価格（最新）`
+    : `標準${typeLabel ? `（${typeLabel}）` : ""}`;
+  const cheaper = handled
+    .map((p) => priceOf(p))
+    .filter((x) => x.base > 0 && x.current > 0 && x.current < x.base)
+    .map((x) => (x.current - x.base) / x.base);
+  const avgCheaper = cheaper.length > 0 ? (cheaper.reduce((a, b) => a + b, 0) / cheaper.length) * 100 : 0;
+  const maxCheaper = cheaper.length > 0 ? Math.min(...cheaper) * 100 : 0;
 
   return (
     <>
@@ -301,6 +317,11 @@ export function CustomerProductsCard({
           <span className="text-xs text-gray-400">
             掛率 {rate != null ? `${rate}%` : "未設定"}
           </span>
+          {cheaper.length > 0 && (
+            <span className="text-xs rounded bg-red-50 text-red-700 px-2 py-1 font-medium">
+              {baseHeader}より安い商品 {cheaper.length}件（平均 {avgCheaper.toFixed(1)}%、最大 {maxCheaper.toFixed(1)}%）
+            </span>
+          )}
         </div>
 
         {loading ? (
@@ -316,7 +337,11 @@ export function CustomerProductsCard({
                 <tr>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-500 min-w-[150px]">商品</th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-20 whitespace-nowrap">上代</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-28 whitespace-nowrap" title="顧客カテゴリの標準の掛率で出した価格（上代×掛率、20円単位に切り上げ）">
+                    {baseHeader}
+                  </th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-700 w-28 whitespace-nowrap">{revising ? "いまの卸価格" : "卸価格"}</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24 whitespace-nowrap" title="卸価格 − 標準">{contactType?.startsWith("wholesale") ? `${typeLabel}価格との差` : "標準との差"}</th>
                   {revising && (
                     <>
                       <th className="text-right px-2 py-1.5 font-medium text-amber-800 w-28 whitespace-nowrap bg-amber-50">新価格</th>
@@ -330,7 +355,8 @@ export function CustomerProductsCard({
               <tbody className="divide-y">
                 {handled.map((p) => {
                   const e = entries[p.id];
-                  const { auto, autoRaw, override, current } = priceOf(p);
+                  const { auto, autoRaw, override, current, base, baseRaw, baseRate } = priceOf(p);
+                  const vsBase = base > 0 && current > 0 ? current - base : null;
                   const np = draft[p.id] ?? null;
                   const diff = np != null ? np - current : null;
                   return (
@@ -342,6 +368,18 @@ export function CustomerProductsCard({
                       </td>
                       <td className="px-2 py-1.5 text-right text-gray-500 whitespace-nowrap">
                         {p.retailPrice ? `${p.retailPrice.toLocaleString()}円` : "-"}
+                      </td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                        {base > 0 ? (
+                          <>
+                            <div className="text-gray-600">{formatSellPrice(base, baseRaw, "円")}</div>
+                            <div className="text-[10px] mt-0.5">
+                              <span className="text-gray-400">{baseRate}%</span>
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
                       </td>
                       <td className="px-2 py-1.5 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -371,6 +409,18 @@ export function CustomerProductsCard({
                             <span className="text-gray-400">自動</span>
                           )}
                         </div>
+                      </td>
+                      <td className={`px-2 py-1.5 text-right whitespace-nowrap ${vsBase != null && vsBase < 0 ? "bg-red-50" : ""}`}>
+                        {vsBase == null ? (
+                          <span className="text-gray-300">-</span>
+                        ) : vsBase === 0 ? (
+                          <span className="text-gray-300 text-xs">±0</span>
+                        ) : (
+                          <div className={vsBase < 0 ? "text-red-600 font-bold" : "text-gray-500"}>
+                            <div>{vsBase > 0 ? "+" : ""}{vsBase.toLocaleString()}円</div>
+                            <div className="text-[11px]">{vsBase > 0 ? "+" : ""}{((vsBase / base) * 100).toFixed(1)}%</div>
+                          </div>
+                        )}
                       </td>
                       {revising && (
                         <>
