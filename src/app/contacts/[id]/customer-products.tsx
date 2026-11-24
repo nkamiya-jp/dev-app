@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X, Package, FileText, Save, TrendingUp, Check } from "lucide-react";
 import { compareProductOrder } from "@/lib/product-meta";
 import { roundSellPrice, formatSellPrice } from "@/lib/pricing";
-import { parseTypeRates } from "@/lib/contact-meta";
+import { parseTypeRates, getDefaultRate, getContactTypeLabel } from "@/lib/contact-meta";
 
 interface Product {
   id: string;
@@ -190,7 +190,11 @@ export function CustomerProductsCard({
     const autoRaw = itemRate != null && p.retailPrice ? (p.retailPrice * itemRate) / 100 : 0;
     const auto = roundSellPrice(autoRaw);
     const override = e?.price ?? null;
-    return { auto, autoRaw, override, current: override ?? auto };
+    // カテゴリの標準価格（顧客ごとの掛率は使わず、カテゴリの既定掛率／商品×カテゴリの掛率）
+    const baseRate = (contactType ? parseTypeRates(p.typeRates)[contactType] : undefined) ?? getDefaultRate(contactType);
+    const baseRaw = baseRate != null && p.retailPrice ? (p.retailPrice * baseRate) / 100 : 0;
+    const base = roundSellPrice(baseRaw);
+    return { auto, autoRaw, override, current: override ?? auto, base, baseRaw, baseRate };
   }
 
   // 新価格が入っていて、いまと違う商品
@@ -316,6 +320,9 @@ export function CustomerProductsCard({
                 <tr>
                   <th className="text-left px-2 py-1.5 font-medium text-gray-500 min-w-[150px]">商品</th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-20 whitespace-nowrap">上代</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-28 whitespace-nowrap" title="顧客カテゴリの標準の掛率で出した価格（上代×掛率、20円単位に切り上げ）">
+                    標準{contactType ? `（${getContactTypeLabel(contactType)}）` : ""}
+                  </th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-700 w-28 whitespace-nowrap">{revising ? "いまの卸価格" : "卸価格"}</th>
                   {revising && (
                     <>
@@ -330,7 +337,8 @@ export function CustomerProductsCard({
               <tbody className="divide-y">
                 {handled.map((p) => {
                   const e = entries[p.id];
-                  const { auto, autoRaw, override, current } = priceOf(p);
+                  const { auto, autoRaw, override, current, base, baseRaw, baseRate } = priceOf(p);
+                  const vsBase = base > 0 && current > 0 ? current - base : null;
                   const np = draft[p.id] ?? null;
                   const diff = np != null ? np - current : null;
                   return (
@@ -342,6 +350,23 @@ export function CustomerProductsCard({
                       </td>
                       <td className="px-2 py-1.5 text-right text-gray-500 whitespace-nowrap">
                         {p.retailPrice ? `${p.retailPrice.toLocaleString()}円` : "-"}
+                      </td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                        {base > 0 ? (
+                          <>
+                            <div className="text-gray-600">{formatSellPrice(base, baseRaw, "円")}</div>
+                            <div className="text-[10px] mt-0.5">
+                              <span className="text-gray-400">{baseRate}%</span>
+                              {vsBase != null && (
+                                <span className={`ml-1 ${vsBase === 0 ? "text-gray-300" : vsBase > 0 ? "text-red-600" : "text-blue-600"}`} title="卸価格 − 標準">
+                                  卸{vsBase === 0 ? "±0" : `${vsBase > 0 ? "+" : ""}${vsBase.toLocaleString()}`}
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
                       </td>
                       <td className="px-2 py-1.5 text-right">
                         <div className="flex items-center justify-end gap-1">
