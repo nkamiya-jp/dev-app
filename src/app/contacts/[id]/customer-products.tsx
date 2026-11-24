@@ -220,6 +220,18 @@ export function CustomerProductsCard({
 
   const yen = (n: number) => `${n.toLocaleString()}円`;
 
+  // 標準（カテゴリの掛率）との比較：問屋なら最新の問屋価格と並べる
+  const typeLabel = contactType ? getContactTypeLabel(contactType) : "";
+  const baseHeader = contactType?.startsWith("wholesale")
+    ? `${typeLabel}価格（最新）`
+    : `標準${typeLabel ? `（${typeLabel}）` : ""}`;
+  const cheaper = handled
+    .map((p) => priceOf(p))
+    .filter((x) => x.base > 0 && x.current > 0 && x.current < x.base)
+    .map((x) => (x.current - x.base) / x.base);
+  const avgCheaper = cheaper.length > 0 ? (cheaper.reduce((a, b) => a + b, 0) / cheaper.length) * 100 : 0;
+  const maxCheaper = cheaper.length > 0 ? Math.min(...cheaper) * 100 : 0;
+
   return (
     <>
     <Card>
@@ -305,6 +317,11 @@ export function CustomerProductsCard({
           <span className="text-xs text-gray-400">
             掛率 {rate != null ? `${rate}%` : "未設定"}
           </span>
+          {cheaper.length > 0 && (
+            <span className="text-xs rounded bg-red-50 text-red-700 px-2 py-1 font-medium">
+              {baseHeader}より安い商品 {cheaper.length}件（平均 {avgCheaper.toFixed(1)}%、最大 {maxCheaper.toFixed(1)}%）
+            </span>
+          )}
         </div>
 
         {loading ? (
@@ -321,9 +338,10 @@ export function CustomerProductsCard({
                   <th className="text-left px-2 py-1.5 font-medium text-gray-500 min-w-[150px]">商品</th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-20 whitespace-nowrap">上代</th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-28 whitespace-nowrap" title="顧客カテゴリの標準の掛率で出した価格（上代×掛率、20円単位に切り上げ）">
-                    標準{contactType ? `（${getContactTypeLabel(contactType)}）` : ""}
+                    {baseHeader}
                   </th>
                   <th className="text-right px-2 py-1.5 font-medium text-gray-700 w-28 whitespace-nowrap">{revising ? "いまの卸価格" : "卸価格"}</th>
+                  <th className="text-right px-2 py-1.5 font-medium text-gray-500 w-24 whitespace-nowrap" title="卸価格 − 標準">{contactType?.startsWith("wholesale") ? `${typeLabel}価格との差` : "標準との差"}</th>
                   {revising && (
                     <>
                       <th className="text-right px-2 py-1.5 font-medium text-amber-800 w-28 whitespace-nowrap bg-amber-50">新価格</th>
@@ -357,11 +375,6 @@ export function CustomerProductsCard({
                             <div className="text-gray-600">{formatSellPrice(base, baseRaw, "円")}</div>
                             <div className="text-[10px] mt-0.5">
                               <span className="text-gray-400">{baseRate}%</span>
-                              {vsBase != null && (
-                                <span className={`ml-1 ${vsBase === 0 ? "text-gray-300" : vsBase > 0 ? "text-red-600" : "text-blue-600"}`} title="卸価格 − 標準">
-                                  卸{vsBase === 0 ? "±0" : `${vsBase > 0 ? "+" : ""}${vsBase.toLocaleString()}`}
-                                </span>
-                              )}
                             </div>
                           </>
                         ) : (
@@ -396,6 +409,18 @@ export function CustomerProductsCard({
                             <span className="text-gray-400">自動</span>
                           )}
                         </div>
+                      </td>
+                      <td className={`px-2 py-1.5 text-right whitespace-nowrap ${vsBase != null && vsBase < 0 ? "bg-red-50" : ""}`}>
+                        {vsBase == null ? (
+                          <span className="text-gray-300">-</span>
+                        ) : vsBase === 0 ? (
+                          <span className="text-gray-300 text-xs">±0</span>
+                        ) : (
+                          <div className={vsBase < 0 ? "text-red-600 font-bold" : "text-gray-500"}>
+                            <div>{vsBase > 0 ? "+" : ""}{vsBase.toLocaleString()}円</div>
+                            <div className="text-[11px]">{vsBase > 0 ? "+" : ""}{((vsBase / base) * 100).toFixed(1)}%</div>
+                          </div>
+                        )}
                       </td>
                       {revising && (
                         <>
