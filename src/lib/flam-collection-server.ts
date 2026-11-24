@@ -5,6 +5,7 @@ import { parseCsv } from "@/lib/flam-sales-server";
 export interface FlamCollectionRow {
   month: string;
   slipNo: string;
+  kind: string; // 請求 | 入金
   customerCode: string;
   customerName: string;
   dueDate: string;
@@ -56,6 +57,7 @@ export function parseFlamCollectionCsv(buf: ArrayBuffer): { rows: FlamCollection
     const row: FlamCollectionRow = {
       month,
       slipNo: get(r, "伝票No") || `${customerCode}-${due}`,
+      kind: get(r, "明細分類") || "請求",
       customerCode,
       customerName: get(r, "請求先名"),
       dueDate: /^\d{4}-\d{1,2}-\d{1,2}$/.test(due)

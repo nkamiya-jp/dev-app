@@ -50,7 +50,7 @@ export interface OutlookMonth {
   month: string; // 入金月 YYYY-MM
   hasCollection: boolean; // FLAMの回収予定を取り込み済みか
   collectionImportedAt: string | null;
-  carryover: number; // 前月までの回収予定額（FLAMの見出し。明細には出ない）
+  carryover: number; // 前月までの未回収（FLAMの見出し「前月までの回収予定額」。当月のカードだけで使う）
   invoiced: number;
   received: number;
   estimate: number;
@@ -108,7 +108,7 @@ export async function getCollectionOutlook(): Promise<CollectionOutlook> {
   const headByMonth = new Map(collectionHeads.map((h) => [h.month, h]));
   // 回収予定に出ている請求先（入金月ごと）。ここに出ている請求先はFLAM売上からの見込みを足さない
   const invoicedCodes = new Map<string, Set<string>>(payMonths.map((m) => [m, new Set()]));
-  for (const c of collections) invoicedCodes.get(c.month)?.add(c.customerCode);
+  for (const c of collections) if (c.kind !== "入金") invoicedCodes.get(c.month)?.add(c.customerCode);
 
   const buckets = new Map<string, Map<string, OutlookCustomer>>(payMonths.map((m) => [m, new Map()]));
   const blank = { dueDates: [], invoiced: 0, received: 0, estimate: 0, estimateMonths: [], pending: 0, pendingOrders: 0, overdueOrders: 0 };
@@ -140,6 +140,7 @@ export async function getCollectionOutlook(): Promise<CollectionOutlook> {
     if (!row) continue;
     row.invoiced += col.amount;
     row.received += col.received;
+    if (col.kind === "入金") continue; // 入金の行は日付が入金日なので回収予定日には出さない
     const md = col.dueDate.slice(5);
     if (!row.dueDates.includes(md)) row.dueDates.push(md);
   }
@@ -194,7 +195,8 @@ export async function getCollectionOutlook(): Promise<CollectionOutlook> {
       month,
       hasCollection: !!head,
       collectionImportedAt: head ? head.importedAt.toISOString() : null,
-      carryover: head?.carryover ?? 0,
+      // 翌月以降の「前月までの回収予定額」は当月分の未回収を含んだ累計で二重になるので、当月だけ出す
+      carryover: month === thisMonth ? (head?.carryover ?? 0) : 0,
       invoiced,
       received: sum((c) => c.received),
       estimate,

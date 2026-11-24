@@ -9,6 +9,7 @@ if (!(await has("FlamCollection"))) {
     CREATE TABLE "FlamCollection" (
       "month"        TEXT NOT NULL,
       "slipNo"       TEXT NOT NULL,
+      "kind"         TEXT NOT NULL DEFAULT '請求',
       "customerCode" TEXT NOT NULL,
       "customerName" TEXT NOT NULL,
       "dueDate"      TEXT NOT NULL,

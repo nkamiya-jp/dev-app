@@ -110,7 +110,7 @@ function MonthCard({ m, i, max }: { m: OutlookMonth; i: number; max: number }) {
         {(m.received > 0 || m.carryover > 0) && (
           <div className="text-xs text-gray-600 space-y-0.5">
             {m.received > 0 && <p>うち入金済み {man(m.received)}万（残り {man(m.invoiced - m.received)}万）</p>}
-            {m.carryover > 0 && <p className="text-amber-700">ほかに前月までの回収予定 {man(m.carryover)}万（FLAM）</p>}
+            {m.carryover > 0 && <p className="text-amber-700">ほかに前月までの未回収 {man(m.carryover)}万（FLAM）</p>}
           </div>
         )}
         {!m.hasCollection && <p className="text-xs text-gray-400">FLAMの回収予定が未取り込みです（すべて見込み）</p>}
@@ -125,14 +125,18 @@ function ImportButton() {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  async function upload(file: File) {
+  async function upload(files: File[]) {
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/flam/collections", { method: "POST", body: await file.arrayBuffer() });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "取り込みに失敗しました");
-      setMsg(`${j.months.map(monthNum).join("・")}の回収予定を取り込みました（${j.rows}件・${man(j.total)}万円）`);
+      const done: string[] = [];
+      for (const file of files) {
+        const res = await fetch("/api/flam/collections", { method: "POST", body: await file.arrayBuffer() });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(`${file.name}：${j.error || "取り込みに失敗しました"}`);
+        done.push(...j.months.map(monthNum));
+      }
+      setMsg(`${done.join("・")}の回収予定を取り込みました`);
       router.refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "取り込みに失敗しました");
@@ -143,7 +147,7 @@ function ImportButton() {
   }
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <input ref={ref} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+      <input ref={ref} type="file" multiple accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.length && upload([...e.target.files])} />
       <Button size="sm" variant="outline" disabled={busy} onClick={() => ref.current?.click()}>
         {busy ? "取り込み中..." : "FLAM回収予定CSVを取り込む"}
       </Button>
@@ -174,7 +178,7 @@ export function CollectionOutlookView({ outlook, canImport }: { outlook: Collect
         ))}
       </div>
       <p className="text-xs text-gray-500">
-        請求済み＝FLAMの回収予定（税込）。請求前の売上＝FLAM売上集計（最新 {outlook.latestFlamMonth ? monthNum(outlook.latestFlamMonth) : "なし"}）のうち、回収予定にまだ出ていない分（税抜×1.1の概算）。
+        請求済み＝FLAMの回収予定（税込。売上 › 回収予定のCSV、複数月まとめて取り込めます）。請求前の売上＝FLAM売上集計（最新 {outlook.latestFlamMonth ? monthNum(outlook.latestFlamMonth) : "なし"}）のうち、回収予定にまだ出ていない分（税抜×1.1の概算）。
         未出荷の受注＝DEVの受注の残り数量×単価（税抜×1.1）を、納期の日に出荷する前提で締日・支払サイトから入金月を出しています（納期遅れは今日出す前提）。
       </p>
       {notes.length > 0 && (
