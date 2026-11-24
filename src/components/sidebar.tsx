@@ -33,6 +33,9 @@ import {
   ClipboardList,
   Tags,
   Activity,
+  House,
+  Megaphone,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,6 +61,9 @@ const navSections: { label: string; items: NavItem[] }[] = [
     // 社内ポータル（目標・評価）。個人目標は本人と社長だけが見られる
     label: "ロードマップ",
     items: [
+      { href: "/roadmap", label: "ホーム", icon: House },
+      { href: "/roadmap/board", label: "掲示板・カレンダー", icon: Megaphone },
+      { href: "/roadmap/biz-goals", label: "事業目標", icon: Building2 },
       { href: "/roadmap/my-goals", label: "私の目標", icon: Flag },
       { href: "/roadmap/president", label: "社長ページ", icon: Crown, need: "president" },
     ],
