@@ -220,7 +220,7 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 bg-zinc-900">
+      <aside className="print:hidden hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 bg-zinc-900">
         <SidebarLogo />
         <div className="flex-1 overflow-y-auto py-2">
           <NavContent pathname={pathname} />
@@ -228,7 +228,7 @@ export function Sidebar() {
       </aside>
 
       {/* Mobile header bar */}
-      <div className="sticky top-0 z-40 flex items-center gap-3 border-b bg-zinc-900 px-4 py-3 md:hidden">
+      <div className="sticky top-0 z-40 flex items-center gap-3 border-b bg-zinc-900 px-4 py-3 md:hidden print:hidden">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
             render={
