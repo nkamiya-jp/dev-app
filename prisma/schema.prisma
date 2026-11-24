@@ -749,3 +749,27 @@ model FlamPrice {
   @@id([flamCustomerCode, flamProductCode])
   @@index([flamProductCode])
 }
+
+// FLAMの売上集計（ダウンロード「売上集計」CSV）。得意先×月×商品の純売上。月単位で入れ替える
+model FlamSale {
+  month        String   // YYYY-MM
+  customerCode String
+  productCode  String
+  spec         String   @default("")
+  customerName String
+  productName  String
+  amount       Int      @default(0) // 純売上額
+  qty          Int      @default(0) // 純売上数
+  cost         Int      @default(0) // 原価計
+  importedAt   DateTime @default(now())
+
+  @@id([month, customerCode, productCode, spec])
+  @@index([month])
+}
+
+// 月ごとの売上目標（未設定の月は 前年同月×1.1 を仮の目標にする）
+model SalesTarget {
+  month     String   @id // YYYY-MM
+  amount    Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt
+}

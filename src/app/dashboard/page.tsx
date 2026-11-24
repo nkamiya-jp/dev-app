@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { DashboardCharts } from "./dashboard-charts";
+import { SalesGoal } from "./sales-goal";
+import { getViewer } from "@/lib/viewer";
+import { getSalesGoalSummary } from "@/lib/flam-sales-server";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +28,10 @@ export default async function Dashboard() {
       select: { status: true },
     }),
   ]);
+
+  // 売上目標（FLAMの実績）。売上の数字はパートには出さない
+  const viewer = await getViewer();
+  const salesGoal = viewer && !viewer.isPart ? await getSalesGoalSummary() : null;
 
   const recentContacts = await prisma.contact.findMany({
     orderBy: { createdAt: "desc" },
@@ -62,6 +69,10 @@ export default async function Dashboard() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">ダッシュボード</h2>
+
+      {salesGoal && viewer && (
+        <SalesGoal summary={salesGoal} canImport={viewer.isAccounting} canEditTarget={viewer.isPresident} />
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-blue-500 bg-white shadow-sm">
