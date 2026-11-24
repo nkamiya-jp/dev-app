@@ -90,15 +90,6 @@ export const CONTACT_TYPES: ContactTypeMeta[] = [
     kind: "discount",
     description: "京都府内の問屋",
   },
-  {
-    // 商品の卸先ではないので掛率なし（価格表のマトリクスには出さない）
-    id: "consulting",
-    label: "経営相談",
-    color: "bg-emerald-100 text-emerald-700",
-    defaultRate: null,
-    kind: "none",
-    description: "経営相談の顧客",
-  },
 ];
 
 export function getContactTypeLabel(id?: string | null) {
