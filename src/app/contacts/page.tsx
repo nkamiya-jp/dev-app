@@ -37,16 +37,21 @@ interface Contact {
   _count: { deals: number; tasks: number };
 }
 
-// 並べ替えできる列。既定（sortKey なし）は更新が新しい順（APIの並び）
-type SortKey = "company" | "name" | "type" | "discountRate" | "deals" | "tasks";
+// 並べ替えできる列。常にタイプ順が先で、その中をこの列で並べる。
+// 既定（sortKey なし）はタイプ内を更新が新しい順（APIの並び）
+type SortKey = "company" | "name" | "discountRate" | "deals" | "tasks";
 const TYPE_RANK = new Map<string, number>(CONTACT_TYPES.map((t, i) => [t.id, i]));
+
+// タイプの並び順（設定順）。未設定は最後
+function typeRank(c: Contact): number {
+  return c.type ? TYPE_RANK.get(c.type) ?? CONTACT_TYPES.length : CONTACT_TYPES.length + 1;
+}
 
 function sortValue(c: Contact, key: SortKey): string | number | null {
   switch (key) {
     // 「（株）」「株式会社」などは飛ばして、社名そのもので並べる
     case "company": return (c.company || c.name || "").replace(/[（(]\s*[株有]\s*[）)]|株式会社|有限会社|合同会社/g, "").trim() || null;
     case "name": return c.company ? c.name || null : null;
-    case "type": return c.type ? TYPE_RANK.get(c.type) ?? CONTACT_TYPES.length : null;
     case "discountRate": return c.discountRate;
     case "deals": return c._count.deals;
     case "tasks": return c._count.tasks;
@@ -66,6 +71,8 @@ export default function ContactsPage() {
 
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // タイプ（第1キー）の向き。見出しを押すと逆順になる
+  const [typeDir, setTypeDir] = useState<"asc" | "desc">("asc");
 
   // 見出しを押すたびに 昇順 → 降順 → 解除（更新順）と切り替える
   const toggleSort = (key: SortKey) => {
@@ -82,9 +89,19 @@ export default function ContactsPage() {
 
   const filtered = useMemo(() => {
     const list = typeFilter ? contacts.filter((c) => c.type === typeFilter) : contacts;
-    if (!sortKey) return list;
     const sign = sortDir === "asc" ? 1 : -1;
+    const tsign = typeDir === "asc" ? 1 : -1;
+    // Array.sort は安定ソートなので、同じタイプ内で sortKey が無ければ APIの並び（更新順）が残る
     return [...list].sort((a, b) => {
+      const ta = typeRank(a);
+      const tb = typeRank(b);
+      if (ta !== tb) {
+        // タイプ未設定は向きに関係なく最後
+        if (!a.type) return 1;
+        if (!b.type) return -1;
+        return (ta - tb) * tsign;
+      }
+      if (!sortKey) return 0;
       const va = sortValue(a, sortKey);
       const vb = sortValue(b, sortKey);
       // 未入力は昇順・降順どちらでも最後
@@ -94,7 +111,7 @@ export default function ContactsPage() {
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * sign;
       return String(va).localeCompare(String(vb), "ja") * sign;
     });
-  }, [contacts, typeFilter, sortKey, sortDir]);
+  }, [contacts, typeFilter, sortKey, sortDir, typeDir]);
 
   const sortHead = (key: SortKey, label: string, className = "") => (
     <TableHead className={className} aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
@@ -144,7 +161,7 @@ export default function ContactsPage() {
           ))}
         </select>
         <span className="text-sm text-gray-500">
-          {filtered.length}件{sortKey ? "" : "（更新が新しい順）"}
+          {filtered.length}件（タイプ順{sortKey ? "" : "・タイプ内は更新が新しい順"}）
         </span>
       </div>
 
@@ -152,9 +169,19 @@ export default function ContactsPage() {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead aria-sort={typeDir === "asc" ? "ascending" : "descending"}>
+              <button
+                type="button"
+                onClick={() => setTypeDir(typeDir === "asc" ? "desc" : "asc")}
+                className="inline-flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-800"
+                title="タイプ順は常に先。クリックで逆順"
+              >
+                タイプ
+                <span className="text-xs">{typeDir === "asc" ? "▲" : "▼"}</span>
+              </button>
+            </TableHead>
             {sortHead("company", "社名")}
             {sortHead("name", "担当者")}
-            {sortHead("type", "タイプ")}
             {sortHead("discountRate", "掛率", "text-right")}
             <TableHead>部署 / 役職</TableHead>
             <TableHead>メール</TableHead>
@@ -175,6 +202,13 @@ export default function ContactsPage() {
             filtered.map((c) => (
               <TableRow key={c.id}>
                 <TableCell>
+                  {c.type ? (
+                    <Badge className={getContactTypeColor(c.type)}>
+                      {getContactTypeLabel(c.type)}
+                    </Badge>
+                  ) : "-"}
+                </TableCell>
+                <TableCell>
                   <Link
                     href={`/contacts/${c.id}`}
                     className="text-blue-600 hover:underline font-medium"
@@ -183,13 +217,6 @@ export default function ContactsPage() {
                   </Link>
                 </TableCell>
                 <TableCell>{c.company ? (c.name || "-") : "-"}</TableCell>
-                <TableCell>
-                  {c.type ? (
-                    <Badge className={getContactTypeColor(c.type)}>
-                      {getContactTypeLabel(c.type)}
-                    </Badge>
-                  ) : "-"}
-                </TableCell>
                 <TableCell className="text-right text-sm">
                   {c.discountRate != null ? `${Math.round(c.discountRate * 10) / 10}%` : "-"}
                 </TableCell>
