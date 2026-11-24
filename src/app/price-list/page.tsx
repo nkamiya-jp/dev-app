@@ -28,6 +28,7 @@ interface PriceCell {
   ratePct: number;
   price: number;
   raw?: number;
+  overridden?: boolean; // 商品×カテゴリの掛率で上書き
   profit: number;
   profitRate: number;
   costRatio: number;
@@ -43,6 +44,7 @@ interface PriceItem {
   cost: number;
   retailPrice: number;
   wholesalePrice: number | null;
+  typeRates?: Record<string, number>; // 商品×顧客カテゴリの掛率（上書き）
   costRatioVsRetail: number;
   prices: Record<string, PriceCell>;
 }
@@ -259,7 +261,7 @@ export default function PriceListPage() {
       rows = visibleItems
         .filter((it) => it.productId in custPrices)
         .map((it) => {
-          const auto = roundSellPrice(it.retailPrice * contactRate / 100);
+          const auto = roundSellPrice(it.retailPrice * (it.typeRates?.[selectedContact.type ?? ""] ?? contactRate) / 100);
           const override = custPrices[it.productId]?.price ?? null;
           const wholesale = override ?? auto;
           const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
@@ -446,6 +448,9 @@ export default function PriceListPage() {
                           return (
                             <td key={`${r.typeId}_${r.ratePct}`} className="px-2 py-1.5 text-right">
                               <div className="font-medium">{price > 0 ? price.toLocaleString() : "-"}</div>
+                              {cell?.overridden && (
+                                <div className="text-[10px] text-orange-600" title="この商品だけの掛率">{cell.ratePct}%</div>
+                              )}
                               {price > 0 && raw > 0 && raw !== price && (
                                 <div className="text-[10px] text-gray-400">（{raw.toLocaleString()}）</div>
                               )}
@@ -730,14 +735,16 @@ function CustomerPriceTable({
               </thead>
               <tbody className="divide-y">
                 {handled.map((it, idx) => {
-                  const auto = roundSellPrice(it.retailPrice * contactRate / 100);
+                  const itemRate = it.typeRates?.[selectedContact.type ?? ""] ?? contactRate;
+                  const auto = roundSellPrice(it.retailPrice * itemRate / 100);
                   const override = custPrices[it.productId]?.price ?? null;
                   const wholesale = override ?? auto;
                   const profit = wholesale - it.cost;
                   const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
                   // 顧客カテゴリー（タイプ）の標準掛率での基本価格
                   const typeBaseRate = getDefaultRate(selectedContact.type);
-                  const basePrice = it.retailPrice > 0 && typeBaseRate != null ? roundSellPrice(it.retailPrice * typeBaseRate / 100) : 0;
+                  const baseRate = it.typeRates?.[selectedContact.type ?? ""] ?? typeBaseRate;
+                  const basePrice = it.retailPrice > 0 && baseRate != null ? roundSellPrice(it.retailPrice * baseRate / 100) : 0;
                   return (
                     <tr key={it.productId} className="hover:bg-gray-50">
                       <td className="px-1 py-1 print:hidden">
@@ -799,7 +806,9 @@ function CustomerPriceTable({
                               個別 · 自動に戻す
                             </button>
                           ) : (
-                            <span className="text-gray-400">自動（上代×{contactRate}%）</span>
+                            <span className={itemRate !== contactRate ? "text-orange-600" : "text-gray-400"}>
+                              自動（上代×{itemRate}%{itemRate !== contactRate ? "・この商品だけ" : ""}）
+                            </span>
                           )}
                         </div>
                       </td>

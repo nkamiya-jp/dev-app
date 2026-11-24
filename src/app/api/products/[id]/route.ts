@@ -1,3 +1,4 @@
+import { parseTypeRates, serializeTypeRates } from "@/lib/contact-meta";
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { loadProductWithCost } from "@/lib/product-server";
@@ -32,6 +33,7 @@ export async function PUT(
       ...(data.retailPrice !== undefined && { retailPrice: data.retailPrice }),
       ...(data.costRatio !== undefined && { costRatio: data.costRatio }),
       ...(data.wholesalePrice !== undefined && { wholesalePrice: data.wholesalePrice }),
+      ...(data.typeRates !== undefined && { typeRates: serializeTypeRates(parseTypeRates(data.typeRates)) }),
       ...(data.workerCost !== undefined && { workerCost: data.workerCost }),
       ...(data.salesCost !== undefined && { salesCost: data.salesCost }),
       ...(data.packagingCost !== undefined && { packagingCost: data.packagingCost }),
