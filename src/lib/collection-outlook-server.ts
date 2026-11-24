@@ -1,6 +1,6 @@
 // 入金見込み（当月・翌月・翌々月）。サーバー側専用。
 //
-// 入金月 ＝ 売上月 ＋ 顧客の支払サイト（Contact.paymentMonthOffset、未設定は翌月）。
+// 入金月 ＝ 売上月 ＋ 顧客の支払サイト（Contact.paymentMonthOffset。0=当月、未設定は翌月）。
 // 売上の出どころは2つ：
 //   1. FLAM売上集計（FlamSale）… 取り込み済みの月。計上済み＝あとは回収するだけ
 //   2. DEVの未出荷の受注 … 納期（無ければ受注日）の月に出荷・計上する見込みとして数える。
@@ -9,9 +9,18 @@
 // 金額はFLAMの純売上（税抜）と受注単価（税抜）に TAX_RATE を掛けた税込の概算。
 import { prisma } from "@/lib/db";
 import { todayJst } from "@/lib/roadmap/settings";
-import { paymentMonth, paymentTermLabel, salesMonth } from "@/lib/sales-month";
+import { salesMonth } from "@/lib/sales-month";
 
 export const TAX_RATE = 1.1;
+
+// FLAMの回収サイクルには「当月」（0）もあるので、0はそのまま当月として扱う（未設定だけ翌月扱い）
+const hasTerm = (offset: number | null | undefined) => offset != null && offset >= 0;
+const payMonthOf = (salesYm: string, offset: number | null | undefined) => addMonths(salesYm, hasTerm(offset) ? offset! : 1);
+function termLabel(offset: number | null | undefined, day: number | null | undefined) {
+  const o = hasTerm(offset) ? offset! : 1;
+  const m = o === 0 ? "当月" : o === 1 ? "翌月" : o === 2 ? "翌々月" : `${o}ヶ月後`;
+  return `締め${m}${day && day >= 1 && day <= 30 ? `${day}日` : "末日"}払い`;
+}
 
 export interface OutlookCustomer {
   key: string; // contactId か flam:得意先コード
@@ -101,8 +110,8 @@ export async function getCollectionOutlook(): Promise<CollectionOutlook> {
     key: c.id,
     contactId: c.id,
     name: c.company || c.name,
-    term: paymentTermLabel(c.paymentMonthOffset, c.paymentDay),
-    termIsDefault: !(c.paymentMonthOffset && c.paymentMonthOffset >= 1),
+    term: termLabel(c.paymentMonthOffset, c.paymentDay),
+    termIsDefault: !hasTerm(c.paymentMonthOffset),
     payDay: c.paymentDay && c.paymentDay >= 1 && c.paymentDay <= 30 ? c.paymentDay : null,
   });
 
@@ -113,7 +122,7 @@ export async function getCollectionOutlook(): Promise<CollectionOutlook> {
     if (amount === 0) continue;
     const c = contactByFlam.get(r.customerCode);
     if (!c) unlinked.add(r.customerCode);
-    const pm = paymentMonth(r.month, c?.paymentMonthOffset);
+    const pm = payMonthOf(r.month, c?.paymentMonthOffset);
     const row = c
       ? rowFor(pm, c.id, contactBase(c))
       : rowFor(pm, `flam:${r.customerCode}`, () => ({
@@ -143,7 +152,7 @@ export async function getCollectionOutlook(): Promise<CollectionOutlook> {
     let sm = salesMonth(plan, c.closingDay);
     if (sm < thisMonth) sm = thisMonth; // 遅れている分は今月出す前提
     // FLAMに取り込み済みの過去月に入るものは、上の判定で当月に寄るので重ならない
-    const pm = paymentMonth(sm, c.paymentMonthOffset);
+    const pm = payMonthOf(sm, c.paymentMonthOffset);
     const row = rowFor(pm, c.id, contactBase(c));
     if (!row) continue;
     row.pending += amount;
