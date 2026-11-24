@@ -14,7 +14,7 @@ export default async function CashflowPage() {
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold">入金見込み</h2>
-      <CollectionOutlookView outlook={outlook} />
+      <CollectionOutlookView outlook={outlook} canImport={viewer.isAccounting} />
     </div>
   );
 }

@@ -773,3 +773,29 @@ model SalesTarget {
   amount    Int      @default(0)
   updatedAt DateTime @default(now()) @updatedAt
 }
+
+// FLAMの回収予定（売上 › 回収予定 のCSV）。請求先×伝票ごとの回収予定。回収月単位で入れ替える
+model FlamCollection {
+  month        String   // 回収年月 YYYY-MM
+  slipNo       String   // 伝票No
+  customerCode String   // 請求先コード（Contact.flamCode と同じ）
+  customerName String
+  dueDate      String   // 回収予定日 YYYY-MM-DD
+  amount       Int      @default(0) // 請求先回収予定額（税込）
+  received     Int      @default(0) // 請求先入金額
+  method       String?  // 回収方法
+  importedAt   DateTime @default(now())
+
+  @@id([month, slipNo, customerCode])
+  @@index([month])
+}
+
+// 回収予定CSVの月の見出し（前月までの未回収など、明細に出ない数字を控える）
+model FlamCollectionMonth {
+  month      String   @id // YYYY-MM
+  planned    Int      @default(0) // 当月回収予定額
+  carryover  Int      @default(0) // 前月までの回収予定額
+  total      Int      @default(0) // 回収予定額合計
+  received   Int      @default(0) // 当月入金額
+  importedAt DateTime @default(now())
+}

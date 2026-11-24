@@ -18,7 +18,7 @@ export interface FlamSaleRow {
 }
 
 // 引用符つきCSVを1行ずつ配列にする
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cur = "";
