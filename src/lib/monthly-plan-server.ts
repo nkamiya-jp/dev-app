@@ -7,6 +7,7 @@ import {
   CHANNEL_COST_KEY, MONTHLY_OVERRIDES_KEY, normalizeChannelCosts, requiredSales, sellingCostPerUnit, termMonths,
   type ChannelCost, type MonthOverride,
 } from "@/lib/monthly-plan";
+import { calcRatePrice } from "@/lib/pricing";
 
 export async function getChannelCosts(): Promise<Record<string, ChannelCost>> {
   const row = await prisma.appSetting.findUnique({ where: { key: CHANNEL_COST_KEY } });
@@ -58,7 +59,7 @@ export function contactUnitPrice(
 ): { price: number; source: "individual" | "auto" | "standard" | "none" } {
   if (override != null) return { price: override, source: "individual" };
   const rate = contact?.discountRate ?? getContactTypeMeta(contact?.type)?.defaultRate ?? null;
-  if (rate != null && product.retailPrice && product.retailPrice > 0) return { price: Math.round((product.retailPrice * rate) / 100), source: "auto" };
+  if (rate != null && product.retailPrice && product.retailPrice > 0) return { price: calcRatePrice(product.retailPrice, rate), source: "auto" };
   if (product.wholesalePrice != null) return { price: product.wholesalePrice, source: "standard" };
   return { price: 0, source: "none" };
 }

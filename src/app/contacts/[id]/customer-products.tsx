@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X, Package } from "lucide-react";
 import { compareProductOrder } from "@/lib/product-meta";
+import { calcRatePrice } from "@/lib/pricing";
 
 interface Product {
   id: string;
@@ -137,7 +138,7 @@ export function CustomerProductsCard({
               <tbody className="divide-y">
                 {handled.map((p) => {
                   const e = entries[p.id];
-                  const auto = rate != null && p.retailPrice ? Math.round((p.retailPrice * rate) / 100) : 0;
+                  const auto = rate != null && p.retailPrice ? calcRatePrice(p.retailPrice, rate) : 0;
                   const override = e?.price ?? null;
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">

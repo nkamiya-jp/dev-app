@@ -60,10 +60,19 @@ export interface ChannelPrice {
   profitRate: number; // 粗利率 %（表示時に小数1桁）
 }
 
+// 取引タイプ別の販売価格 ＝ 上代 × 掛率 を 20円単位に切り上げる。
+// 価格表・商品詳細・顧客の取扱商品・受注の自動単価など、掛率から出す販売価格はすべてここを通す。
+export const SALE_PRICE_UNIT = 20;
+export function calcRatePrice(retail: number, ratePct: number): number {
+  if (!(retail > 0) || !(ratePct > 0)) return 0;
+  const raw = Math.round(retail * ratePct) / 100; // 0.01円単位に揃えて浮動小数の誤差を消す
+  return Math.ceil(raw / SALE_PRICE_UNIT - 1e-9) * SALE_PRICE_UNIT;
+}
+
 // 粗利 = 販売価格 −（販売価格×手数料率）− 1個あたり固定費 − 原価
 // 金額はすべて円単位に丸めてから計算する（表示と合計が食い違わないように）
 export function calcChannelPrice(retail: number, ratePct: number, cost: number, fee: ChannelFee): ChannelPrice {
-  const price = Math.round((retail * ratePct) / 100);
+  const price = calcRatePrice(retail, ratePct);
   const feeYen = Math.round((price * fee.feeRate) / 100);
   const fixedCost = Math.round(fee.fixedCost);
   const profit = price - feeYen - fixedCost - Math.round(cost);

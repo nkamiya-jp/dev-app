@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { calcCostBreakdown } from "@/lib/product-cost";
 import { getAllMatrixRows } from "@/lib/contact-meta";
 import { compareProductOrder } from "@/lib/product-meta";
+import { calcRatePrice } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,7 @@ export async function GET() {
     }> = {};
     for (const r of matrixRows) {
       const key = `${r.typeId}_${r.ratePct}`;
-      const price = retail > 0 ? Math.round(retail * r.ratePct / 100) : 0;
+      const price = retail > 0 ? calcRatePrice(retail, r.ratePct) : 0;
       const profit = price - cost;
       const profitRate = price > 0 ? (profit / price) * 100 : 0;
       const costRatio = price > 0 ? (cost / price) * 100 : 0;

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Camera, Archive, Download, Printer, ChevronUp, ChevronDown, LayoutGrid, User, X } from "lucide-react";
 import { getContactTypeMeta, getContactTypeLabel, getContactTypeColor, getDefaultRate } from "@/lib/contact-meta";
+import { calcRatePrice } from "@/lib/pricing";
 
 interface MatrixRow {
   typeId: string;
@@ -257,7 +258,7 @@ export default function PriceListPage() {
       rows = visibleItems
         .filter((it) => it.productId in custPrices)
         .map((it) => {
-          const auto = Math.round(it.retailPrice * contactRate / 100);
+          const auto = calcRatePrice(it.retailPrice, contactRate);
           const override = custPrices[it.productId]?.price ?? null;
           const wholesale = override ?? auto;
           const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
@@ -724,14 +725,14 @@ function CustomerPriceTable({
               </thead>
               <tbody className="divide-y">
                 {handled.map((it, idx) => {
-                  const auto = it.retailPrice > 0 ? Math.round(it.retailPrice * contactRate / 100) : 0;
+                  const auto = it.retailPrice > 0 ? calcRatePrice(it.retailPrice, contactRate) : 0;
                   const override = custPrices[it.productId]?.price ?? null;
                   const wholesale = override ?? auto;
                   const profit = wholesale - it.cost;
                   const crWholesale = wholesale > 0 ? (it.cost / wholesale) * 100 : 0;
                   // 顧客カテゴリー（タイプ）の標準掛率での基本価格
                   const typeBaseRate = getDefaultRate(selectedContact.type);
-                  const basePrice = it.retailPrice > 0 && typeBaseRate != null ? Math.round(it.retailPrice * typeBaseRate / 100) : 0;
+                  const basePrice = it.retailPrice > 0 && typeBaseRate != null ? calcRatePrice(it.retailPrice, typeBaseRate) : 0;
                   return (
                     <tr key={it.productId} className="hover:bg-gray-50">
                       <td className="px-1 py-1 print:hidden">

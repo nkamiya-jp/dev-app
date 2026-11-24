@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { getContactTypeMeta } from "@/lib/contact-meta";
+import { calcRatePrice } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
       price = ov.price;
       source = "individual";
     } else if (rate != null && p.retailPrice && p.retailPrice > 0) {
-      price = Math.round((p.retailPrice * rate) / 100);
+      price = calcRatePrice(p.retailPrice, rate);
       source = "auto";
     } else if (p.wholesalePrice != null) {
       price = p.wholesalePrice;

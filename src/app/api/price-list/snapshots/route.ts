@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { calcCostBreakdown } from "@/lib/product-cost";
 import { getAllMatrixRows, getContactTypeMeta } from "@/lib/contact-meta";
 import { NextRequest } from "next/server";
+import { calcRatePrice } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
       if (!p) continue; // 非アクティブ/削除済みはスキップ
       const cost = costOf(p);
       const retail = p.retailPrice ?? 0;
-      const auto = retail > 0 ? Math.round((retail * rate) / 100) : 0;
+      const auto = retail > 0 ? calcRatePrice(retail, rate) : 0;
       const override = cp.price ?? null;
       const wholesale = override ?? auto;
       await prisma.priceListItem.create({
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
     const prices: Record<string, number> = {};
     for (const r of matrixRows) {
       const key = `${r.typeId}_${r.ratePct}`;
-      prices[key] = retail > 0 ? Math.round((retail * r.ratePct) / 100) : 0;
+      prices[key] = retail > 0 ? calcRatePrice(retail, r.ratePct) : 0;
     }
     await prisma.priceListItem.create({
       data: {

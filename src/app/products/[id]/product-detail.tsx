@@ -613,7 +613,7 @@ export function ProductDetail({ productId }: { productId: string }) {
 
           {matrixRows.length > 0 ? (
             <div className="mt-4">
-              <p className="text-sm text-gray-500 mb-2">取引タイプ別の販売価格と粗利（税抜）</p>
+              <p className="text-sm text-gray-500 mb-2">取引タイプ別の販売価格と粗利（税抜・販売価格は20円単位に切り上げ）</p>
               <div className="overflow-x-auto">
               <table className="w-full text-sm border">
                 <thead className="bg-gray-50 border-b">
@@ -644,6 +644,9 @@ export function ProductDetail({ productId }: { productId: string }) {
                       <td className="px-3 py-2 text-center font-medium border-r">{row.ratePct}%</td>
                       <td className="px-3 py-2 text-right text-[11px] font-mono text-gray-500 border-r">
                         {retail.toLocaleString()} × {row.ratePct}%
+                        {retail > 0 && Math.round(retail * row.ratePct) / 100 !== row.price && (
+                          <span className="block text-[10px] text-gray-400">= {(Math.round(retail * row.ratePct) / 100).toLocaleString()} → {row.price.toLocaleString()}</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right font-bold border-r">{row.price.toLocaleString()}円</td>
                       <td className="px-3 py-2 text-right text-xs text-gray-600 border-r">
