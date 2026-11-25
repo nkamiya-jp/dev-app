@@ -5,9 +5,16 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   const data = await request.json();
+  // 新しい明細は末尾に付ける
+  const last = await prisma.orderItem.findFirst({
+    where: { orderId: data.orderId },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
   const item = await prisma.orderItem.create({
     data: {
       orderId: data.orderId,
+      sortOrder: (last?.sortOrder ?? -1) + 1,
       productId: data.productId,
       quantity: Number(data.quantity),
       unitPrice: data.unitPrice ?? null,

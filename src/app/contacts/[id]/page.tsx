@@ -255,11 +255,14 @@ export default async function ContactDetailPage({
 
       <OemProductsCard contactId={contact.id} />
 
-      <CustomerProductsCard
-        contactId={contact.id}
-        rate={contact.discountRate ?? getContactTypeMeta(contact.type)?.defaultRate ?? null}
-        contactType={contact.type}
-      />
+      {/* 受注画面の「取扱商品を追加」リンクの飛び先 */}
+      <div id="customer-products" className="scroll-mt-4">
+        <CustomerProductsCard
+          contactId={contact.id}
+          rate={contact.discountRate ?? getContactTypeMeta(contact.type)?.defaultRate ?? null}
+          contactType={contact.type}
+        />
+      </div>
     </div>
   );
 }

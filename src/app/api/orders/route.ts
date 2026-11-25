@@ -21,9 +21,10 @@ export async function GET(request: NextRequest) {
   const orders = await prisma.order.findMany({
     where,
     include: {
-      contact: { select: { id: true, name: true, company: true, type: true, dailyOrder: true } },
+      contact: { select: { id: true, name: true, company: true, type: true, dailyOrder: true, closingDay: true } },
       development: { select: { id: true, title: true } },
       items: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         include: {
           product: {
             select: {
@@ -50,7 +51,8 @@ export async function POST(request: NextRequest) {
       note: data.note || null,
       developmentId: data.developmentId || null,
       items: {
-        create: (data.items || []).map((it: OrderItemInput) => ({
+        create: (data.items || []).map((it: OrderItemInput, i: number) => ({
+          sortOrder: i,
           productId: it.productId,
           quantity: Number(it.quantity),
           unitPrice: it.unitPrice ?? null,

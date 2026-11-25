@@ -402,6 +402,7 @@ model OrderItem {
   weeklyPlans   String?  // JSON: 週別配分
   shippedQty    Int      @default(0)
   unitPrice     Int?     // 単価（注文時の価格、Productからコピー）
+  sortOrder     Int      @default(0) // 受注内の明細の並び順（小さい順。同じなら作成順）
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
