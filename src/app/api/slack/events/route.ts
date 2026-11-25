@@ -8,6 +8,7 @@ import {
   matchDailyOrderContact,
   verifySlackSignature,
 } from "@/lib/slack";
+import { SLACK_ORDER_IMPORT_ENABLED } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -31,6 +32,8 @@ const isThreadReply = (m: SlackMessage) => !!m.thread_ts && m.thread_ts !== m.ts
 // POST /api/slack/events — Slack Events API の受け口（#受注 の投稿を確認待ちの下書きとして保存）
 // Slack には3秒以内に応答する必要があるため、保存だけ済ませて応答し、リアクション等は after() で行う。
 export async function POST(request: NextRequest) {
+  // 停止中は何も保存せず 200 を返す（Slack に再送させない）
+  if (!SLACK_ORDER_IMPORT_ENABLED) return new Response("disabled", { status: 200 });
   const rawBody = await request.text();
   let payload: { type?: string; challenge?: string; event?: SlackMessage };
   try {
