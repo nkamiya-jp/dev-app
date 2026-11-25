@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { compareByRank } from "@/lib/contact-order";
+import { getContactRanks } from "@/lib/contact-order-server";
 import { salesMonth, paymentMonth } from "@/lib/sales-month";
 import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
 
@@ -92,9 +94,11 @@ export async function GET() {
     return t;
   }
 
-  const salesCustomers = [...salesByCustomer.values()].sort((a, b) => b.total - a.total);
+  // 顧客は全画面共通の基本の並び順（タイプ順→タイプ内は顧客ページで決めた順）。金額順は画面側で切り替える
+  const ranks = await getContactRanks();
+  const salesCustomers = [...salesByCustomer.values()].sort((a, b) => compareByRank(ranks, a.id, b.id));
   const salesProducts = [...salesByProduct.values()].sort((a, b) => b.total - a.total);
-  const payCustomers = [...payByCustomer.values()].sort((a, b) => b.total - a.total);
+  const payCustomers = [...payByCustomer.values()].sort((a, b) => compareByRank(ranks, a.id, b.id));
   const payProducts = [...payByProduct.values()].sort((a, b) => b.total - a.total);
 
   return Response.json({

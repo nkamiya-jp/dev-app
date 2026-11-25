@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { getWeeksOfMonth } from "@/lib/week-utils";
+import { getContactRanks } from "@/lib/contact-order-server";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,15 @@ export async function GET(request: NextRequest) {
     })
     .filter(Boolean);
 
-  return Response.json({ month, weeks, items: rows });
+  // 顧客の基本の並び順（顧客の絞り込み・顧客別集計の並びに使う）
+  const ranks = await getContactRanks();
+  const contactRanks: Record<string, number> = {};
+  for (const r of rows) {
+    const id = r?.contactId;
+    if (id && ranks.has(id)) contactRanks[id] = ranks.get(id)!;
+  }
+
+  return Response.json({ month, weeks, items: rows, contactRanks });
 }
 
 // PATCH: 週別計画を更新

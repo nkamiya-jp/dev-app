@@ -1,5 +1,7 @@
 // 月の収支計画（サーバー側専用）
 import { prisma } from "@/lib/db";
+import { compareByRank } from "@/lib/contact-order";
+import { getContactRanks } from "@/lib/contact-order-server";
 import { CONTACT_TYPES, getContactTypeLabel, resolveRate } from "@/lib/contact-meta";
 import { breakdownOf, loadProductWithCost } from "@/lib/product-server";
 import { roundSellPrice } from "@/lib/pricing";
@@ -154,10 +156,11 @@ export async function buildMonthlyPlan(monthArg: string | null) {
     contactIds.add(c);
     productIds.add(p);
   }
-  const [products, contacts, overridesPrice] = await Promise.all([
+  const [products, contacts, overridesPrice, contactRanks] = await Promise.all([
     loadProducts([...productIds]),
     prisma.contact.findMany({ where: { id: { in: [...contactIds] } }, select: { id: true, name: true, company: true, type: true, discountRate: true } }),
     prisma.customerPrice.findMany({ where: { contactId: { in: [...contactIds] }, productId: { in: [...productIds] } }, select: { contactId: true, productId: true, price: true } }),
+    getContactRanks(),
   ]);
   const contactById = new Map(contacts.map((c) => [c.id, c]));
   const priceOv = new Map(overridesPrice.map((o) => [`${o.contactId}|${o.productId}`, o.price]));
@@ -251,7 +254,7 @@ export async function buildMonthlyPlan(monthArg: string | null) {
     const i = CONTACT_TYPES.findIndex((t) => t.id === ch);
     return i < 0 ? 999 : i;
   };
-  lines.sort((a, b) => chOrder(a.channel) - chOrder(b.channel) || a.contactLabel.localeCompare(b.contactLabel, "ja") || a.productName.localeCompare(b.productName, "ja"));
+  lines.sort((a, b) => chOrder(a.channel) - chOrder(b.channel) || compareByRank(contactRanks, a.contactId, b.contactId) || a.productName.localeCompare(b.productName, "ja"));
 
   // カテゴリ：見込み・攻めの予算・攻めで割り当て済み
   const channels = [...CONTACT_TYPES.map((t) => ({ id: t.id, label: t.label, ratePct: t.defaultRate })), { id: "", label: "未分類", ratePct: null }].map((t) => {

@@ -59,7 +59,7 @@ export default function MonthlyPlanPage() {
   useEffect(() => {
     load(null);
     fetch("/api/contacts").then((r) => (r.ok ? r.json() : [])).then((cs: ContactOpt[]) =>
-      setContacts([...cs].sort((a, b) => (a.company || a.name).localeCompare(b.company || b.name, "ja")))
+      setContacts(cs) // APIが基本の並び順（タイプ順→タイプ内は顧客ページで決めた順）で返す
     );
     fetch("/api/products").then((r) => (r.ok ? r.json() : [])).then((ps: ProductOpt[]) => setProducts(ps.filter((p) => p.active).sort(compareProductOrder)));
   }, [load]);
