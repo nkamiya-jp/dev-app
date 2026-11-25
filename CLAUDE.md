@@ -1,8 +1,8 @@
 @AGENTS.md
 
-# 別注開発管理（dev-app）作業ガイド
+# HUB（社内システム・リポジトリ名 dev-app）作業ガイド
 
-本番: https://dev.kamiya-craft.com ／ リポジトリ: nkamiya-jp/dev-app（main）
+本番: https://hub.kamiya-craft.com ／ リポジトリ: nkamiya-jp/dev-app（main）
 スタック: Next.js（改造版。AGENTS.md参照）＋ Prisma 7 + libsql ＋ Turso ＋ Vercel
 
 ## 最重要：DBは常に本番
@@ -12,7 +12,7 @@
 
 ## デプロイ
 - `git push origin main` → Vercel が自動デプロイ。
-- 反映確認: `curl -s https://dev.kamiya-craft.com/api/version` のビルドIDが最新コミットSHAと一致するか。
+- 反映確認: `curl -s https://hub.kamiya-craft.com/api/version` のビルドIDが最新コミットSHAと一致するか。
 - DB（スキーマ・データ）の変更はデプロイ不要で即時反映される。
 
 ## スキーマ変更

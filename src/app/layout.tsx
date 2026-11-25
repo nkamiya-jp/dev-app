@@ -11,18 +11,19 @@ const notoSansJP = Noto_Sans_JP({
 });
 
 export const metadata: Metadata = {
-  title: "DEV - 別注開発管理",
-  description: "別注開発管理 - 案件・タスク・ガントチャート",
+  title: "HUB",
+  description: "HUB - 神谷商会 社内システム",
+  applicationName: "HUB",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "DEV",
+    title: "HUB",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2563eb",
+  themeColor: "#18181b",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

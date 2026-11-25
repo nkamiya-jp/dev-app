@@ -10,7 +10,6 @@ import {
   CheckSquare,
   FileText,
   Menu,
-  Briefcase,
   UserCircle,
   GanttChart,
   Target,
@@ -44,6 +43,7 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { HubLogo } from "@/components/hub-logo";
 import { cn } from "@/lib/utils";
 
 // need: そのメニューを出す条件（サーバー側でも同じ判定で止めている）
@@ -207,14 +207,10 @@ function NavContent({ pathname }: { pathname: string }) {
 
 function SidebarLogo() {
   return (
-    <div className="flex items-center gap-3 px-6 py-5">
-      <div className="flex size-9 items-center justify-center rounded-lg bg-white/10">
-        <Briefcase className="size-5 text-white" />
-      </div>
-      <div>
-        <h1 className="text-base font-bold text-white leading-tight">DEV</h1>
-        <p className="text-xs text-zinc-400">別注開発管理</p>
-      </div>
+    <div className="px-6 py-5">
+      <Link href="/dashboard" aria-label="HUB ホーム">
+        <HubLogo />
+      </Link>
     </div>
   );
 }
@@ -262,10 +258,7 @@ export function Sidebar() {
             </div>
           </SheetContent>
         </Sheet>
-        <div className="flex items-center gap-2">
-          <Briefcase className="size-5 text-white" />
-          <span className="text-sm font-bold text-white">DEV</span>
-        </div>
+        <HubLogo size="sm" />
       </div>
     </>
   );

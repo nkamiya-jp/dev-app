@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { HubMark } from "@/components/hub-logo";
 
 const ERROR_MESSAGES: Record<string, string> = {
   not_configured: "Googleログインが未設定です。管理者に連絡してください。",
@@ -49,15 +50,15 @@ function LoginForm() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950 bg-[radial-gradient(ellipse_at_top,rgba(56,189,248,0.18),transparent_60%)]">
       <div className="w-full max-w-sm mx-4">
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-zinc-900 rounded-2xl mb-4">
-              <span className="text-white text-2xl font-bold">DEV</span>
+            <div className="inline-flex items-center justify-center size-16 rounded-2xl mb-4 bg-gradient-to-br from-zinc-700 to-zinc-950 text-white shadow-lg shadow-zinc-900/30">
+              <HubMark className="size-11" />
             </div>
-            <h1 className="text-xl font-bold text-zinc-900">別注開発管理</h1>
-            <p className="text-sm text-zinc-500 mt-1">会社のGoogleアカウントでログイン</p>
+            <h1 className="text-3xl font-black tracking-[0.28em] pl-[0.28em] text-zinc-900">HUB</h1>
+            <p className="text-sm text-zinc-500 mt-2">会社のGoogleアカウントでログイン</p>
           </div>
 
           {(error || urlError) && (

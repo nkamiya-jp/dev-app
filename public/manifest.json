@@ -1,11 +1,11 @@
 {
-  "name": "DEV - 別注開発管理",
-  "short_name": "DEV",
-  "description": "別注開発管理 - 案件・タスク・ガントチャート",
+  "name": "HUB",
+  "short_name": "HUB",
+  "description": "HUB - 神谷商会 社内システム",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "theme_color": "#18181b",
   "orientation": "any",
   "icons": [
     {
