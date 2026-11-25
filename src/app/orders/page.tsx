@@ -562,7 +562,7 @@ export default function OrdersPage() {
                 >
                   {contacts.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}{c.company ? ` (${c.company})` : ""}
+                      {c.company || c.name}
                     </option>
                   ))}
                 </select>
@@ -854,7 +854,7 @@ function NewOrderForm({
           <option value="">選択してください</option>
           {contacts.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}{c.company ? ` (${c.company})` : ""}
+              {c.company || c.name}
             </option>
           ))}
         </select>
