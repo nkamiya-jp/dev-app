@@ -15,6 +15,8 @@ import {
 import { ContactFormDialog } from "@/components/contact-form-dialog";
 import { SansanImportDialog } from "@/components/sansan-import-dialog";
 import { CONTACT_TYPES, getContactTypeLabel, getContactTypeColor } from "@/lib/contact-meta";
+import { contactTypeRank } from "@/lib/contact-order";
+import { ArrowUp, ArrowDown, GripVertical } from "lucide-react";
 import { ContactEditButton } from "./[id]/contact-edit";
 
 interface Contact {
@@ -38,13 +40,11 @@ interface Contact {
 }
 
 // 並べ替えできる列。常にタイプ順が先で、その中をこの列で並べる。
-// 既定（sortKey なし）はタイプ内を更新が新しい順（APIの並び）
+// 既定（sortKey なし）はタイプ内を「並び順を変える」で決めた順（APIの並び＝全画面共通の基本の並び順）
 type SortKey = "company" | "name" | "discountRate" | "deals" | "tasks";
-const TYPE_RANK = new Map<string, number>(CONTACT_TYPES.map((t, i) => [t.id, i]));
 
-// タイプの並び順（設定順）。未設定は最後
 function typeRank(c: Contact): number {
-  return c.type ? TYPE_RANK.get(c.type) ?? CONTACT_TYPES.length : CONTACT_TYPES.length + 1;
+  return contactTypeRank(c.type);
 }
 
 function sortValue(c: Contact, key: SortKey): string | number | null {
@@ -73,9 +73,75 @@ export default function ContactsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   // タイプ（第1キー）の向き。見出しを押すと逆順になる
   const [typeDir, setTypeDir] = useState<"asc" | "desc">("asc");
+  // タイプ内の並び順を手で入れ替えるモード
+  const [reorder, setReorder] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropId, setDropId] = useState<string | null>(null);
+
+  const startReorder = () => {
+    // 並び順は全件で決めるので、検索と列の並べ替えは外す
+    setSortKey(null);
+    setSearch("");
+    setReorder(true);
+  };
+
+  // 同じタイプの顧客（いまの並び）
+  const groupOf = (type: string | null) => contacts.filter((c) => (c.type ?? "") === (type ?? ""));
+
+  // タイプ内の新しい並び（ids）を画面に反映して保存する。失敗したら元に戻す
+  const applyGroupOrder = async (type: string | null, ids: string[]) => {
+    const prev = contacts;
+    const byId = new Map(contacts.map((c) => [c.id, c]));
+    let k = 0;
+    const next = contacts.map((c) => ((c.type ?? "") === (type ?? "") ? byId.get(ids[k++])! : c));
+    setContacts(next);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/contacts/order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || `保存できませんでした（${res.status}）`);
+      }
+    } catch (e) {
+      setContacts(prev);
+      alert(`並び順を保存できませんでした：${e instanceof Error ? e.message : e}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ひとつ上／下と入れ替える
+  const moveBy = (c: Contact, delta: -1 | 1) => {
+    const ids = groupOf(c.type).map((x) => x.id);
+    const i = ids.indexOf(c.id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    applyGroupOrder(c.type, ids);
+  };
+
+  // ドラッグした顧客を、落とした顧客の位置へ（同じタイプの中だけ）
+  const dropOn = (target: Contact) => {
+    const src = contacts.find((x) => x.id === dragId);
+    setDragId(null);
+    setDropId(null);
+    if (!src || src.id === target.id || (src.type ?? "") !== (target.type ?? "")) return;
+    const ids = groupOf(src.type).map((x) => x.id);
+    const from = ids.indexOf(src.id);
+    const to = ids.indexOf(target.id);
+    ids.splice(from, 1);
+    ids.splice(to, 0, src.id);
+    applyGroupOrder(src.type, ids);
+  };
 
   // 見出しを押すたびに 昇順 → 降順 → 解除（更新順）と切り替える
   const toggleSort = (key: SortKey) => {
+    setReorder(false); // 列で並べ替えたら並べ替えモードは終わる
     if (sortKey !== key) {
       setSortKey(key);
       // 数字の列は大きい順から始めるほうが使いやすい
@@ -149,6 +215,7 @@ export default function ContactsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
+          disabled={reorder}
         />
         <select
           value={typeFilter}
@@ -161,14 +228,38 @@ export default function ContactsPage() {
           ))}
         </select>
         <span className="text-sm text-gray-500">
-          {filtered.length}件（タイプ順{sortKey ? "" : "・タイプ内は更新が新しい順"}）
+          {filtered.length}件（タイプ順{sortKey ? "" : "・タイプ内は決めた並び順"}）
         </span>
+        {reorder ? (
+          <button
+            type="button"
+            onClick={() => setReorder(false)}
+            className="ml-auto rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            {saving ? "保存中..." : "並べ替えを終わる"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={startReorder}
+            className="ml-auto rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+            title="タイプの中で顧客の順番を入れ替えます。この順が受注・価格表・売上など他の画面の並びにもなります"
+          >
+            並び順を変える
+          </button>
+        )}
       </div>
+      {reorder && (
+        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-md px-3 py-2">
+          ↑↓で1つずつ、または左のつまみをドラッグして、同じタイプの中で順番を入れ替えます。入れ替えるとすぐ保存され、受注の顧客選択・価格表・売上（着金予定）・出荷計画・月の収支計画などもこの順で並びます。
+        </p>
+      )}
 
       <div className="bg-white shadow-sm border rounded-lg overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>
+            {reorder && <TableHead className="w-20">順番</TableHead>}
             <TableHead aria-sort={typeDir === "asc" ? "ascending" : "descending"}>
               <button
                 type="button"
@@ -194,13 +285,61 @@ export default function ContactsPage() {
         <TableBody>
           {filtered.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={10} className="text-center text-gray-500 py-8">
+              <TableCell colSpan={reorder ? 11 : 10} className="text-center text-gray-500 py-8">
                 顧客がいません
               </TableCell>
             </TableRow>
           ) : (
-            filtered.map((c) => (
-              <TableRow key={c.id}>
+            filtered.map((c, idx) => {
+              const prev = filtered[idx - 1];
+              const next = filtered[idx + 1];
+              const canUp = !!prev && (prev.type ?? "") === (c.type ?? "");
+              const canDown = !!next && (next.type ?? "") === (c.type ?? "");
+              const dragging = contacts.find((x) => x.id === dragId);
+              const sameGroupDrag = !!dragging && (dragging.type ?? "") === (c.type ?? "");
+              return (
+              <TableRow
+                key={c.id}
+                className={
+                  reorder && dropId === c.id && dragId !== c.id
+                    // 下から持ってきたら上側、上から持ってきたら下側に入る
+                    ? filtered.findIndex((x) => x.id === dragId) > idx ? "border-t-2 border-t-blue-500" : "border-b-2 border-b-blue-500"
+                    : dragId === c.id ? "opacity-50" : ""
+                }
+                onDragOver={reorder ? (e) => { if (sameGroupDrag) { e.preventDefault(); setDropId(c.id); } } : undefined}
+                onDrop={reorder ? (e) => { e.preventDefault(); dropOn(c); } : undefined}
+              >
+                {reorder && (
+                  <TableCell className="whitespace-nowrap">
+                    <span
+                      draggable
+                      onDragStart={(e) => { setDragId(c.id); e.dataTransfer.effectAllowed = "move"; }}
+                      onDragEnd={() => { setDragId(null); setDropId(null); }}
+                      className="inline-flex cursor-grab text-gray-400 hover:text-gray-700 align-middle"
+                      title="ドラッグして移動"
+                    >
+                      <GripVertical className="size-4" />
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => moveBy(c, -1)}
+                      disabled={!canUp || saving}
+                      className="ml-1 rounded p-1 align-middle hover:bg-gray-100 disabled:opacity-25"
+                      title="1つ上へ"
+                    >
+                      <ArrowUp className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveBy(c, 1)}
+                      disabled={!canDown || saving}
+                      className="rounded p-1 align-middle hover:bg-gray-100 disabled:opacity-25"
+                      title="1つ下へ"
+                    >
+                      <ArrowDown className="size-4" />
+                    </button>
+                  </TableCell>
+                )}
                 <TableCell>
                   {c.type ? (
                     <Badge className={getContactTypeColor(c.type)}>
@@ -259,7 +398,8 @@ export default function ContactsPage() {
                   />
                 </TableCell>
               </TableRow>
-            ))
+              );
+            })
           )}
         </TableBody>
       </Table>

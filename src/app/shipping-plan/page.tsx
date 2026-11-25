@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, Search, Users, Package } from "lucide-react";
 import { getContactTypeColor, getContactTypeLabel, CONTACT_TYPES } from "@/lib/contact-meta";
+import { compareByRank } from "@/lib/contact-order";
 import { PRODUCT_SERIES, getSeriesLabel, getSeriesColor, compareProductOrder } from "@/lib/product-meta";
 
 interface Week {
@@ -41,6 +42,7 @@ interface ApiResponse {
   month: string;
   weeks: Week[];
   items: Row[];
+  contactRanks?: Record<string, number>;
 }
 
 function currentMonth(): string {
@@ -117,7 +119,8 @@ export default function ShippingPlanPage() {
         map.set(it.contactId, { id: it.contactId, name: it.contactName, company: it.company });
       }
     }
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    // 顧客の基本の並び順（顧客ページで決めた順）
+    return [...map.values()].sort((a, b) => compareByRank(data.contactRanks ?? {}, a.id, b.id));
   }, [data]);
 
   const filtered = useMemo(() => {
@@ -442,7 +445,8 @@ function CustomerView({ data, rows, month }: { data: ApiResponse | null; rows: R
         agg.weeklyPlans[w.monday] += it.weeklyPlans[w.monday] || 0;
       }
     }
-    return [...map.values()].sort((a, b) => b.monthlyPlan - a.monthlyPlan);
+    // 顧客の基本の並び順（顧客ページで決めた順）
+    return [...map.values()].sort((a, b) => compareByRank(data.contactRanks ?? {}, a.contactId, b.contactId));
   }, [data, rows]);
 
   if (!data) return null;

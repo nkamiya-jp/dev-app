@@ -38,6 +38,8 @@ export default function SalesPage() {
   const [axis, setAxis] = useState<Axis>("customer");
   const [basis, setBasis] = useState<Basis>("sales");
   const [monthCount, setMonthCount] = useState(12);
+  // 顧客軸の並び：基本の並び順（顧客ページで決めた順）か、合計の大きい順
+  const [byTotal, setByTotal] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/sales");
@@ -50,7 +52,9 @@ export default function SalesPage() {
 
   const ds = basis === "sales" ? data.sales : data.payment;
   const months = ds.months.slice(0, monthCount);
-  const rows = axis === "customer" ? ds.customers : ds.products;
+  const rows = axis === "customer"
+    ? (byTotal ? [...ds.customers].sort((a, b) => b.total - a.total) : ds.customers)
+    : ds.products;
   const isCustomer = axis === "customer";
   const isPayment = basis === "payment";
 
@@ -115,6 +119,17 @@ export default function SalesPage() {
               <Package className="size-4" /> 商品軸
             </button>
           </div>
+          {isCustomer && (
+            <select
+              value={byTotal ? "total" : "base"}
+              onChange={(e) => setByTotal(e.target.value === "total")}
+              className="border rounded-md px-3 py-2 text-sm"
+              title="顧客の並び"
+            >
+              <option value="base">基本の並び順</option>
+              <option value="total">合計の大きい順</option>
+            </select>
+          )}
           <select
             value={monthCount}
             onChange={(e) => setMonthCount(Number(e.target.value))}

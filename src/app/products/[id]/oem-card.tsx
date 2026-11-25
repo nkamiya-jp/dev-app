@@ -358,7 +358,7 @@ export function OemOwnerPicker({
     fetch("/api/contacts")
       .then((r) => (r.ok ? r.json() : []))
       .then((cs: { id: string; name: string; company: string | null }[]) =>
-        setContacts([...cs].sort((a, b) => (a.company || a.name).localeCompare(b.company || b.name, "ja")))
+        setContacts(cs) // APIが基本の並び順で返す
       );
   }, [open, contacts.length]);
 
