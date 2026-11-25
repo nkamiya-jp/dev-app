@@ -15,8 +15,10 @@ import {
 import { ORDER_STATUSES, ORDER_STATUS_BG, getOrderStatusLabel, getOrderStatusColor } from "@/lib/order-status";
 import { getContactTypeColor, getContactTypeLabel } from "@/lib/contact-meta";
 import Link from "next/link";
-import { Plus, ChevronDown, ChevronRight, Search, Trash2, Pencil, Copy } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, ChevronUp, Search, Trash2, Pencil, Copy } from "lucide-react";
 import { Celebration } from "@/components/celebration";
+import { compareProductOrder } from "@/lib/product-meta";
+import { salesMonth, formatMonthLabel } from "@/lib/sales-month";
 
 interface OrderItem {
   id: string;
@@ -31,7 +33,7 @@ interface OrderItem {
 interface Order {
   id: string;
   contactId: string;
-  contact: { id: string; name: string; company: string | null; type: string | null };
+  contact: { id: string; name: string; company: string | null; type: string | null; closingDay?: number | null };
   orderDate: string;
   dueDate: string | null;
   status: string;
@@ -56,6 +58,8 @@ interface Product {
   name: string;
   series: string | null;
   wholesalePrice: number | null;
+  sortOrder?: number | null;
+  active?: boolean;
   ownerContactId: string | null; // OEM商品の依頼主（その顧客の注文にだけ出す）
 }
 
@@ -124,23 +128,6 @@ export default function OrdersPage() {
     setExpanded(next);
   }
 
-  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contactId: form.get("contactId"),
-        orderDate: form.get("orderDate") || new Date().toISOString().split("T")[0],
-        dueDate: form.get("dueDate") || null,
-        note: form.get("note") || null,
-      }),
-    });
-    setCreateOpen(false);
-    load();
-  }
-
   async function addItem(orderId: string, productId: string, quantity: number, unitPrice: number | null) {
     await fetch("/api/orders/items", {
       method: "POST",
@@ -157,6 +144,24 @@ export default function OrdersPage() {
       body: JSON.stringify({ id: itemId }),
     });
     load();
+  }
+
+  // 明細の並べ替え：画面を先に入れ替えてから保存（失敗したら読み直して元に戻す）
+  async function moveItem(order: Order, index: number, dir: -1 | 1) {
+    const j = index + dir;
+    if (j < 0 || j >= order.items.length) return;
+    const items = [...order.items];
+    [items[index], items[j]] = [items[j], items[index]];
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, items } : o)));
+    const res = await fetch("/api/orders/items/reorder", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, ids: items.map((it) => it.id) }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      alert("並び順の保存に失敗しました");
+      load();
+    }
   }
 
   async function updateItem(itemId: string, patch: { quantity?: number; unitPrice?: number | null }) {
@@ -269,6 +274,17 @@ export default function OrdersPage() {
     return order.items.reduce((sum, it) => sum + (it.unitPrice || 0) * it.quantity, 0);
   }
 
+  // 納品月ごとに分ける。納品日（納期、未入力なら注文日）を顧客の締め日で月に振り分ける
+  // 例：20日締めの顧客なら 21日以降の納品は翌月扱い（売上集計の salesMonth と同じ計算）
+  const monthGroups: { ym: string; orders: Order[] }[] = [];
+  for (const o of filtered) {
+    const ym = salesMonth(o.dueDate || o.orderDate, o.contact.closingDay);
+    let g = monthGroups.find((x) => x.ym === ym);
+    if (!g) monthGroups.push((g = { ym, orders: [] }));
+    g.orders.push(o);
+  }
+  monthGroups.sort((a, b) => b.ym.localeCompare(a.ym));
+
   function shipProgress(order: Order) {
     const totalQ = order.items.reduce((s, it) => s + it.quantity, 0);
     const shippedQ = order.items.reduce((s, it) => s + it.shippedQty, 0);
@@ -299,42 +315,23 @@ export default function OrdersPage() {
               <option key={s.id} value={s.id}>{s.label}</option>
             ))}
           </select>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          {/* 入力途中で外側をクリックしても閉じない（×ボタンで閉じる） */}
+          <Dialog open={createOpen} onOpenChange={setCreateOpen} disablePointerDismissal>
             <DialogTrigger className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
               <Plus className="size-4 mr-1" /> 受注を追加
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>新しい受注</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-3">
-                <div>
-                  <label className="text-xs text-gray-500">顧客 *</label>
-                  <select name="contactId" required className="w-full border rounded-md px-3 py-2 text-sm">
-                    <option value="">選択してください</option>
-                    {contacts.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}{c.company ? ` (${c.company})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-gray-500">注文日 *</label>
-                    <Input name="orderDate" type="date" defaultValue={new Date().toISOString().split("T")[0]} required />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">納期</label>
-                    <Input name="dueDate" type="date" />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">備考</label>
-                  <textarea name="note" rows={2} className="w-full border rounded-md px-3 py-2 text-sm resize-y" />
-                </div>
-                <Button type="submit" className="w-full">作成（明細は後から追加）</Button>
-              </form>
+              <NewOrderForm
+                contacts={contacts}
+                products={products}
+                onCreated={() => {
+                  setCreateOpen(false);
+                  load();
+                }}
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -349,8 +346,19 @@ export default function OrdersPage() {
         </Card>
       )}
 
+      {monthGroups.map((group) => (
+      <section key={group.ym} className="space-y-2">
+        <div className="flex items-baseline justify-between gap-2 border-b pb-1 mt-4">
+          <h2 className="text-sm font-bold text-gray-700">{formatMonthLabel(group.ym)}納品</h2>
+          <span className="text-xs text-gray-500">
+            {group.orders.length}件・合計{" "}
+            <span className="font-bold text-gray-800">
+              {group.orders.reduce((sum, o) => sum + totalAmount(o), 0).toLocaleString()}円
+            </span>
+          </span>
+        </div>
       <div className="space-y-2">
-        {filtered.map((order) => {
+        {group.orders.map((order) => {
           const isExpanded = expanded.has(order.id);
           const { total, shipped } = shipProgress(order);
           const progressPct = total > 0 ? (shipped / total) * 100 : 0;
@@ -464,6 +472,7 @@ export default function OrdersPage() {
                         <table className="w-full text-sm">
                           <thead className="bg-gray-50 border-b">
                             <tr>
+                              <th className="w-6"></th>
                               <th className="text-left px-3 py-2 font-medium text-gray-500">商品</th>
                               <th className="text-right px-3 py-2 font-medium text-gray-500">注文数</th>
                               <th className="text-right px-3 py-2 font-medium text-gray-500">出荷済</th>
@@ -474,16 +483,30 @@ export default function OrdersPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y">
-                            {order.items.map((it) => (
+                            {order.items.map((it, i) => (
                               <OrderItemRow
                                 key={it.id}
                                 item={it}
+                                onMoveUp={i > 0 ? () => moveItem(order, i, -1) : undefined}
+                                onMoveDown={i < order.items.length - 1 ? () => moveItem(order, i, 1) : undefined}
                                 eff={effByContact[order.contactId]?.[it.productId]}
                                 onUpdate={(patch) => updateItem(it.id, patch)}
                                 onRemove={() => removeItem(it.id)}
                               />
                             ))}
                           </tbody>
+                          <tfoot className="bg-gray-50 border-t">
+                            <tr>
+                              <td></td>
+                              <td className="px-3 py-2 text-gray-500">合計</td>
+                              <td className="px-3 py-2 text-right font-medium">
+                                {order.items.reduce((s, it) => s + it.quantity, 0).toLocaleString()}
+                              </td>
+                              <td colSpan={3}></td>
+                              <td className="px-3 py-2 text-right font-bold">{totalAmount(order).toLocaleString()}円</td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
                         </table>
                       </div>
                     )}
@@ -513,6 +536,8 @@ export default function OrdersPage() {
           );
         })}
       </div>
+      </section>
+      ))}
 
       {/* 納品完了お祝い */}
       {celebration && (
@@ -572,11 +597,15 @@ export default function OrdersPage() {
 function OrderItemRow({
   item,
   eff,
+  onMoveUp,
+  onMoveDown,
   onUpdate,
   onRemove,
 }: {
   item: OrderItem;
   eff?: EffPrice;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   onUpdate: (patch: { quantity?: number; unitPrice?: number | null }) => void;
   onRemove: () => void;
 }) {
@@ -603,6 +632,16 @@ function OrderItemRow({
 
   return (
     <tr>
+      <td className="pl-2 py-1">
+        <div className="flex flex-col">
+          <button type="button" onClick={onMoveUp} disabled={!onMoveUp} className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none" title="上へ">
+            <ChevronUp className="size-4" />
+          </button>
+          <button type="button" onClick={onMoveDown} disabled={!onMoveDown} className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none" title="下へ">
+            <ChevronDown className="size-4" />
+          </button>
+        </div>
+      </td>
       <td className="px-3 py-2">
         <div className="font-mono text-xs text-gray-500">{item.product.code}</div>
         <div>{item.product.name}</div>
@@ -662,6 +701,272 @@ const PRICE_SOURCE_LABEL: Record<string, string> = {
   standard: "標準卸",
 };
 
+// 顧客の取扱商品（顧客ページで登録したもの）と、その顧客のOEM商品だけを選べる商品にする。
+// 新しい商品は顧客ページの取扱商品から追加する運用。handledIds=null は読み込み中（contactId 未選択も含む）
+function useHandledProducts(contactId: string, products: Product[]) {
+  const [handled, setHandled] = useState<{ contactId: string; ids: Set<string> } | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  const loadHandled = useCallback(async () => {
+    if (!contactId) return;
+    try {
+      const res = await fetch(`/api/customer-prices?contactId=${contactId}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const rows = (await res.json()) as { productId: string }[];
+      setHandled({ contactId, ids: new Set(rows.map((r) => r.productId)) });
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    }
+  }, [contactId]);
+
+  // 顧客ページで取扱商品を追加して戻ってきたときにも反映する
+  useEffect(() => {
+    loadHandled();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadHandled();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [loadHandled]);
+
+  const handledIds = handled && handled.contactId === contactId ? handled.ids : null;
+  const options = handledIds
+    ? products
+        .filter((p) => p.active !== false)
+        .filter((p) => (p.ownerContactId ? p.ownerContactId === contactId : handledIds.has(p.id)))
+        .sort(compareProductOrder)
+    : [];
+  return { handledIds, loadError, options };
+}
+
+// 顧客×商品の実効単価（個別 → 自動 → 標準卸）
+async function fetchEffectivePrice(contactId: string, productId: string, products: Product[]) {
+  try {
+    const res = await fetch(`/api/customer-prices/effective?contactId=${contactId}&productId=${productId}`);
+    if (res.ok) {
+      const d = await res.json();
+      if (d?.price != null) return { price: d.price as number, source: d.source as string };
+    }
+  } catch {
+    // 取得失敗時は標準卸にフォールバック
+  }
+  const p = products.find((p) => p.id === productId);
+  return { price: p?.wholesalePrice ?? null, source: null as string | null };
+}
+
+type DraftLine = { key: number; productId: string; quantity: string; unitPrice: string; source: string | null };
+let lineKey = 0;
+const newLine = (): DraftLine => ({ key: ++lineKey, productId: "", quantity: "", unitPrice: "", source: null });
+
+// 新しい受注：顧客を選ぶ → 取扱商品から明細を入れる（並べ替え可） → 「確定」で受注と明細をまとめて保存
+function NewOrderForm({
+  contacts,
+  products,
+  onCreated,
+}: {
+  contacts: Contact[];
+  products: Product[];
+  onCreated: () => void;
+}) {
+  const [contactId, setContactId] = useState("");
+  const [orderDate, setOrderDate] = useState(new Date().toISOString().split("T")[0]);
+  const [dueDate, setDueDate] = useState("");
+  const [note, setNote] = useState("");
+  const [lines, setLines] = useState<DraftLine[]>([newLine()]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const { handledIds, loadError, options } = useHandledProducts(contactId, products);
+  const contactLink = `/contacts/${contactId}#customer-products`;
+
+  function update(key: number, patch: Partial<DraftLine>) {
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  }
+  function move(index: number, dir: -1 | 1) {
+    setLines((prev) => {
+      const j = index + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[j]] = [next[j], next[index]];
+      return next;
+    });
+  }
+  async function onProductChange(key: number, id: string) {
+    update(key, { productId: id, unitPrice: "", source: null });
+    if (!id) return;
+    const r = await fetchEffectivePrice(contactId, id, products);
+    update(key, { unitPrice: r.price != null ? String(r.price) : "", source: r.source });
+  }
+  function onContactChange(id: string) {
+    setContactId(id);
+    // 顧客が変わると取扱商品・単価が変わるので明細はやり直し
+    setLines([newLine()]);
+  }
+
+  const filled = lines.filter((l) => l.productId);
+  const bad = filled.some((l) => !(Number(l.quantity) > 0));
+  const total = filled.reduce((sum, l) => sum + (Number(l.unitPrice) || 0) * (Number(l.quantity) || 0), 0);
+
+  async function submit() {
+    setError("");
+    if (!contactId) return setError("顧客を選んでください");
+    if (filled.length === 0) return setError("明細を1行以上入れてください");
+    if (bad) return setError("数量が入っていない明細があります");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId,
+          orderDate: orderDate || new Date().toISOString().split("T")[0],
+          dueDate: dueDate || null,
+          note: note || null,
+          items: filled.map((l) => ({
+            productId: l.productId,
+            quantity: Number(l.quantity),
+            unitPrice: l.unitPrice === "" ? null : Number(l.unitPrice),
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error();
+      onCreated();
+    } catch {
+      setError("保存に失敗しました。もう一度「確定」を押してください");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs text-gray-500">顧客 *</label>
+        <select
+          value={contactId}
+          onChange={(e) => onContactChange(e.target.value)}
+          className="w-full border rounded-md px-3 py-2 text-sm"
+        >
+          <option value="">選択してください</option>
+          {contacts.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}{c.company ? ` (${c.company})` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-gray-500">注文日 *</label>
+          <Input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} required />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">納期</label>
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500">明細</label>
+        {!contactId ? (
+          <p className="text-sm text-gray-400 border border-dashed rounded p-3">顧客を選ぶと、その顧客の取扱商品から選べます。</p>
+        ) : loadError && handledIds === null ? (
+          <p className="text-sm text-red-600 border border-dashed rounded p-3">取扱商品の読み込みに失敗しました。開き直してください。</p>
+        ) : handledIds === null ? (
+          <p className="text-sm text-gray-400 border border-dashed rounded p-3">読み込み中...</p>
+        ) : options.length === 0 ? (
+          <div className="text-sm text-gray-600 border border-dashed rounded p-3">
+            この顧客には取扱商品がまだ登録されていません。
+            <Link href={contactLink} target="_blank" className="ml-1 text-blue-600 hover:underline">
+              顧客ページで取扱商品を追加する
+            </Link>
+            <span className="block text-[11px] text-gray-400 mt-0.5">追加してこの画面に戻ると選べるようになります。</span>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {lines.map((l, i) => (
+              <div key={l.key} className="flex items-start gap-1.5">
+                <div className="flex flex-col">
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="text-gray-400 hover:text-gray-700 disabled:opacity-25 leading-none" title="上へ">
+                    <ChevronUp className="size-4" />
+                  </button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === lines.length - 1} className="text-gray-400 hover:text-gray-700 disabled:opacity-25 leading-none" title="下へ">
+                    <ChevronDown className="size-4" />
+                  </button>
+                </div>
+                <select
+                  value={l.productId}
+                  onChange={(e) => onProductChange(l.key, e.target.value)}
+                  className="flex-1 min-w-0 border rounded-md px-2 py-2 text-sm"
+                >
+                  <option value="">商品を選ぶ...</option>
+                  {options.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  value={l.quantity}
+                  onChange={(e) => update(l.key, { quantity: e.target.value })}
+                  placeholder="数量"
+                  className={`w-20 ${l.productId && !(Number(l.quantity) > 0) ? "border-amber-400" : ""}`}
+                />
+                <div className="w-24">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    value={l.unitPrice}
+                    onChange={(e) => update(l.key, { unitPrice: e.target.value, source: null })}
+                    placeholder="単価"
+                  />
+                  {l.source && (
+                    <div className={`text-[10px] mt-0.5 ${l.source === "individual" ? "text-blue-600" : "text-gray-400"}`}>
+                      {PRICE_SOURCE_LABEL[l.source] ?? l.source}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLines((prev) => (prev.length > 1 ? prev.filter((x) => x.key !== l.key) : [newLine()]))}
+                  className="text-gray-400 hover:text-red-600 p-2"
+                  title="明細を削除"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+            ))}
+            <div className="flex items-center justify-between">
+              <button type="button" onClick={() => setLines((prev) => [...prev, newLine()])} className="text-xs text-blue-600 hover:underline inline-flex items-center gap-0.5">
+                <Plus className="size-3.5" /> 明細を追加
+              </button>
+              <span className="text-sm text-gray-600">合計 <span className="font-bold text-gray-900">{total.toLocaleString()}円</span></span>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              取扱商品から選びます。ほかの商品は
+              <Link href={contactLink} target="_blank" className="mx-0.5 text-blue-600 hover:underline">顧客ページ</Link>
+              の取扱商品に追加してください。
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500">備考</label>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="w-full border rounded-md px-3 py-2 text-sm resize-y" />
+      </div>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <Button type="button" onClick={submit} disabled={saving} className="w-full">
+        {saving ? "保存中..." : `確定${filled.length > 0 ? `（明細${filled.length}件）` : ""}`}
+      </Button>
+    </div>
+  );
+}
+
 function AddItemForm({
   products,
   contactId,
@@ -675,6 +980,8 @@ function AddItemForm({
   const [quantity, setQuantity] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [priceSource, setPriceSource] = useState<string | null>(null);
+  const { handledIds, loadError, options } = useHandledProducts(contactId, products);
+  const contactLink = `/contacts/${contactId}#customer-products`;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -691,67 +998,76 @@ function AddItemForm({
     setProductId(id);
     setPriceSource(null);
     if (!id) return;
-    try {
-      const res = await fetch(`/api/customer-prices/effective?contactId=${contactId}&productId=${id}`);
-      if (res.ok) {
-        const d = await res.json();
-        if (d?.price != null) {
-          setUnitPrice(String(d.price));
-          setPriceSource(d.source);
-          return;
-        }
-      }
-    } catch {
-      // 取得失敗時は標準卸にフォールバック
-    }
-    const p = products.find((p) => p.id === id);
-    setUnitPrice(p?.wholesalePrice != null ? String(p.wholesalePrice) : "");
+    const r = await fetchEffectivePrice(contactId, id, products);
+    setUnitPrice(r.price != null ? String(r.price) : "");
+    setPriceSource(r.source);
+  }
+
+  if (handledIds !== null && options.length === 0) {
+    return (
+      <div className="bg-white rounded border border-dashed p-3 text-sm text-gray-600">
+        この顧客には取扱商品がまだ登録されていません。
+        <Link href={contactLink} className="ml-1 text-blue-600 hover:underline">
+          顧客ページで取扱商品を追加する
+        </Link>
+      </div>
+    );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2 bg-white rounded border p-3">
-      <div className="flex-1">
-        <label className="text-xs text-gray-500">商品</label>
-        <select
-          value={productId}
-          onChange={(e) => onProductChange(e.target.value)}
-          className="w-full border rounded-md px-3 py-2 text-sm"
-          required
-        >
-          <option value="">選択...</option>
-          {products.filter((p) => !p.ownerContactId || p.ownerContactId === contactId).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.code} - {p.name}
-            </option>
-          ))}
-        </select>
+    <form onSubmit={handleSubmit} className="bg-white rounded border p-3">
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="text-xs text-gray-500">商品</label>
+          <select
+            value={productId}
+            onChange={(e) => onProductChange(e.target.value)}
+            className="w-full border rounded-md px-3 py-2 text-sm"
+            required
+          >
+            <option value="">{handledIds === null ? (loadError ? "読み込みに失敗しました" : "読み込み中...") : "選択..."}</option>
+            {options.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="w-24">
+          <label className="text-xs text-gray-500">数量</label>
+          <Input
+            type="number"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            required
+          />
+        </div>
+        <div className="w-28">
+          <label className="text-xs text-gray-500">単価</label>
+          <Input
+            type="number"
+            value={unitPrice}
+            onChange={(e) => { setUnitPrice(e.target.value); setPriceSource(null); }}
+            placeholder="円"
+          />
+          {priceSource && (
+            <div className={`text-[10px] mt-0.5 ${priceSource === "individual" ? "text-blue-600" : "text-gray-400"}`}>
+              {PRICE_SOURCE_LABEL[priceSource] ?? priceSource}
+            </div>
+          )}
+        </div>
+        <Button type="submit" size="sm">
+          <Plus className="size-4" />
+        </Button>
       </div>
-      <div className="w-24">
-        <label className="text-xs text-gray-500">数量</label>
-        <Input
-          type="number"
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          required
-        />
-      </div>
-      <div className="w-28">
-        <label className="text-xs text-gray-500">単価</label>
-        <Input
-          type="number"
-          value={unitPrice}
-          onChange={(e) => { setUnitPrice(e.target.value); setPriceSource(null); }}
-          placeholder="円"
-        />
-        {priceSource && (
-          <div className={`text-[10px] mt-0.5 ${priceSource === "individual" ? "text-blue-600" : "text-gray-400"}`}>
-            {PRICE_SOURCE_LABEL[priceSource] ?? priceSource}
-          </div>
-        )}
-      </div>
-      <Button type="submit" size="sm">
-        <Plus className="size-4" />
-      </Button>
+      {handledIds !== null && (
+        <p className="text-[11px] text-gray-400 mt-1.5">
+          取扱商品から選びます。ほかの商品は
+          <Link href={contactLink} className="mx-0.5 text-blue-600 hover:underline">顧客ページ</Link>
+          の取扱商品に追加してください。
+        </p>
+      )}
+      {loadError && <p className="text-[11px] text-red-600 mt-1">取扱商品の読み込みに失敗しました。再読み込みしてください。</p>}
     </form>
   );
 }

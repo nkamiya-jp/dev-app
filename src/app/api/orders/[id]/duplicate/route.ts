@@ -15,7 +15,7 @@ export async function POST(
   const { id } = await params;
   const src = await prisma.order.findUnique({
     where: { id },
-    include: { items: true },
+    include: { items: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
   });
   if (!src) return Response.json({ error: "Not found" }, { status: 404 });
 
@@ -27,7 +27,8 @@ export async function POST(
       status: "pending",
       note: src.note,
       items: {
-        create: src.items.map((it) => ({
+        create: src.items.map((it, i) => ({
+          sortOrder: i,
           productId: it.productId,
           quantity: it.quantity,
           unitPrice: it.unitPrice,
