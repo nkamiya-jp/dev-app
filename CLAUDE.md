@@ -30,6 +30,7 @@
 - 本番ページはログインが必要なので自動ブラウザ確認はできない。UIはローカル（認証OFF）で検証し、本番はビルドID確認＋ユーザー確認。
 
 ## 受注の取り込み（Slack・AI）
+- **2026-11-25 から停止中**（NAO判断）。`src/lib/features.ts` の `SLACK_ORDER_IMPORT_ENABLED` が false の間、`/api/slack/events` は何も保存せず200を返し、ボードの「Slackから登録」・確認待ちは非表示。コードとDBの OrderDraft はそのまま残している。
 - 受注進捗ボード `/orders/board`。受注の進捗は `Order.stage`（received/production/preparing/shipped/cancelled）。従来の `status` とは API で相互同期。
 - Slack #受注 の投稿は `/api/slack/events`（署名検証あり・ログイン不要）で `OrderDraft`（確認待ち）に保存。登録すると投稿に ✅。
 - 投稿の明細化は `src/lib/order-parse.ts`（Claude `claude-opus-5-5`・構造化出力）。担当者が確定した「書き方→商品」は `ProductAlias` に記録して次回の読み取りに使う。

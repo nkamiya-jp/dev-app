@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertTriangle, ChevronRight, MessageSquareText, Plus, Search } from "lucide-react";
 import { SlackImportDialog } from "./slack-import";
+import { SLACK_ORDER_IMPORT_ENABLED } from "@/lib/features";
 
 interface BoardItem {
   id: string;
@@ -78,10 +79,12 @@ export default function OrderBoardPage() {
   const load = useCallback(async () => {
     const res = await fetch("/api/orders");
     if (res.ok) setOrders(await res.json());
-    const dr = await fetch("/api/order-drafts");
-    if (dr.ok) setDrafts(await dr.json());
-    const ex = await fetch("/api/order-drafts?status=excluded");
-    if (ex.ok) setExcludedDrafts(await ex.json());
+    if (SLACK_ORDER_IMPORT_ENABLED) {
+      const dr = await fetch("/api/order-drafts");
+      if (dr.ok) setDrafts(await dr.json());
+      const ex = await fetch("/api/order-drafts?status=excluded");
+      if (ex.ok) setExcludedDrafts(await ex.json());
+    }
     setLoading(false);
   }, []);
 
@@ -174,23 +177,26 @@ export default function OrderBoardPage() {
               className="pl-9 w-full sm:w-56"
             />
           </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              setActiveDraft(null);
-              setImportOpen(true);
-            }}
-          >
-            <MessageSquareText className="size-4 mr-1" /> Slackから登録
-          </Button>
+          {SLACK_ORDER_IMPORT_ENABLED && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setActiveDraft(null);
+                setImportOpen(true);
+              }}
+            >
+              <MessageSquareText className="size-4 mr-1" /> Slackから登録
+            </Button>
+          )}
           <Link href="/orders">
-            <Button size="sm" variant="outline">
+            <Button size="sm" variant={SLACK_ORDER_IMPORT_ENABLED ? "outline" : "default"}>
               <Plus className="size-4 mr-1" /> 手入力
             </Button>
           </Link>
         </div>
       </div>
 
+      {SLACK_ORDER_IMPORT_ENABLED && (
       <SlackImportDialog
         open={importOpen}
         onOpenChange={(o) => {
@@ -200,6 +206,7 @@ export default function OrderBoardPage() {
         onCreated={load}
         draft={activeDraft ? { id: activeDraft.id, rawText: activeDraft.rawText } : null}
       />
+      )}
 
       {showExcluded && excludedDrafts.length > 0 && (
         <Card className="bg-gray-50">
