@@ -45,6 +45,7 @@ model Contact {
   oemProducts    Product[]      @relation("OemProducts")
   oemQuotes      OemQuote[]
   forecasts      CustomerForecast[]
+  recurringForecasts RecurringForecast[]
 }
 
 model Deal {
@@ -261,6 +262,7 @@ model Product {
   oemPricedAt         DateTime?
   oemQuotes           OemQuote[]
   customerForecasts   CustomerForecast[]
+  recurringForecasts  RecurringForecast[]
   monthlyProductions  MonthlyProduction[]
 
   @@index([ownerContactId])
@@ -747,6 +749,22 @@ model CustomerForecast {
 
   @@unique([contactId, productId, month, kind])
   @@index([month])
+}
+
+// 毎月の定番の予想数（顧客×商品）。startMonth 以降の各月に、その月の個別の数（CustomerForecast）が無ければこの数を予想とする
+model RecurringForecast {
+  id         String   @id @default(cuid())
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  qty        Int      @default(0)
+  startMonth String   // YYYY-MM（この月から入る）
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([contactId, productId])
 }
 
 // 月の収支計画：生産の予定（今は手入力。後で生産計画から読む）

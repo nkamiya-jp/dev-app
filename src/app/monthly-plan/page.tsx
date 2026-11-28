@@ -23,6 +23,7 @@ interface Line {
   productId: string; productName: string; productCode: string;
   price: number; priceSource: string; sellCost: number; unitGross: number;
   ordered: number; forecast: number; push: number; expected: number; revenue: number; gross: number;
+  recurring: number; recurringStart: string | null; forecastFromRecurring: boolean;
 }
 interface ChannelRow { id: string; label: string; ratePct: number | null; expected: number; budget: number; pushRevenue: number; pushGross: number; remaining: number }
 interface ProductRow { productId: string; name: string; code: string; cost: number; purchasePerUnit: number; need: number; stockStart: number | null; production: number; balance: number | null; productionCost: number; purchase: number }
@@ -95,6 +96,7 @@ export default function MonthlyPlanPage() {
         contacts={contacts}
         products={products}
         onQty={(l, kind, qty) => put("/api/monthly-plan/forecast", { contactId: l.contactId, productId: l.productId, month: plan.month, kind, qty })}
+        onRecurring={(l, qty) => put("/api/monthly-plan/recurring", { contactId: l.contactId, productId: l.productId, qty, fromMonth: plan.month })}
         onRemove={async (l) => {
           if (!confirm(`${l.contactLabel}・${l.productName} の行を消しますか？`)) return;
           await fetch(`/api/monthly-plan/forecast?${new URLSearchParams({ contactId: l.contactId, productId: l.productId, month: plan.month })}`, { method: "DELETE" });
@@ -256,12 +258,13 @@ function TargetCard({ plan, onSave }: { plan: Plan; onSave: (o: Record<string, n
 
 // ② 顧客ごとの見込みと攻め（顧客×商品）
 function LinesCard({
-  plan, contacts, products, onQty, onRemove,
+  plan, contacts, products, onQty, onRecurring, onRemove,
 }: {
   plan: Plan;
   contacts: ContactOpt[];
   products: ProductOpt[];
   onQty: (l: Line, kind: "forecast" | "push", qty: number) => void;
+  onRecurring: (l: Line, qty: number) => void;
   onRemove: (l: Line) => void;
 }) {
   const [pending, setPending] = useState<{ contactId: string; productId: string }[]>([]);
@@ -281,6 +284,7 @@ function LinesCard({
         channelLabel: CONTACT_TYPES.find((t) => t.id === ct?.type)?.label || "未分類",
         productId: p.productId, productName: pr?.name || "", productCode: pr?.code || "",
         price: 0, priceSource: "none", sellCost: 0, unitGross: 0, ordered: 0, forecast: 0, push: 0, expected: 0, revenue: 0, gross: 0,
+        recurring: 0, recurringStart: null, forecastFromRecurring: false,
       };
     });
   const lines = [...plan.lines, ...pendingLines];
@@ -291,6 +295,7 @@ function LinesCard({
       <CardContent className="py-3 space-y-2">
         <p className="text-sm font-medium">② 顧客ごとの見込みと攻め（{mLabel(plan.month)}）</p>
         <p className="text-xs text-gray-500">見込み＝今見えている数（受注済みより少なければ受注済みの数で数えます）。攻め＝不足を埋めるために取りに行く数。単価は受注画面と同じ（顧客別価格 → 上代×掛率）。</p>
+        <p className="text-xs text-gray-500">毎月＝毎月決まっている予想数（定番）。入れると、この月から先の見込みに毎月自動で入ります（灰色の数）。その月だけ違うときは見込みを直接直してください。毎月を0にすると止まります。</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-xs text-gray-500 border-b">
@@ -301,6 +306,7 @@ function LinesCard({
                 <th className="text-right py-1.5 px-2">1個の粗利</th>
                 <th className="text-right py-1.5 px-2">受注済み</th>
                 <th className="text-right py-1.5 px-2">見込み</th>
+                <th className="text-right py-1.5 px-2" title="毎月の定番の予想数">毎月</th>
                 <th className="text-right py-1.5 px-2">攻め</th>
                 <th className="text-right py-1.5 px-2">売上</th>
                 <th className="text-right py-1.5 px-2">粗利</th>
@@ -312,7 +318,7 @@ function LinesCard({
                 const ls = lines.filter((l) => l.channelLabel === g);
                 return [
                   <tr key={`g-${g}`} className="bg-gray-50 text-xs">
-                    <td colSpan={7} className="py-1 px-1 font-medium text-gray-600">{g}</td>
+                    <td colSpan={8} className="py-1 px-1 font-medium text-gray-600">{g}</td>
                     <td className="text-right px-2 tabular-nums font-medium">{man(ls.reduce((a, l) => a + l.revenue, 0))}</td>
                     <td className="text-right px-2 tabular-nums">{man(ls.reduce((a, l) => a + l.gross, 0))}</td>
                     <td />
@@ -324,7 +330,8 @@ function LinesCard({
                       <td className="text-right px-2 tabular-nums" title={SOURCE_LABEL[l.priceSource]}>{l.price ? l.price.toLocaleString() : "-"}</td>
                       <td className={`text-right px-2 tabular-nums ${l.unitGross < 0 ? "text-rose-600" : ""}`}>{l.price ? l.unitGross.toLocaleString() : "-"}</td>
                       <td className="text-right px-2 tabular-nums text-gray-500">{l.ordered || "-"}</td>
-                      <td className="text-right px-1"><QtyCell value={l.forecast} onSave={(q) => onQty(l, "forecast", q)} /></td>
+                      <td className="text-right px-1"><QtyCell value={l.forecast} onSave={(q) => onQty(l, "forecast", q)} muted={l.forecastFromRecurring} title={l.forecastFromRecurring ? "毎月の定番数から入っています" : undefined} /></td>
+                      <td className="text-right px-1"><QtyCell value={l.recurring} onSave={(q) => onRecurring(l, q)} title={l.recurringStart ? `${mLabel(l.recurringStart)}から毎月` : "毎月の定番数"} /></td>
                       <td className="text-right px-1"><QtyCell value={l.push} onSave={(q) => onQty(l, "push", q)} accent /></td>
                       <td className="text-right px-2 tabular-nums">{l.revenue ? man(l.revenue) : "-"}</td>
                       <td className={`text-right px-2 tabular-nums ${l.gross < 0 ? "text-rose-600" : ""}`}>{l.gross ? man(l.gross) : "-"}</td>
@@ -336,7 +343,7 @@ function LinesCard({
                 ];
               })}
               {lines.length === 0 && (
-                <tr><td colSpan={10} className="py-6 text-center text-gray-400 text-sm">まだありません。下で顧客と商品を選んで行を足してください。</td></tr>
+                <tr><td colSpan={11} className="py-6 text-center text-gray-400 text-sm">まだありません。下で顧客と商品を選んで行を足してください。</td></tr>
               )}
             </tbody>
           </table>
@@ -367,7 +374,7 @@ function LinesCard({
             <Plus className="size-4 mr-1" /> 行を足す
           </Button>
           {contact && !contact.type && <span className="text-xs text-amber-700">この顧客は取引タイプが未設定です（顧客の画面で決めるとカテゴリに入ります）</span>}
-          {pendingLines.length > 0 && <span className="text-xs text-gray-500">足した行は、見込みか攻めの数を入れると保存されます（単価はそのとき出ます）</span>}
+          {pendingLines.length > 0 && <span className="text-xs text-gray-500">足した行は、見込み・毎月・攻めのどれかに数を入れると保存されます（単価はそのとき出ます）</span>}
         </div>
       </CardContent>
     </Card>
@@ -497,7 +504,7 @@ function ProductionCard({ plan, products, onProduction }: { plan: Plan; products
   );
 }
 
-function QtyCell({ value, onSave, accent }: { value: number; onSave: (q: number) => void; accent?: boolean }) {
+function QtyCell({ value, onSave, accent, muted, title }: { value: number; onSave: (q: number) => void; accent?: boolean; muted?: boolean; title?: string }) {
   const [v, setV] = useState(value ? String(value) : "");
   useEffect(() => setV(value ? String(value) : ""), [value]);
   return (
@@ -507,7 +514,8 @@ function QtyCell({ value, onSave, accent }: { value: number; onSave: (q: number)
       onBlur={() => { const q = Number(v) || 0; if (q !== value) onSave(q); }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
       inputMode="numeric"
-      className={`w-20 border rounded px-1.5 py-0.5 text-right text-sm tabular-nums outline-none focus:border-blue-500 ${accent ? "bg-amber-50 border-amber-200" : ""}`}
+      title={title}
+      className={`w-20 border rounded px-1.5 py-0.5 text-right text-sm tabular-nums outline-none focus:border-blue-500 ${accent ? "bg-amber-50 border-amber-200" : ""} ${muted ? "text-gray-400" : ""}`}
     />
   );
 }

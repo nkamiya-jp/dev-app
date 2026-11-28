@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
+import { recurringQtyFor } from "@/lib/forecast-server";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,9 @@ export async function PUT(request: NextRequest) {
   const kind = b.kind === "push" ? "push" : "forecast";
   const qty = Math.max(0, Math.round(Number(b.qty) || 0));
   const key = { contactId: String(b.contactId), productId: String(b.productId), month, kind };
-  if (qty === 0) {
+  // 予想は毎月の定番数があればそれが入る。定番と同じ数なら個別の数は持たない、0は「この月は無し」として残す
+  const rec = kind === "forecast" ? await recurringQtyFor(key.contactId, key.productId, month) : null;
+  if ((qty === 0 && rec == null) || (rec != null && qty === rec)) {
     await prisma.customerForecast.deleteMany({ where: key });
     return Response.json({ ok: true });
   }
@@ -43,5 +46,9 @@ export async function DELETE(request: NextRequest) {
   const month = sp.get("month");
   if (!contactId || !productId || !month) return Response.json({ error: "顧客・商品・月を指定してください" }, { status: 400 });
   await prisma.customerForecast.deleteMany({ where: { contactId, productId, month } });
+  // 毎月の定番数がある行は、この月だけ0にする（定番そのものは「毎月」の欄で止める）
+  if ((await recurringQtyFor(contactId, productId, month)) != null) {
+    await prisma.customerForecast.create({ data: { contactId, productId, month, kind: "forecast", qty: 0, updatedBy: g.v.name } });
+  }
   return Response.json({ ok: true });
 }
