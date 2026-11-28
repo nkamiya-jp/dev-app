@@ -8,6 +8,8 @@ import { ContactEditButton } from "./contact-edit";
 import { getContactTypeLabel, getContactTypeColor, getContactTypeMeta } from "@/lib/contact-meta";
 import { CustomerProductsCard } from "./customer-products";
 import { OemProductsCard } from "./oem-products";
+import { StandingStar } from "./standing-star";
+import { getStandingContactIds } from "@/lib/standing-server";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,7 @@ export default async function ContactDetailPage({
   });
 
   if (!contact) notFound();
+  const standing = (await getStandingContactIds()).includes(contact.id);
 
   return (
     <div className="space-y-6">
@@ -63,6 +66,7 @@ export default async function ContactDetailPage({
                 {contact.company && contact.name && (
                   <p className="text-sm text-gray-500 mt-1">担当: {contact.name}</p>
                 )}
+                <div className="mt-2"><StandingStar contactId={contact.id} initial={standing} /></div>
               </div>
               {contact.type && (
                 <Badge className={getContactTypeColor(contact.type)}>
@@ -254,6 +258,7 @@ export default async function ContactDetailPage({
       </div>
 
       <OemProductsCard contactId={contact.id} />
+
 
       {/* 受注画面の「取扱商品を追加」リンクの飛び先 */}
       <div id="customer-products" className="scroll-mt-4">
