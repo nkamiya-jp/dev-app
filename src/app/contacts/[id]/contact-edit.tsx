@@ -210,9 +210,9 @@ export function ContactEditButton({
             <label className="flex items-start gap-2 text-sm cursor-pointer">
               <input type="checkbox" name="dailyOrder" defaultChecked={!!contact.dailyOrder} className="size-4 mt-0.5" />
               <span>
-                毎日注文の取引先
+                毎日注文の取引先（伺って聞くスタイル・清水エリアなど）
                 <span className="block text-[11px] text-gray-400">
-                  受注進捗ボードに普段は表示せず、Slack #受注 の投稿も確認待ちに入れません（1行目がこの取引先の名前・呼び名で始まる投稿）
+                  定期の注文の想定を「週あたり」で持ちます。受注進捗ボードに普段は表示せず、Slack #受注 の投稿も確認待ちに入れません（1行目がこの取引先の名前・呼び名で始まる投稿）
                 </span>
               </span>
             </label>

@@ -35,6 +35,30 @@ interface Group {
   stock: number;
   prodByMonth: Record<string, number>;
   rows: Row[];
+  dailyRows: DailyRow[];
+  standing: Standing[];
+  waiting: Standing[];
+}
+interface Standing {
+  contactId: string;
+  label: string;
+  perWeek: boolean;
+  qty: number;
+  monthQty: number;
+  monthOrdered: number;
+  weekOrdered: number;
+}
+interface DailyRow {
+  contactId: string;
+  contactName: string;
+  company: string | null;
+  monthQty: number;
+  monthShipped: number;
+  openQty: number;
+  orderDays: number;
+  monthlyPlans: Record<string, number>;
+  weeklyPlans: Record<string, number>;
+  standing: Standing | null;
 }
 interface Resp {
   products: { id: string; code: string; name: string; series: string | null }[];
@@ -171,7 +195,7 @@ export default function OrdersByProductPage() {
   if (!data) return <div className="p-6 text-gray-400">読み込み中...</div>;
 
   const { months, weeks } = data;
-  const visibleGroups = data.groups.filter((g) => !hideEmpty || g.orderCount > 0);
+  const visibleGroups = data.groups.filter((g) => !hideEmpty || g.orderCount > 0 || g.standing.length > 0);
 
   function exportCSV() {
     const header = ["商品", "注文日", "出荷先", "注文数", ...months.map((m) => `${Number(m.split("-")[1])}月対応`), "出荷済数", "出荷日(個数)", ...weeks.map((w) => w.label)];
@@ -241,12 +265,15 @@ export default function OrdersByProductPage() {
           const isCollapsed = collapsed.has(g.productId);
           const prevId = visibleGroups[gi - 1]?.productId;
           const nextId = visibleGroups[gi + 1]?.productId;
-          const totalQty = g.rows.reduce((s, r) => s + r.quantity, 0);
-          const totalShipped = g.rows.reduce((s, r) => s + r.shippedQty, 0);
+          const totalQty = g.rows.reduce((s, r) => s + r.quantity, 0) + g.dailyRows.reduce((s, d) => s + d.monthQty, 0);
+          const totalShipped = g.rows.reduce((s, r) => s + r.shippedQty, 0) + g.dailyRows.reduce((s, d) => s + d.monthShipped, 0);
           const monthTotals: Record<string, number> = {};
-          for (const m of months) monthTotals[m] = g.rows.reduce((s, r) => s + (r.monthlyPlans[m] || 0), 0);
+          for (const m of months) monthTotals[m] = g.rows.reduce((s, r) => s + (r.monthlyPlans[m] || 0), 0) + g.dailyRows.reduce((s, d) => s + (d.monthlyPlans[m] || 0), 0);
           const weekTotals: Record<string, number> = {};
-          for (const w of weeks) weekTotals[w.monday] = g.rows.reduce((s, r) => s + (r.weeklyPlans[w.monday] || 0), 0);
+          for (const w of weeks) weekTotals[w.monday] = g.rows.reduce((s, r) => s + (r.weeklyPlans[w.monday] || 0), 0) + g.dailyRows.reduce((s, d) => s + (d.weeklyPlans[w.monday] || 0), 0);
+          const standingOf = new Map(g.standing.map((s) => [s.contactId, s]));
+          const hasLines = g.rows.length + g.dailyRows.length + g.waiting.length > 0;
+          const monthNum = Number(month.split("-")[1]);
 
           // 在庫残見込 = 在庫 + 累積(製造入荷予定 − 出荷予定)
           const monthBal: Record<string, number> = {};
@@ -294,6 +321,7 @@ export default function OrdersByProductPage() {
                   <span className="font-bold">{g.name}</span>
                   <span className="text-xs text-gray-400">{g.code}</span>
                   <span className="ml-auto flex items-center gap-3 text-xs text-gray-500">
+                    {g.standing.length > 0 && <span className="text-indigo-600">定期 {g.standing.length}軒</span>}
                     <span>受注 {g.orderCount}件</span>
                     <span>注文計 {totalQty.toLocaleString()}</span>
                     {g.openQty > 0
@@ -322,7 +350,7 @@ export default function OrdersByProductPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {g.rows.length === 0 ? (
+                      {!hasLines ? (
                         <tr><td colSpan={colCount} className="text-center text-gray-400 py-6">受注なし</td></tr>
                       ) : (
                         g.rows.map((r) => {
@@ -335,6 +363,11 @@ export default function OrdersByProductPage() {
                                   <Link href={`/contacts/${r.contactId}`} className="text-blue-600 hover:underline">{r.contactName}</Link>
                                 ) : r.contactName}
                                 {r.company && <span className="text-[10px] text-gray-400 ml-1">{r.company}</span>}
+                                {r.contactId && standingOf.has(r.contactId) && (
+                                  <span className="ml-1 whitespace-nowrap rounded bg-indigo-50 text-indigo-600 text-[10px] px-1 py-px print:hidden" title="毎月の想定">
+                                    定期 {standingOf.get(r.contactId)!.qty}/月
+                                  </span>
+                                )}
                               </td>
                               <td className="px-2 py-1.5 text-right font-medium border-r">{r.quantity.toLocaleString()}</td>
                               {months.map((m) => (
@@ -362,8 +395,52 @@ export default function OrdersByProductPage() {
                           );
                         })
                       )}
+                      {/* 伺うスタイルのお客さん（毎日の注文）：お客さんごとに1行 */}
+                      {g.dailyRows.map((d) => {
+                        const st = d.standing;
+                        const weekShort = st ? st.weekOrdered < st.qty : false;
+                        return (
+                          <tr key={`daily-${d.contactId}`} className="bg-indigo-50/30">
+                            <td className="px-2 py-1.5 border-r text-indigo-600 text-[10px]">毎日</td>
+                            <td className="px-2 py-1.5 border-r">
+                              <Link href={`/contacts/${d.contactId}`} className="text-blue-600 hover:underline">{d.contactName}</Link>
+                              {d.company && d.company !== d.contactName && <span className="text-[10px] text-gray-400 ml-1">{d.company}</span>}
+                              <div className="text-[10px] text-gray-500 mt-0.5">
+                                {st ? (
+                                  <>
+                                    今週 <span className={weekShort ? "text-amber-600 font-medium" : "text-green-700 font-medium"}>{st.weekOrdered}</span>／想定 {st.qty}/週
+                                    <span className="text-gray-400"> ・ {monthNum}月 {d.monthQty}（{d.orderDays}日分）</span>
+                                  </>
+                                ) : (
+                                  <span className="text-gray-400">{monthNum}月 {d.monthQty}（{d.orderDays}日分）・想定なし</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-medium border-r" title={`${monthNum}月の注文数`}>{d.monthQty ? d.monthQty.toLocaleString() : ""}</td>
+                            {months.map((m) => (
+                              <td key={m} className="px-2 py-1.5 text-right border-r bg-blue-50/20 text-gray-500">{d.monthlyPlans[m] ? d.monthlyPlans[m].toLocaleString() : ""}</td>
+                            ))}
+                            <td className="px-2 py-1.5 text-right border-r">{d.monthShipped ? d.monthShipped.toLocaleString() : ""}</td>
+                            <td className="px-2 py-1.5 border-r text-gray-500">{d.openQty > 0 ? <span className="text-amber-600">未出荷 {d.openQty.toLocaleString()}</span> : ""}</td>
+                            {weeks.map((w) => (
+                              <td key={w.monday} className="px-2 py-1.5 text-right border-r bg-amber-50/20 text-gray-500">{d.weeklyPlans[w.monday] ? d.weeklyPlans[w.monday].toLocaleString() : ""}</td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                      {/* 定期のお客さんで、この月まだ発注が無い欄 */}
+                      {g.waiting.map((s) => (
+                        <tr key={`wait-${s.contactId}`} className="text-gray-400">
+                          <td className="px-2 py-1.5 border-r text-[10px]">—</td>
+                          <td className="px-2 py-1.5 border-r">
+                            <Link href={`/contacts/${s.contactId}`} className="text-blue-600/70 hover:underline">{s.label}</Link>
+                            <span className="ml-1 whitespace-nowrap rounded bg-indigo-50 text-indigo-600 text-[10px] px-1 py-px">定期 {s.qty}/月</span>
+                          </td>
+                          <td colSpan={colCount - 2} className="px-2 py-1.5 text-[11px] italic">{monthNum}月はまだ発注なし（想定 {s.monthQty.toLocaleString()}個）</td>
+                        </tr>
+                      ))}
                     </tbody>
-                    {g.rows.length > 0 && (
+                    {hasLines && (
                       <tfoot>
                         <tr className="border-t-2 bg-gray-50 font-bold">
                           <td className="px-2 py-2 border-r" colSpan={2}>合計</td>
@@ -419,6 +496,7 @@ export default function OrdersByProductPage() {
 
       <p className="text-xs text-gray-400 print:hidden">
         ※ 月別対応（{months.map((m) => formatMonthLabel(m)).join("・")}）と週別（{formatMonthLabel(month)}の平日週）は青・橙のセルに直接入力→自動保存。出荷済・出荷日は出荷実績から自動表示。灰色行=出荷完了。
+        「定期」は顧客ページの「定期の注文（想定）」に入っているお客さん。発注で来るお客さんはその月まだ発注が無くても欄を出し、毎日伺うお客さんは1行にまとめて今週の注文と想定（週あたり）を並べます。
         未出荷の分には、発送予定日（なければ注文日）が早い受注から順に、今の在庫→製造中の分を割り当てた目安を出しています（在庫で出せる／製造待ち／未手配）。
       </p>
     </div>

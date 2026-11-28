@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { StandingCards } from "./standing-cards";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,8 @@ export default function OrdersPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [prefill, setPrefill] = useState<OrderPrefill | null>(null);
+  const [standingKey, setStandingKey] = useState(0);
   const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [celebration, setCelebration] = useState<{ sub: string } | null>(null);
   const [search, setSearch] = useState("");
@@ -318,7 +321,7 @@ export default function OrdersPage() {
             ))}
           </select>
           {/* 入力途中で外側をクリックしても閉じない（×ボタンで閉じる） */}
-          <Dialog open={createOpen} onOpenChange={setCreateOpen} disablePointerDismissal>
+          <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) setPrefill(null); }} disablePointerDismissal>
             <DialogTrigger className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
               <Plus className="size-4 mr-1" /> 受注を追加
             </DialogTrigger>
@@ -327,10 +330,14 @@ export default function OrdersPage() {
                 <DialogTitle>新しい受注</DialogTitle>
               </DialogHeader>
               <NewOrderForm
+                key={prefill ? `pf-${prefill.contactId}-${standingKey}` : "new"}
                 contacts={contacts}
                 products={products}
+                initial={prefill}
                 onCreated={() => {
                   setCreateOpen(false);
+                  setPrefill(null);
+                  setStandingKey((k) => k + 1);
                   load();
                 }}
               />
@@ -338,6 +345,11 @@ export default function OrdersPage() {
           </Dialog>
         </div>
       </div>
+
+      <StandingCards
+        reloadKey={standingKey}
+        onOrder={(p) => { setPrefill(p); setStandingKey((k) => k + 1); setCreateOpen(true); }}
+      />
 
       {filtered.length === 0 && (
         <Card className="bg-white shadow-sm">
@@ -772,23 +784,55 @@ let lineKey = 0;
 const newLine = (): DraftLine => ({ key: ++lineKey, productId: "", quantity: "", unitPrice: "", source: null });
 
 // 新しい受注：顧客を選ぶ → 取扱商品から明細を入れる（並べ替え可） → 「確定」で受注と明細をまとめて保存
+export type OrderPrefill = { contactId: string; lines: { productId: string; quantity: number }[] };
+
 function NewOrderForm({
   contacts,
   products,
   onCreated,
+  initial,
 }: {
   contacts: Contact[];
   products: Product[];
   onCreated: () => void;
+  /** 発注カードから開いたとき：お客さんといつもの商品・数を入れておく */
+  initial?: OrderPrefill | null;
 }) {
-  const [contactId, setContactId] = useState("");
+  const [contactId, setContactId] = useState(initial?.contactId ?? "");
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split("T")[0]);
   const [dueDate, setDueDate] = useState("");
   const [note, setNote] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([newLine()]);
+  const [lines, setLines] = useState<DraftLine[]>(() =>
+    initial && initial.lines.length > 0
+      ? initial.lines.map((l) => ({ ...newLine(), productId: l.productId, quantity: l.quantity > 0 ? String(l.quantity) : "" }))
+      : [newLine()],
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const { handledIds, loadError, options } = useHandledProducts(contactId, products);
+  const { handledIds, loadError, options: handledOptions } = useHandledProducts(contactId, products);
+  // 発注カードのいつもの商品は、取扱商品に無くても選べるようにする
+  const options = useMemo(() => {
+    const extra = (initial?.contactId === contactId ? initial.lines : [])
+      .map((l) => products.find((p) => p.id === l.productId))
+      .filter((p): p is Product => !!p && !handledOptions.some((o) => o.id === p.id));
+    return extra.length ? [...handledOptions, ...extra].sort(compareProductOrder) : handledOptions;
+  }, [handledOptions, initial, contactId, products]);
+  // 入れておいた明細の単価を取ってくる
+  useEffect(() => {
+    if (!initial) return;
+    let cancelled = false;
+    void (async () => {
+      for (const l of lines) {
+        if (!l.productId || l.unitPrice !== "") continue;
+        const r = await fetchEffectivePrice(initial.contactId, l.productId, products);
+        if (cancelled) return;
+        setLines((prev) => prev.map((x) => (x.key === l.key && x.unitPrice === "" ? { ...x, unitPrice: r.price != null ? String(r.price) : "", source: r.source } : x)));
+      }
+    })();
+    return () => { cancelled = true; };
+    // 開いたときに一度だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const contactLink = `/contacts/${contactId}#customer-products`;
 
   function update(key: number, patch: Partial<DraftLine>) {

@@ -15,7 +15,6 @@ import {
   Target,
   Package,
   ShoppingCart,
-  Store,
   Hammer,
   Truck,
   Boxes,
@@ -91,7 +90,6 @@ const navSections: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/orders/board", label: "受注進捗", icon: Activity },
       { href: "/orders", label: "受注", icon: ShoppingCart },
-      { href: "/orders/daily", label: "毎日伺い", icon: Store },
       { href: "/orders-by-product", label: "商品別出荷管理", icon: ClipboardList },
       { href: "/shipping-plan", label: "出荷計画", icon: CalendarDays },
       { href: "/shipments", label: "出荷", icon: Truck },

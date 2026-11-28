@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ContactEditButton } from "./contact-edit";
 import { getContactTypeLabel, getContactTypeColor, getContactTypeMeta } from "@/lib/contact-meta";
 import { CustomerProductsCard } from "./customer-products";
+import { StandingCard } from "./standing-card";
 import { OemProductsCard } from "./oem-products";
 
 export const dynamic = "force-dynamic";
@@ -254,6 +255,8 @@ export default async function ContactDetailPage({
       </div>
 
       <OemProductsCard contactId={contact.id} />
+
+      <StandingCard contactId={contact.id} perWeek={!!contact.dailyOrder} />
 
       {/* 受注画面の「取扱商品を追加」リンクの飛び先 */}
       <div id="customer-products" className="scroll-mt-4">

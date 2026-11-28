@@ -1,15 +1,28 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
+import { getViewer, unauthorized } from "@/lib/viewer";
 import { todayJst } from "@/lib/roadmap/settings";
 
 export const dynamic = "force-dynamic";
 
+// 数量だけ（金額は出さない）なのでログインしていれば誰でも
 async function guard() {
   const v = await getViewer();
   if (!v) return { error: unauthorized() };
-  if (v.isPart) return { error: forbidden("売上の数字は表示できません") };
   return { v };
+}
+
+// GET /api/monthly-plan/recurring?contactId= — そのお客さんの想定（月あたり。伺うスタイルなら週あたり）
+export async function GET(request: NextRequest) {
+  const g = await guard();
+  if ("error" in g) return g.error;
+  const contactId = request.nextUrl.searchParams.get("contactId");
+  if (!contactId) return Response.json({ error: "顧客を指定してください" }, { status: 400 });
+  const rows = await prisma.recurringForecast.findMany({
+    where: { contactId },
+    select: { productId: true, qty: true, startMonth: true },
+  });
+  return Response.json(rows);
 }
 
 // PUT /api/monthly-plan/recurring { contactId, productId, qty, fromMonth? } — 毎月の定番の予想数。0で止める
