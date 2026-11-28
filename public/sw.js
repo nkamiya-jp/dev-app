@@ -1,5 +1,5 @@
 // バージョンを上げると activate 時に旧キャッシュを一掃する
-const CACHE_NAME = "crm-v11";
+const CACHE_NAME = "crm-v12";
 const OFFLINE_URL = "/offline";
 
 // オフライン時のフォールバック用に最小限だけ precache

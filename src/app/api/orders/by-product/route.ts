@@ -106,12 +106,12 @@ export async function GET(request: NextRequest) {
     baseMonth ? loadStandingCards(baseMonth, { productIds }) : Promise.resolve([]),
   ]);
   // 商品ごとの定期顧客（顧客ページの☆）とその月の予測注文数
-  type Standing = { contactId: string; label: string; perWeek: boolean; forecast: number | null; monthOrdered: number; weekOrdered: number };
+  type Standing = { contactId: string; label: string; perWeek: boolean; forecast: number | null; weeks: Record<string, number>; monthOrdered: number; weekOrdered: number };
   const standingByProduct = new Map<string, Standing[]>();
   for (const c of standingCards) {
     for (const l of c.lines) {
       const arr = standingByProduct.get(l.productId) ?? [];
-      arr.push({ contactId: c.contactId, label: c.label, perWeek: c.perWeek, forecast: l.forecast, monthOrdered: l.monthOrdered, weekOrdered: l.weekOrdered });
+      arr.push({ contactId: c.contactId, label: c.label, perWeek: c.perWeek, forecast: l.forecast, weeks: l.weeks, monthOrdered: l.monthOrdered, weekOrdered: l.weekOrdered });
       standingByProduct.set(l.productId, arr);
     }
   }
@@ -200,8 +200,8 @@ export async function GET(request: NextRequest) {
     }
     const dailyRows = [...dailyMap.values()].sort((a, b) => a.contactName.localeCompare(b.contactName, "ja"));
 
-    // 発注で来る定期顧客：いつも1行（予測注文数を入れる欄）
-    const regulars = standing.filter((s) => !s.perWeek);
+    // 定期顧客：いつも1行（週ごとに予測注文数を入れる欄）
+    const regulars = standing;
 
     const prodByMonth: Record<string, number> = {};
     const rec = prodInByProduct.get(p.id) ?? {};
@@ -218,7 +218,7 @@ export async function GET(request: NextRequest) {
       rows,
       dailyRows,
       standing, // 定期顧客（☆）
-      regulars, // そのうち発注で来るお客さん
+      regulars, // 定期顧客の予測の行
     };
   });
 

@@ -44,6 +44,7 @@ interface Standing {
   label: string;
   perWeek: boolean;
   forecast: number | null;
+  weeks: Record<string, number>;
   monthOrdered: number;
   weekOrdered: number;
 }
@@ -115,7 +116,7 @@ function ForecastInput({ value, onSave }: { value: number | null; onSave: (v: nu
       onChange={(e) => setText(e.target.value.replace(/[^\d]/g, ""))}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-      className="w-16 border rounded px-1.5 py-0.5 text-right text-xs bg-white focus:ring-1 focus:ring-indigo-400 outline-none print:border-0"
+      className="w-full min-w-[3rem] border border-amber-200 rounded px-1.5 py-0.5 text-right text-xs bg-white focus:ring-1 focus:ring-amber-400 outline-none print:border-0"
     />
   );
 }
@@ -146,27 +147,29 @@ export default function OrdersByProductPage() {
   }, [month]);
 
   useEffect(() => { load(); }, [load]);
-  // 定期顧客のその月の予測注文数を保存
-  const saveForecast = useCallback(async (contactId: string, productId: string, qty: number | null) => {
+  // 定期顧客の週の予測注文数を保存（合計がその月の予測＝月の予想になる）
+  const saveWeekForecast = useCallback(async (contactId: string, productId: string, monday: string, qty: number | null) => {
     setSlotErr(null);
     const res = await fetch("/api/orders/standing", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contactId, productId, month, qty }),
+      body: JSON.stringify({ contactId, productId, month, week: monday, qty }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => null);
       setSlotErr(j?.error || "予測注文数を保存できませんでした");
       return;
     }
+    const upd = (x: Standing): Standing => {
+      if (x.contactId !== contactId) return x;
+      const weeks = { ...x.weeks };
+      if (qty == null) delete weeks[monday]; else weeks[monday] = qty;
+      const vals = Object.values(weeks);
+      return { ...x, weeks, forecast: vals.length ? vals.reduce((a, b) => a + b, 0) : null };
+    };
     setData((prev) => prev && ({
       ...prev,
-      groups: prev.groups.map((g) => g.productId !== productId ? g : {
-        ...g,
-        standing: g.standing.map((x) => x.contactId === contactId ? { ...x, forecast: qty } : x),
-        regulars: g.regulars.map((x) => x.contactId === contactId ? { ...x, forecast: qty } : x),
-        dailyRows: g.dailyRows.map((d) => d.contactId === contactId && d.standing ? { ...d, standing: { ...d.standing, forecast: qty } } : d),
-      }),
+      groups: prev.groups.map((g) => g.productId !== productId ? g : { ...g, standing: g.standing.map(upd), regulars: g.regulars.map(upd) }),
     }));
   }, [month]);
 
@@ -397,23 +400,32 @@ export default function OrdersByProductPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {/* 定期顧客（☆・発注で来るお客さん）：いつも1行。その月の予測注文数を入れる */}
+                      {/* 定期顧客（☆）：いつも1行。週ごとに予測注文数を入れ、合計がその月の予測になる */}
                       {g.regulars.map((s) => {
                         const none = s.monthOrdered === 0;
+                        const rest = s.forecast != null ? s.forecast - s.monthOrdered : null;
                         return (
                           <tr key={`reg-${s.contactId}`} className="bg-amber-50/30">
-                            <td className="px-2 py-1.5 border-r text-[10px] text-amber-600">定期</td>
+                            <td className="px-2 py-1.5 border-r text-[10px] text-amber-600">予測</td>
                             <td className="px-2 py-1.5 border-r">
                               <Link href={`/contacts/${s.contactId}`} className="text-blue-600 hover:underline">{s.label}</Link>
                               <Star className="inline size-3 ml-1 fill-amber-400 text-amber-400" aria-label="定期顧客" />
                             </td>
-                            <td colSpan={colCount - 2} className="px-2 py-1 text-[11px] text-gray-600">
-                              {monthNum}月の予測 <ForecastInput value={s.forecast} onSave={(v) => saveForecast(s.contactId, g.productId, v)} /> 個
-                              <span className={`ml-3 ${none ? "text-amber-600" : "text-gray-500"}`}>
-                                {none ? `${monthNum}月はまだ発注なし` : `${monthNum}月の注文 ${s.monthOrdered.toLocaleString()}個`}
-                                {s.forecast != null && s.forecast > s.monthOrdered && !none && `（あと ${(s.forecast - s.monthOrdered).toLocaleString()}個）`}
-                              </span>
+                            <td className="px-2 py-1.5 text-right border-r text-gray-400" title={`${monthNum}月の注文数`}>{s.monthOrdered ? s.monthOrdered.toLocaleString() : ""}</td>
+                            {months.map((m) => (
+                              <td key={m} className="px-2 py-1.5 text-right border-r font-bold text-amber-700" title={m === month ? `${monthNum}月の予測（週の合計）` : undefined}>
+                                {m === month && s.forecast != null ? s.forecast.toLocaleString() : ""}
+                              </td>
+                            ))}
+                            <td className="border-r"></td>
+                            <td className={`px-2 py-1.5 border-r text-[11px] ${none ? "text-amber-600" : "text-gray-500"}`}>
+                              {none ? `${monthNum}月はまだ発注なし` : rest != null && rest > 0 ? `あと ${rest.toLocaleString()}個` : rest != null ? "予測分は発注済" : ""}
                             </td>
+                            {weeks.map((w) => (
+                              <td key={w.monday} className="px-1 py-0.5 border-r">
+                                <ForecastInput value={s.weeks[w.monday] ?? null} onSave={(v) => saveWeekForecast(s.contactId, g.productId, w.monday, v)} />
+                              </td>
+                            ))}
                           </tr>
                         );
                       })}
@@ -474,9 +486,6 @@ export default function OrdersByProductPage() {
                               <div className="text-[10px] text-gray-500 mt-0.5">
                                 今週 <span className={weekShort ? "text-amber-600 font-medium" : "text-green-700 font-medium"}>{st?.weekOrdered ?? 0}</span>
                                 <span className="text-gray-400"> ・ {monthNum}月 {d.monthQty}（{d.orderDays}日分）</span>
-                                {st && (
-                                  <span className="ml-1 whitespace-nowrap">・予測 <ForecastInput value={st.forecast} onSave={(v) => saveForecast(d.contactId, g.productId, v)} /> /月</span>
-                                )}
                               </div>
                             </td>
                             <td className="px-2 py-1.5 text-right font-medium border-r" title={`${monthNum}月の注文数`}>{d.monthQty ? d.monthQty.toLocaleString() : ""}</td>
@@ -494,6 +503,24 @@ export default function OrdersByProductPage() {
                     </tbody>
                     {hasLines && (
                       <tfoot>
+                        {g.regulars.length > 0 && (
+                          <tr className="border-t-2 bg-amber-50/60 text-amber-800 font-bold">
+                            <td className="px-2 py-2 border-r" colSpan={2}>予測計</td>
+                            <td className="border-r"></td>
+                            {months.map((m) => (
+                              <td key={m} className="px-2 py-2 text-right border-r">
+                                {m === month ? (() => { const t = g.regulars.reduce((a, r) => a + (r.forecast ?? 0), 0); return t ? t.toLocaleString() : ""; })() : ""}
+                              </td>
+                            ))}
+                            <td className="border-r"></td>
+                            <td className="border-r"></td>
+                            {weeks.map((w) => (
+                              <td key={w.monday} className="px-2 py-2 text-right border-r">
+                                {(() => { const t = g.regulars.reduce((a, r) => a + (r.weeks[w.monday] ?? 0), 0); return t ? t.toLocaleString() : ""; })()}
+                              </td>
+                            ))}
+                          </tr>
+                        )}
                         <tr className="border-t-2 bg-gray-50 font-bold">
                           <td className="px-2 py-2 border-r" colSpan={2}>合計</td>
                           <td className="px-2 py-2 text-right border-r">{totalQty.toLocaleString()}</td>
@@ -548,7 +575,7 @@ export default function OrdersByProductPage() {
 
       <p className="text-xs text-gray-400 print:hidden">
         ※ 月別対応（{months.map((m) => formatMonthLabel(m)).join("・")}）と週別（{formatMonthLabel(month)}の平日週）は青・橙のセルに直接入力→自動保存。出荷済・出荷日は出荷実績から自動表示。灰色行=出荷完了。
-        ☆は顧客ページで「定期顧客」にしたお客さん。取扱商品ごとにいつも1行出し、その月の予測注文数を入れられます（月の収支計画の予想と同じ数）。毎日伺うお客さんは1行にまとめて今週・今月の注文を並べます。
+        ☆は顧客ページで「定期顧客」にしたお客さん。取扱商品ごとにいつも「予測」の行を出し、週の欄に予測注文数を入れると、その合計がその月の予測になります（月の収支計画の予想と同じ数）。毎日伺うお客さんは1行にまとめて今週・今月の注文を並べます。
         未出荷の分には、発送予定日（なければ注文日）が早い受注から順に、今の在庫→製造中の分を割り当てた目安を出しています（在庫で出せる／製造待ち／未手配）。
       </p>
     </div>
