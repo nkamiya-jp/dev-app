@@ -6,6 +6,7 @@ import { CONTACT_TYPES, getContactTypeLabel, resolveRate } from "@/lib/contact-m
 import { breakdownOf, loadProductWithCost } from "@/lib/product-server";
 import { roundSellPrice } from "@/lib/pricing";
 import { getRoadmapSettings, todayJst } from "@/lib/roadmap/settings";
+import { loadForecastCells } from "@/lib/forecast-server";
 import {
   CHANNEL_COST_KEY, MONTHLY_OVERRIDES_KEY, normalizeChannelCosts, requiredSales, sellingCostPerUnit, termMonths,
   type ChannelCost, type MonthOverride,
@@ -114,8 +115,10 @@ export async function buildMonthlyPlan(monthArg: string | null) {
   const adDefault = num(raw["広告費目安"], 200000);
 
   const first = months[0];
-  const [forecasts, productions, budgets, orders, costs, overrides] = await Promise.all([
-    prisma.customerForecast.findMany({ where: { month: { in: months } } }),
+  const [forecastCells, pushes, recurring, productions, budgets, orders, costs, overrides] = await Promise.all([
+    loadForecastCells(months),
+    prisma.customerForecast.findMany({ where: { month: { in: months }, kind: "push" } }),
+    prisma.recurringForecast.findMany({ select: { contactId: true, productId: true, qty: true, startMonth: true } }),
     prisma.monthlyProduction.findMany({ where: { month: { in: months } } }),
     prisma.monthlyChannelBudget.findMany({ where: { month: { in: months } } }),
     prisma.order.findMany({
@@ -131,18 +134,22 @@ export async function buildMonthlyPlan(monthArg: string | null) {
   const ymOf = (d: Date) => d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }).slice(0, 7);
 
   // 顧客×商品×月 → 受注済み・見込み・攻め
-  type Cell = { ordered: number; forecast: number; push: number };
+  type Cell = { ordered: number; forecast: number; push: number; fromRecurring: boolean };
   const cells = new Map<string, Cell>(); // key = month|contactId|productId
   const cell = (m: string, c: string, p: string) => {
     const k = `${m}|${c}|${p}`;
-    if (!cells.has(k)) cells.set(k, { ordered: 0, forecast: 0, push: 0 });
+    if (!cells.has(k)) cells.set(k, { ordered: 0, forecast: 0, push: 0, fromRecurring: false });
     return cells.get(k)!;
   };
-  for (const f of forecasts) {
-    const c = cell(f.month, f.contactId, f.productId);
-    if (f.kind === "push") c.push += f.qty;
-    else c.forecast += f.qty;
+  for (const [k, f] of forecastCells) {
+    const [m, cid, pid] = k.split("|");
+    const c = cell(m, cid, pid);
+    c.forecast = f.qty;
+    c.fromRecurring = f.fromRecurring;
   }
+  for (const f of pushes) cell(f.month, f.contactId, f.productId).push += f.qty;
+  // 毎月の定番数（顧客×商品）
+  const recurringMap = new Map(recurring.map((r) => [`${r.contactId}|${r.productId}`, r]));
   for (const o of orders) {
     const m = ymOf(o.orderDate);
     if (!months.includes(m)) continue;
@@ -221,6 +228,7 @@ export async function buildMonthlyPlan(monthArg: string | null) {
     productId: string; productName: string; productCode: string;
     price: number; priceSource: string; sellCost: number; unitGross: number;
     ordered: number; forecast: number; push: number; expected: number; revenue: number; gross: number;
+    recurring: number; recurringStart: string | null; forecastFromRecurring: boolean;
   }[] = [];
   for (const [k, c] of cells) {
     if (!k.startsWith(month + "|")) continue;
@@ -248,6 +256,9 @@ export async function buildMonthlyPlan(monthArg: string | null) {
       expected,
       revenue: (expected + c.push) * u.price,
       gross: (expected + c.push) * u.unitGross,
+      recurring: recurringMap.get(`${cid}|${pid}`)?.qty ?? 0,
+      recurringStart: recurringMap.get(`${cid}|${pid}`)?.startMonth ?? null,
+      forecastFromRecurring: c.fromRecurring,
     });
   }
   const chOrder = (ch: string) => {

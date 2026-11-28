@@ -12,12 +12,14 @@ interface Row {
   shortName: string | null;
   series: string | null;
   orderRemain: number;
+  forecast: number;
+  forecastRemain: number;
   stock: number;
   inFlight: number;
   toMake: number;
   hasProduction: boolean;
 }
-interface Totals { orderRemain: number; stock: number; inFlight: number; toMake: number; }
+interface Totals { orderRemain: number; forecastRemain: number; stock: number; inFlight: number; toMake: number; }
 
 // 納品が必要な商品（受注残があり在庫＋製造中で賄えない）を一覧。
 // 対応者に振り分けていない商品も表示し、その場で割り振れる。
@@ -30,14 +32,17 @@ export function ProductionNeeded({
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
+  const [month, setMonth] = useState("");
   const [open, setOpen] = useState(false);
   const [onlyToMake, setOnlyToMake] = useState(true);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/productions/needed");
+    if (!res.ok) return;
     const json = await res.json();
     setRows(json.rows);
     setTotals(json.totals);
+    setMonth(json.month || "");
   }, []);
   useEffect(() => { load(); }, [load, reloadKey]);
 
@@ -48,11 +53,12 @@ export function ProductionNeeded({
       <div className="flex items-center gap-3 px-4 py-3 border-b flex-wrap">
         <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 font-bold">
           <ChevronDown className={`size-4 text-gray-400 transition-transform ${open ? "" : "-rotate-90"}`} />
-          要製造（納品が必要な商品）
+          要製造（受注残と今月の予想）
         </button>
         {totals && (
           <span className="text-xs text-gray-500 hidden sm:flex items-center gap-3">
             <span>受注残 {totals.orderRemain.toLocaleString()}</span>
+            {totals.forecastRemain > 0 && <span className="text-violet-600">予想の残り {totals.forecastRemain.toLocaleString()}</span>}
             <span className="text-orange-600 font-medium">作るべき {totals.toMake.toLocaleString()}</span>
           </span>
         )}
@@ -74,6 +80,7 @@ export function ProductionNeeded({
               <tr>
                 <th className="text-left px-3 py-2 font-medium text-gray-500 border-r">商品</th>
                 <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">受注残</th>
+                <th className="text-right px-3 py-2 font-medium text-gray-500 border-r" title="今月の予想のうち、まだ注文になっていない数">{month ? `${Number(month.slice(5, 7))}月の` : ""}予想の残り</th>
                 <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">在庫</th>
                 <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">製造中</th>
                 <th className="text-right px-3 py-2 font-medium text-gray-500 border-r">作るべき</th>
@@ -82,8 +89,8 @@ export function ProductionNeeded({
             </thead>
             <tbody className="divide-y">
               {shown.length === 0 ? (
-                <tr><td colSpan={6} className="text-center text-gray-400 py-6">
-                  {onlyToMake ? "作るべき商品はありません（在庫・製造中で充足）" : "受注残のある商品はありません"}
+                <tr><td colSpan={7} className="text-center text-gray-400 py-6">
+                  {onlyToMake ? "作るべき商品はありません（在庫・製造中で充足）" : "受注残・予想の残りのある商品はありません"}
                 </td></tr>
               ) : shown.map((r) => (
                 <tr key={r.productId} className={`hover:bg-gray-50 ${r.toMake > 0 ? "bg-orange-50/40" : ""}`}>
@@ -94,7 +101,8 @@ export function ProductionNeeded({
                       <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">未依頼</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right border-r tabular-nums">{r.orderRemain.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right border-r tabular-nums">{r.orderRemain > 0 ? r.orderRemain.toLocaleString() : "—"}</td>
+                  <td className="px-3 py-2 text-right border-r tabular-nums text-violet-600" title={r.forecast > 0 ? `予想 ${r.forecast}` : undefined}>{r.forecastRemain > 0 ? r.forecastRemain.toLocaleString() : "—"}</td>
                   <td className="px-3 py-2 text-right border-r tabular-nums text-gray-500">{r.stock.toLocaleString()}</td>
                   <td className="px-3 py-2 text-right border-r tabular-nums text-blue-600">{r.inFlight > 0 ? r.inFlight.toLocaleString() : "—"}</td>
                   <td className={`px-3 py-2 text-right border-r tabular-nums font-bold ${r.toMake > 0 ? "text-orange-600" : "text-gray-300"}`}>
@@ -113,6 +121,7 @@ export function ProductionNeeded({
                 <tr className="border-t-2 bg-gray-50 font-bold">
                   <td className="px-3 py-2 border-r">合計</td>
                   <td className="px-3 py-2 text-right border-r tabular-nums">{totals.orderRemain.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right border-r tabular-nums text-violet-600">{totals.forecastRemain.toLocaleString()}</td>
                   <td className="px-3 py-2 text-right border-r tabular-nums text-gray-500">{totals.stock.toLocaleString()}</td>
                   <td className="px-3 py-2 text-right border-r tabular-nums text-blue-600">{totals.inFlight.toLocaleString()}</td>
                   <td className="px-3 py-2 text-right border-r tabular-nums text-orange-600">{totals.toMake.toLocaleString()}</td>
@@ -122,7 +131,7 @@ export function ProductionNeeded({
             )}
           </table>
           <p className="text-[11px] text-gray-400 px-3 py-2">
-            ※ 受注残=未出荷の受注合計。作るべき=受注残−在庫−製造中（未納品の割当）。0以下は充足。
+            ※ 受注残=未出荷の受注合計。予想の残り=今月の予想（月の収支計画の見込み・毎月の定番数）のうち、まだ注文になっていない数。作るべき=受注残＋予想の残り−在庫−製造中（未納品の割当）。0以下は充足。
           </p>
         </div>
       )}
