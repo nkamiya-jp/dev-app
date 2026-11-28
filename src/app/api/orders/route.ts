@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
+import { allocateOpenItems } from "@/lib/allocation-server";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,11 @@ export async function GET(request: NextRequest) {
     },
     orderBy: { orderDate: "desc" },
   });
-  return Response.json(orders);
+  // 明細ごとの「在庫から出せる／製造中待ち／未手配」（分納の見える化）
+  const alloc = await allocateOpenItems();
+  return Response.json(
+    orders.map((o) => ({ ...o, items: o.items.map((it) => ({ ...it, alloc: alloc.get(it.id) ?? null })) })),
+  );
 }
 
 export async function POST(request: NextRequest) {

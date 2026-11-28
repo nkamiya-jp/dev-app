@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { getWeeksOfMonth } from "@/lib/week-utils";
 import { compareProductOrder } from "@/lib/product-meta";
+import { allocateOpenItems } from "@/lib/allocation-server";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,8 @@ export async function GET(request: NextRequest) {
     shipByKey.get(key)!.push({ shipDate: s.shipDate, quantity: s.quantity });
   }
 
+  const alloc = await allocateOpenItems(productIds);
+
   function buildRow(it: (typeof items)[number], pid: string) {
     let monthlyPlans: Record<string, number> = {};
     let weeklyPlans: Record<string, number> = {};
@@ -124,6 +127,7 @@ export async function GET(request: NextRequest) {
       quantity: it.quantity,
       shippedQty: it.shippedQty,
       remainQty: it.quantity - it.shippedQty,
+      alloc: alloc.get(it.id) ?? null,
       monthlyPlans,
       shipStr,
       weeklyPlans: weeklyForMonth,

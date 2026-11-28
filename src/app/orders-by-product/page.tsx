@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, Printer, ChevronDown, ChevronUp } from "lucide-react";
 import { formatMonthLabel } from "@/lib/sales-month";
+import { AllocBadge, type ItemAlloc } from "@/components/alloc-badge";
 
 interface Week { monday: string; label: string; }
 interface Row {
@@ -19,6 +20,7 @@ interface Row {
   quantity: number;
   shippedQty: number;
   remainQty: number;
+  alloc: ItemAlloc | null;
   monthlyPlans: Record<string, number>;
   shipStr: string;
   weeklyPlans: Record<string, number>;
@@ -344,7 +346,10 @@ export default function OrdersByProductPage() {
                                 </td>
                               ))}
                               <td className="px-2 py-1.5 text-right border-r">{r.shippedQty ? r.shippedQty.toLocaleString() : ""}</td>
-                              <td className="px-2 py-1.5 border-r text-gray-500">{r.shipStr}</td>
+                              <td className="px-2 py-1.5 border-r text-gray-500">
+                                {!done && <AllocBadge alloc={r.alloc} className="mr-1.5 print:hidden" />}
+                                {r.shipStr}
+                              </td>
                               {weeks.map((w) => (
                                 <td key={w.monday} className="px-1 py-0.5 border-r bg-amber-50/20 print:px-2 print:py-1.5 print:text-right">
                                   <span className="hidden print:inline">{r.weeklyPlans[w.monday] ? r.weeklyPlans[w.monday].toLocaleString() : ""}</span>
@@ -414,6 +419,7 @@ export default function OrdersByProductPage() {
 
       <p className="text-xs text-gray-400 print:hidden">
         ※ 月別対応（{months.map((m) => formatMonthLabel(m)).join("・")}）と週別（{formatMonthLabel(month)}の平日週）は青・橙のセルに直接入力→自動保存。出荷済・出荷日は出荷実績から自動表示。灰色行=出荷完了。
+        未出荷の分には、発送予定日（なければ注文日）が早い受注から順に、今の在庫→製造中の分を割り当てた目安を出しています（在庫で出せる／製造待ち／未手配）。
       </p>
     </div>
   );

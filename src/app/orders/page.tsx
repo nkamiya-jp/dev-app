@@ -19,6 +19,7 @@ import { Plus, ChevronDown, ChevronRight, ChevronUp, Search, Trash2, Pencil, Cop
 import { Celebration } from "@/components/celebration";
 import { compareProductOrder } from "@/lib/product-meta";
 import { salesMonth, formatMonthLabel } from "@/lib/sales-month";
+import { AllocBadge, type ItemAlloc } from "@/components/alloc-badge";
 
 interface OrderItem {
   id: string;
@@ -28,6 +29,7 @@ interface OrderItem {
   shippedQty: number;
   unitPrice: number | null;
   monthlyPlans: string | null;
+  alloc?: ItemAlloc | null;
 }
 
 interface Order {
@@ -396,6 +398,11 @@ export default function OrdersPage() {
                       <Badge className={`text-xs ${getOrderStatusColor(order.status)}`}>
                         {getOrderStatusLabel(order.status)}
                       </Badge>
+                      {order.items.some((it) => (it.alloc?.unplanned ?? 0) > 0) ? (
+                        <span className="text-[11px] text-rose-600 border border-rose-200 bg-rose-50 rounded px-1.5 py-0.5" title="在庫・製造中で足りない明細があります">未手配あり</span>
+                      ) : order.items.some((it) => (it.alloc?.fromProduction ?? 0) > 0) ? (
+                        <span className="text-[11px] text-blue-600 border border-blue-200 bg-blue-50 rounded px-1.5 py-0.5" title="製造中の分が上がれば出せます">製造待ち</span>
+                      ) : null}
                     </div>
                     <div className="text-xs text-gray-500 mt-1 flex items-center gap-3 flex-wrap">
                       <span>注文日: {new Date(order.orderDate).toLocaleDateString("ja-JP")}</span>
@@ -660,6 +667,7 @@ function OrderItemRow({
       <td className="px-3 py-2 text-right text-green-600">{item.shippedQty}</td>
       <td className={`px-3 py-2 text-right font-medium ${remain > 0 ? "text-orange-600" : "text-gray-400"}`}>
         {remain}
+        <div className="font-normal whitespace-nowrap"><AllocBadge alloc={item.alloc} className="justify-end" /></div>
       </td>
       <td className="px-3 py-2 text-right">
         <span className="inline-flex items-center gap-0.5">
