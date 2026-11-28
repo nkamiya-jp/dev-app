@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { AlertTriangle, ChevronRight, MessageSquareText, Plus, Search } from "lucide-react";
 import { SlackImportDialog } from "./slack-import";
 import { SLACK_ORDER_IMPORT_ENABLED } from "@/lib/features";
+import { AllocBadge, type ItemAlloc } from "@/components/alloc-badge";
 
 interface BoardItem {
   id: string;
   quantity: number;
   shippedQty: number;
   product: { id: string; code: string; name: string; inventory: { stock: number } | null };
+  alloc?: ItemAlloc | null;
 }
 
 interface OrderDraftRow {
@@ -354,11 +356,10 @@ function OrderCard({
   const late = !done && diff !== null && diff < 0;
   const soon = !done && diff !== null && diff >= 0 && diff <= 3;
 
-  // 明細ごとの在庫充足（在庫は全受注で共有の総数なので目安）
+  // 明細ごとの在庫充足（発送予定の早い受注から在庫→製造中を割り当てた目安。サーバーで計算）
   const lines = order.items.map((it) => {
     const need = Math.max(0, it.quantity - it.shippedQty);
-    const stock = it.product.inventory?.stock ?? 0;
-    return { ...it, need, stock, enough: stock >= need };
+    return { ...it, need, enough: need === 0 || (it.alloc ? it.alloc.fromStock >= need : (it.product.inventory?.stock ?? 0) >= need) };
   });
   const allInStock = lines.length > 0 && lines.every((l) => l.enough);
   const next = NEXT[order.stage];
@@ -394,11 +395,7 @@ function OrderCard({
               <span className="truncate">
                 {l.product.name} <span className="text-gray-500">×{l.quantity}</span>
               </span>
-              {!done && l.need > 0 && (
-                <span className={`shrink-0 ${l.enough ? "text-emerald-600" : "text-amber-700"}`}>
-                  {l.enough ? "在庫あり" : `要制作（在庫${l.stock}）`}
-                </span>
-              )}
+              {!done && l.need > 0 && <AllocBadge alloc={l.alloc} className="shrink-0 justify-end" />}
             </li>
           ))}
           {lines.length === 0 && <li className="text-xs text-gray-400">明細なし</li>}
