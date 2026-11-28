@@ -105,13 +105,13 @@ export async function GET(request: NextRequest) {
     allocateOpenItems(productIds),
     baseMonth ? loadStandingCards(baseMonth, { productIds }) : Promise.resolve([]),
   ]);
-  // 商品ごとの定期のお客さん（想定）
-  type Standing = { contactId: string; label: string; perWeek: boolean; qty: number; monthQty: number; monthOrdered: number; weekOrdered: number };
+  // 商品ごとの定期顧客（顧客ページの☆）とその月の予測注文数
+  type Standing = { contactId: string; label: string; perWeek: boolean; forecast: number | null; monthOrdered: number; weekOrdered: number };
   const standingByProduct = new Map<string, Standing[]>();
   for (const c of standingCards) {
     for (const l of c.lines) {
       const arr = standingByProduct.get(l.productId) ?? [];
-      arr.push({ contactId: c.contactId, label: c.label, perWeek: c.perWeek, qty: l.qty, monthQty: l.monthQty, monthOrdered: l.monthOrdered, weekOrdered: l.weekOrdered });
+      arr.push({ contactId: c.contactId, label: c.label, perWeek: c.perWeek, forecast: l.forecast, monthOrdered: l.monthOrdered, weekOrdered: l.weekOrdered });
       standingByProduct.set(l.productId, arr);
     }
   }
@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
       for (const [k, v] of Object.entries(r.row.weeklyPlans)) d.weeklyPlans[k] = (d.weeklyPlans[k] ?? 0) + (Number(v) || 0);
       dailyMap.set(cid, d);
     }
-    // 想定のある伺うスタイルのお客さんは、注文が無くても欄を出す
+    // 定期顧客の毎日伺いのお客さんは、注文が無くても欄を出す
     for (const s of standing) {
       if (!s.perWeek || dailyMap.has(s.contactId)) continue;
       dailyMap.set(s.contactId, {
@@ -200,8 +200,8 @@ export async function GET(request: NextRequest) {
     }
     const dailyRows = [...dailyMap.values()].sort((a, b) => a.contactName.localeCompare(b.contactName, "ja"));
 
-    // 発注で来る定期のお客さん：その月まだ発注が無ければ空の欄を出す
-    const waiting = standing.filter((s) => !s.perWeek && s.monthOrdered === 0);
+    // 発注で来る定期顧客：いつも1行（予測注文数を入れる欄）
+    const regulars = standing.filter((s) => !s.perWeek);
 
     const prodByMonth: Record<string, number> = {};
     const rec = prodInByProduct.get(p.id) ?? {};
@@ -217,8 +217,8 @@ export async function GET(request: NextRequest) {
       prodByMonth, // 対象3ヶ月の製造入荷予定
       rows,
       dailyRows,
-      standing, // 定期のお客さん（想定）
-      waiting, // 想定があって、その月まだ発注が無いお客さん
+      standing, // 定期顧客（☆）
+      regulars, // そのうち発注で来るお客さん
     };
   });
 

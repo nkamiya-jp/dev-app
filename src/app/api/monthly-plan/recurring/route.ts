@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { getViewer, unauthorized } from "@/lib/viewer";
+import { forbidden, getViewer, unauthorized } from "@/lib/viewer";
 import { todayJst } from "@/lib/roadmap/settings";
 
 export const dynamic = "force-dynamic";
 
-// 数量だけ（金額は出さない）なのでログインしていれば誰でも
 async function guard() {
   const v = await getViewer();
   if (!v) return { error: unauthorized() };
+  if (v.isPart) return { error: forbidden("売上の数字は表示できません") };
   return { v };
 }
 
@@ -46,8 +46,7 @@ export async function PUT(request: NextRequest) {
     }
   }
   if (qty === 0) {
-    // 数は止めても、商品別出荷管理の「定期のお客さんの枠」としては残す
-    if (before) await prisma.recurringForecast.update({ where: key, data: { qty: 0, startMonth, updatedBy: g.v.name } });
+    await prisma.recurringForecast.deleteMany({ where: { contactId, productId } });
     return Response.json({ ok: true });
   }
   await prisma.recurringForecast.upsert({

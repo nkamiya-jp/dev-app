@@ -118,7 +118,7 @@ export async function buildMonthlyPlan(monthArg: string | null) {
   const [forecastCells, pushes, recurring, productions, budgets, orders, costs, overrides] = await Promise.all([
     loadForecastCells(months),
     prisma.customerForecast.findMany({ where: { month: { in: months }, kind: "push" } }),
-    prisma.recurringForecast.findMany({ where: { qty: { gt: 0 } }, select: { contactId: true, productId: true, qty: true, startMonth: true, contact: { select: { dailyOrder: true } } } }),
+    prisma.recurringForecast.findMany({ select: { contactId: true, productId: true, qty: true, startMonth: true } }),
     prisma.monthlyProduction.findMany({ where: { month: { in: months } } }),
     prisma.monthlyChannelBudget.findMany({ where: { month: { in: months } } }),
     prisma.order.findMany({
@@ -228,7 +228,7 @@ export async function buildMonthlyPlan(monthArg: string | null) {
     productId: string; productName: string; productCode: string;
     price: number; priceSource: string; sellCost: number; unitGross: number;
     ordered: number; forecast: number; push: number; expected: number; revenue: number; gross: number;
-    recurring: number; recurringStart: string | null; forecastFromRecurring: boolean; recurringPerWeek: boolean;
+    recurring: number; recurringStart: string | null; forecastFromRecurring: boolean;
   }[] = [];
   for (const [k, c] of cells) {
     if (!k.startsWith(month + "|")) continue;
@@ -259,7 +259,6 @@ export async function buildMonthlyPlan(monthArg: string | null) {
       recurring: recurringMap.get(`${cid}|${pid}`)?.qty ?? 0,
       recurringStart: recurringMap.get(`${cid}|${pid}`)?.startMonth ?? null,
       forecastFromRecurring: c.fromRecurring,
-      recurringPerWeek: !!recurringMap.get(`${cid}|${pid}`)?.contact.dailyOrder,
     });
   }
   const chOrder = (ch: string) => {

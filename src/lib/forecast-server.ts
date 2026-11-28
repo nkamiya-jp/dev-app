@@ -2,7 +2,6 @@
 // 予想の正は「顧客×商品×月」。
 // - その月に個別の数（CustomerForecast kind=forecast）があればそれ（0 も「今月は無し」として有効）
 // - 無ければ、毎月の定番数（RecurringForecast）を startMonth 以降の月に入れる
-//   毎日伺うお店（Contact.dailyOrder）の定番数は「週あたり」。月の予想は 週あたり×その月の日数÷7（四捨五入）
 // 予想は注文の先取り（NAO 2026-11-28）：その月に注文が入った分だけ予想は減る＝見込み = max(受注済み, 予想)
 import { prisma } from "@/lib/db";
 
@@ -21,7 +20,7 @@ export async function loadForecastCells(months: string[], where?: { contactId?: 
     }),
     prisma.recurringForecast.findMany({
       where: { qty: { gt: 0 }, ...where },
-      select: { contactId: true, productId: true, qty: true, startMonth: true, contact: { select: { dailyOrder: true } } },
+      select: { contactId: true, productId: true, qty: true, startMonth: true },
     }),
   ]);
   const cells = new Map<string, ForecastCell>();
@@ -30,28 +29,20 @@ export async function loadForecastCells(months: string[], where?: { contactId?: 
     for (const t of recurring) {
       if (m < t.startMonth) continue;
       const k = `${m}|${t.contactId}|${t.productId}`;
-      if (!cells.has(k)) cells.set(k, { qty: monthlyQty(t.qty, t.contact.dailyOrder, m), fromRecurring: true });
+      if (!cells.has(k)) cells.set(k, { qty: t.qty, fromRecurring: true });
     }
   }
   return cells;
 }
 
-/** 定番数 → その月の予想数（週あたりなら 日数÷7 倍） */
-export function monthlyQty(qty: number, perWeek: boolean, month: string) {
-  if (!perWeek) return qty;
-  const [y, m] = month.split("-").map(Number);
-  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return Math.round((qty * days) / 7);
-}
-
-/** 定番数がその月に効いているか（あれば、その月の予想数にして返す） */
+/** 定番数がその月に効いているか（あれば数を返す） */
 export async function recurringQtyFor(contactId: string, productId: string, month: string) {
   const t = await prisma.recurringForecast.findUnique({
     where: { contactId_productId: { contactId, productId } },
-    select: { qty: true, startMonth: true, contact: { select: { dailyOrder: true } } },
+    select: { qty: true, startMonth: true },
   });
   if (!t || t.qty <= 0 || month < t.startMonth) return null;
-  return monthlyQty(t.qty, t.contact.dailyOrder, month);
+  return t.qty;
 }
 
 const ymJst = (d: Date) => d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }).slice(0, 7);

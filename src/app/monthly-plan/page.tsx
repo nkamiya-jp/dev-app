@@ -23,7 +23,7 @@ interface Line {
   productId: string; productName: string; productCode: string;
   price: number; priceSource: string; sellCost: number; unitGross: number;
   ordered: number; forecast: number; push: number; expected: number; revenue: number; gross: number;
-  recurring: number; recurringStart: string | null; forecastFromRecurring: boolean; recurringPerWeek?: boolean;
+  recurring: number; recurringStart: string | null; forecastFromRecurring: boolean;
 }
 interface ChannelRow { id: string; label: string; ratePct: number | null; expected: number; budget: number; pushRevenue: number; pushGross: number; remaining: number }
 interface ProductRow { productId: string; name: string; code: string; cost: number; purchasePerUnit: number; need: number; stockStart: number | null; production: number; balance: number | null; productionCost: number; purchase: number }
@@ -331,7 +331,7 @@ function LinesCard({
                       <td className={`text-right px-2 tabular-nums ${l.unitGross < 0 ? "text-rose-600" : ""}`}>{l.price ? l.unitGross.toLocaleString() : "-"}</td>
                       <td className="text-right px-2 tabular-nums text-gray-500">{l.ordered || "-"}</td>
                       <td className="text-right px-1"><QtyCell value={l.forecast} onSave={(q) => onQty(l, "forecast", q)} muted={l.forecastFromRecurring} title={l.forecastFromRecurring ? "毎月の定番数から入っています" : undefined} /></td>
-                      <td className="text-right px-1"><QtyCell value={l.recurring} onSave={(q) => onRecurring(l, q)} title={l.recurringPerWeek ? "毎日伺うお店：週あたりの数" : l.recurringStart ? `${mLabel(l.recurringStart)}から毎月` : "毎月の定番数"} />{l.recurringPerWeek && <span className="text-[10px] text-gray-400 ml-0.5">/週</span>}</td>
+                      <td className="text-right px-1"><QtyCell value={l.recurring} onSave={(q) => onRecurring(l, q)} title={l.recurringStart ? `${mLabel(l.recurringStart)}から毎月` : "毎月の定番数"} /></td>
                       <td className="text-right px-1"><QtyCell value={l.push} onSave={(q) => onQty(l, "push", q)} accent /></td>
                       <td className="text-right px-2 tabular-nums">{l.revenue ? man(l.revenue) : "-"}</td>
                       <td className={`text-right px-2 tabular-nums ${l.gross < 0 ? "text-rose-600" : ""}`}>{l.gross ? man(l.gross) : "-"}</td>
