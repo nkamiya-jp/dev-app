@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { loadStandingCards, setStandingContact, setMonthForecast, getStandingContactIds } from "@/lib/standing-server";
+import { loadStandingCards, setStandingContact, setMonthForecast, setWeekForecast, getStandingContactIds } from "@/lib/standing-server";
 import { todayJst } from "@/lib/roadmap/settings";
 import { getViewer, unauthorized } from "@/lib/viewer";
 
@@ -24,7 +24,7 @@ export async function PATCH(request: NextRequest) {
   return Response.json({ ok: true });
 }
 
-// PUT /api/orders/standing { contactId, productId, month, qty } — その月の予測注文数（空=null で消す）。数だけなのでログインしていれば誰でも
+// PUT /api/orders/standing { contactId, productId, month, week?, qty } — 予測注文数（空=null で消す）。week（月曜）があれば週の数、合計が月の予想になる。数だけなのでログインしていれば誰でも
 export async function PUT(request: NextRequest) {
   const v = await getViewer();
   if (!v) return unauthorized();
@@ -32,6 +32,8 @@ export async function PUT(request: NextRequest) {
   const month = String(b?.month || "");
   if (!b?.contactId || !b?.productId || !/^\d{4}-\d{2}$/.test(month)) return Response.json({ error: "顧客・商品・月を指定してください" }, { status: 400 });
   const qty = b.qty === null || b.qty === "" || b.qty === undefined ? null : Math.max(0, Math.round(Number(b.qty) || 0));
-  await setMonthForecast(String(b.contactId), String(b.productId), month, qty, v.name);
+  const week = String(b.week || "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(week)) await setWeekForecast(String(b.contactId), String(b.productId), month, week, qty, v.name);
+  else await setMonthForecast(String(b.contactId), String(b.productId), month, qty, v.name);
   return Response.json({ ok: true });
 }

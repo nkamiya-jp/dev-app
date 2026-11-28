@@ -1,6 +1,6 @@
 // 定期顧客（顧客ページの☆）（サーバー側専用）
 // ☆の付いたお客さんは、取扱商品ごとに商品別出荷管理・受注ページの発注カードにいつも並ぶ。
-// その月の予測注文数は「顧客×商品×月」の予想（CustomerForecast。月の収支計画と同じデータ）に入れる。
+// 予測注文数は週ごとに入れる（CustomerForecast kind=`week:<月曜>`）。その合計を「顧客×商品×月」の予想（kind=forecast。月の収支計画と同じデータ）にする。
 // ☆の一覧は AppSetting（standing-contacts）に顧客IDの配列で持つ（列の追加なし）
 import { prisma } from "@/lib/db";
 import { compareProductOrder } from "@/lib/product-meta";
@@ -43,12 +43,34 @@ export async function setMonthForecast(contactId: string, productId: string, mon
   });
 }
 
+const WEEK_PREFIX = "week:";
+
+/** 週の予測注文数を入れる（空=null で消す）。入れたあと、その月の週の合計を月の予想にする */
+export async function setWeekForecast(contactId: string, productId: string, month: string, monday: string, qty: number | null, by: string | null) {
+  const key = { contactId, productId, month, kind: `${WEEK_PREFIX}${monday}` };
+  if (qty == null) await prisma.customerForecast.deleteMany({ where: key });
+  else {
+    await prisma.customerForecast.upsert({
+      where: { contactId_productId_month_kind: key },
+      update: { qty, updatedBy: by },
+      create: { ...key, qty, updatedBy: by },
+    });
+  }
+  const weeks = await prisma.customerForecast.findMany({
+    where: { contactId, productId, month, kind: { startsWith: WEEK_PREFIX } },
+    select: { qty: true },
+  });
+  await setMonthForecast(contactId, productId, month, weeks.length ? weeks.reduce((a, w) => a + w.qty, 0) : null, by);
+}
+
 export type StandingLine = {
   productId: string;
   code: string;
   name: string;
   /** その月の予測注文数（無ければ null） */
   forecast: number | null;
+  /** 週ごとの予測注文数（key=月曜 YYYY-MM-DD） */
+  weeks: Record<string, number>;
   /** その月の注文数（受注日がその月・キャンセル除く） */
   monthOrdered: number;
   /** 今週（月〜日）の注文数 */
@@ -87,7 +109,7 @@ export async function loadStandingCards(month: string, opts?: { productIds?: str
   const pf = opts?.productIds ? { productId: { in: opts.productIds } } : {};
   const productSelect = { id: true, code: true, name: true, shortName: true, series: true, sortOrder: true, active: true } as const;
 
-  const [contacts, handled, items, last, cells] = await Promise.all([
+  const [contacts, handled, items, last, cells, weekRows] = await Promise.all([
     prisma.contact.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, company: true, dailyOrder: true } }),
     // 並べる商品＝取扱商品
     prisma.customerPrice.findMany({ where: { contactId: { in: ids }, ...pf }, select: { contactId: true, product: { select: productSelect } } }),
@@ -100,7 +122,18 @@ export async function loadStandingCards(month: string, opts?: { productIds?: str
     }),
     prisma.order.groupBy({ by: ["contactId"], where: { contactId: { in: ids }, status: { not: "cancelled" } }, _max: { orderDate: true } }),
     loadForecastCells([month]),
+    prisma.customerForecast.findMany({
+      where: { contactId: { in: ids }, month, kind: { startsWith: WEEK_PREFIX }, ...pf },
+      select: { contactId: true, productId: true, kind: true, qty: true },
+    }),
   ]);
+  const weekMap = new Map<string, Record<string, number>>();
+  for (const w of weekRows) {
+    const k = `${w.contactId}|${w.productId}`;
+    const rec = weekMap.get(k) ?? {};
+    rec[w.kind.slice(WEEK_PREFIX.length)] = w.qty;
+    weekMap.set(k, rec);
+  }
   const lastMap = new Map(last.map((l) => [l.contactId, l._max.orderDate]));
 
   // 顧客×商品の組（取扱商品＋その月・今週に注文があった商品）
@@ -131,7 +164,7 @@ export async function loadStandingCards(month: string, opts?: { productIds?: str
     const lines: StandingLine[] = prods.map((p) => {
       const a = agg.get(`${c.id}|${p.id}`) ?? { month: 0, week: 0 };
       const cell = cells.get(`${month}|${c.id}|${p.id}`);
-      return { productId: p.id, code: p.code, name: p.shortName || p.name, forecast: cell ? cell.qty : null, monthOrdered: a.month, weekOrdered: a.week };
+      return { productId: p.id, code: p.code, name: p.shortName || p.name, forecast: cell ? cell.qty : null, weeks: weekMap.get(`${c.id}|${p.id}`) ?? {}, monthOrdered: a.month, weekOrdered: a.week };
     });
     if (opts?.productIds && lines.length === 0) continue;
     out.push({
