@@ -14,8 +14,8 @@ interface Card {
 const OPEN_KEY = "orders.standing.open";
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
-// 受注ページ上部：定期のお客さん（発注カード）。想定と今月（伺うスタイルは今週も）の注文を並べ、
-// 「発注を入れる」でいつもの商品・数が入った受注の入力を開く
+// 受注ページ上部：定期のお客さん（発注カード）。枠は商品別出荷管理で置く。今月（伺うスタイルは今週も）の注文を並べ、
+// 「発注を入れる」でいつもの商品が入った受注の入力を開く
 export function StandingCards({ onOrder, reloadKey }: { onOrder: (p: OrderPrefill) => void; reloadKey?: number }) {
   const [cards, setCards] = useState<Card[]>([]);
   const [month, setMonth] = useState("");
@@ -39,17 +39,17 @@ export function StandingCards({ onOrder, reloadKey }: { onOrder: (p: OrderPrefil
 
   return (
     <div className="space-y-2">
-      <button type="button" onClick={toggle} className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+      <div>
+      <button type="button" onClick={toggle} className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700">
         <ChevronDown className={`size-4 text-gray-400 transition-transform ${open ? "" : "-rotate-90"}`} />
         定期のお客さん（発注カード）
-        <span className="text-xs font-normal text-gray-400">{cards.length}件・想定は顧客ページの「定期の注文」で変えられます</span>
       </button>
+      <span className="ml-2 text-xs text-gray-400">{cards.length}件・枠は<Link href="/orders-by-product" className="text-blue-600 hover:underline">商品別出荷管理</Link>で置けます</span>
+      </div>
       {open && (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((c) => {
-            const pct = c.perWeek
-              ? (c.weekQty > 0 ? c.weekOrdered / c.weekQty : 0)
-              : (c.monthQty > 0 ? c.monthOrdered / c.monthQty : 0);
+            const hasQty = c.lines.some((l) => l.qty > 0);
             const none = c.perWeek ? c.weekOrdered === 0 : c.monthOrdered === 0;
             return (
               <div key={c.contactId} className={`rounded-lg border bg-white p-3 space-y-2 ${none ? "border-dashed" : ""}`}>
@@ -57,12 +57,12 @@ export function StandingCards({ onOrder, reloadKey }: { onOrder: (p: OrderPrefil
                   <div className="min-w-0">
                     <Link href={`/contacts/${c.contactId}`} className="font-medium text-sm text-blue-700 hover:underline truncate block">{c.label}</Link>
                     <p className="text-[11px] text-gray-400">
-                      {c.perWeek ? "伺うスタイル・週あたりの想定" : "月あたりの想定"}
+                      {c.perWeek ? "毎日伺い" : "発注"}
                       {c.lastOrderDate && `・前回 ${md(c.lastOrderDate)}`}
                     </p>
                   </div>
-                  <span className={`shrink-0 text-[11px] rounded px-1.5 py-0.5 ${none ? "bg-amber-50 text-amber-700 border border-amber-200" : pct >= 1 ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
-                    {none ? (c.perWeek ? "今週まだ" : `${mLabel}まだ発注なし`) : c.perWeek ? `今週 ${c.weekOrdered}/${c.weekQty}` : `${mLabel} ${c.monthOrdered}/${c.monthQty}`}
+                  <span className={`shrink-0 text-[11px] rounded px-1.5 py-0.5 ${none ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-emerald-50 text-emerald-700"}`}>
+                    {none ? (c.perWeek ? "今週まだ" : `${mLabel}まだ発注なし`) : c.perWeek ? `今週 ${c.weekOrdered}個` : `${mLabel} ${c.monthOrdered}個`}
                   </span>
                 </div>
                 <table className="w-full text-xs">
@@ -71,7 +71,7 @@ export function StandingCards({ onOrder, reloadKey }: { onOrder: (p: OrderPrefil
                       <th className="text-left font-normal">商品</th>
                       {c.perWeek && <th className="text-right font-normal">今週</th>}
                       <th className="text-right font-normal">{mLabel}</th>
-                      <th className="text-right font-normal">想定</th>
+                      {hasQty && <th className="text-right font-normal">予想</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -80,7 +80,7 @@ export function StandingCards({ onOrder, reloadKey }: { onOrder: (p: OrderPrefil
                         <td className="truncate max-w-[160px]">{l.name}</td>
                         {c.perWeek && <td className="text-right tabular-nums">{l.weekOrdered || "-"}</td>}
                         <td className="text-right tabular-nums">{l.monthOrdered || "-"}</td>
-                        <td className="text-right tabular-nums text-gray-500">{l.qty}{c.perWeek ? "/週" : ""}</td>
+                        {hasQty && <td className="text-right tabular-nums text-gray-500">{l.qty ? `${l.qty}${c.perWeek ? "/週" : ""}` : "-"}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -89,7 +89,7 @@ export function StandingCards({ onOrder, reloadKey }: { onOrder: (p: OrderPrefil
                   type="button"
                   onClick={() => onOrder({
                     contactId: c.contactId,
-                    // 伺うスタイルは数を毎回聞くので空欄、発注のお客さんは「想定−今月の注文」を入れておく
+                    // 数は毎回変わるので空欄（月の収支計画に予想数があれば、発注のお客さんは「予想−今月の注文」を入れておく）
                     lines: c.lines.map((l) => ({ productId: l.productId, quantity: c.perWeek ? 0 : Math.max(0, l.monthQty - l.monthOrdered) })),
                   })}
                   className="w-full inline-flex items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-xs hover:bg-gray-50"

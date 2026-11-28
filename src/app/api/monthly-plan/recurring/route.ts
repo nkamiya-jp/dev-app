@@ -12,19 +12,6 @@ async function guard() {
   return { v };
 }
 
-// GET /api/monthly-plan/recurring?contactId= — そのお客さんの想定（月あたり。伺うスタイルなら週あたり）
-export async function GET(request: NextRequest) {
-  const g = await guard();
-  if ("error" in g) return g.error;
-  const contactId = request.nextUrl.searchParams.get("contactId");
-  if (!contactId) return Response.json({ error: "顧客を指定してください" }, { status: 400 });
-  const rows = await prisma.recurringForecast.findMany({
-    where: { contactId },
-    select: { productId: true, qty: true, startMonth: true },
-  });
-  return Response.json(rows);
-}
-
 // PUT /api/monthly-plan/recurring { contactId, productId, qty, fromMonth? } — 毎月の定番の予想数。0で止める
 // 新しく決めたときは fromMonth（未指定なら今月）から入る。過去の月は変えない
 export async function PUT(request: NextRequest) {
@@ -59,7 +46,8 @@ export async function PUT(request: NextRequest) {
     }
   }
   if (qty === 0) {
-    await prisma.recurringForecast.deleteMany({ where: { contactId, productId } });
+    // 数は止めても、商品別出荷管理の「定期のお客さんの枠」としては残す
+    if (before) await prisma.recurringForecast.update({ where: key, data: { qty: 0, startMonth, updatedBy: g.v.name } });
     return Response.json({ ok: true });
   }
   await prisma.recurringForecast.upsert({

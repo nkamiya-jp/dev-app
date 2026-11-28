@@ -118,7 +118,7 @@ export async function buildMonthlyPlan(monthArg: string | null) {
   const [forecastCells, pushes, recurring, productions, budgets, orders, costs, overrides] = await Promise.all([
     loadForecastCells(months),
     prisma.customerForecast.findMany({ where: { month: { in: months }, kind: "push" } }),
-    prisma.recurringForecast.findMany({ select: { contactId: true, productId: true, qty: true, startMonth: true, contact: { select: { dailyOrder: true } } } }),
+    prisma.recurringForecast.findMany({ where: { qty: { gt: 0 } }, select: { contactId: true, productId: true, qty: true, startMonth: true, contact: { select: { dailyOrder: true } } } }),
     prisma.monthlyProduction.findMany({ where: { month: { in: months } } }),
     prisma.monthlyChannelBudget.findMany({ where: { month: { in: months } } }),
     prisma.order.findMany({

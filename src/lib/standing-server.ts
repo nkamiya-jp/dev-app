@@ -1,7 +1,8 @@
 // 定期のお客さん（発注カード）（サーバー側専用）
-// 想定（RecurringForecast）を持つお客さん×商品を、その月の注文と並べる。
-// - 普通のお客さん：想定は「月あたり」。今月の発注と比べる
-// - 伺うスタイルのお客さん（Contact.dailyOrder、清水エリアなど）：想定は「週あたり」。今週・今月の注文と比べる
+// 商品別出荷管理で置いた「定期のお客さんの枠」（RecurringForecast。数は持たず qty 0 のことが多い）を、その月の注文と並べる。
+// - 普通のお客さん：その月の発注があるか
+// - 伺うスタイルのお客さん（Contact.dailyOrder、清水エリアなど）：今週・今月の注文
+// qty>0 は月の収支計画の「毎月」の予想数（伺うスタイルは週あたり）
 import { prisma } from "@/lib/db";
 import { compareProductOrder } from "@/lib/product-meta";
 import { monthlyQty } from "@/lib/forecast-server";
@@ -53,7 +54,7 @@ export async function loadStandingCards(month: string, opts?: { productIds?: str
   const pf = opts?.productIds ? { productId: { in: opts.productIds } } : {};
 
   const recurring = await prisma.recurringForecast.findMany({
-    where: { qty: { gt: 0 }, startMonth: { lte: month }, ...pf },
+    where: { startMonth: { lte: month }, ...pf },
     select: {
       contactId: true, productId: true, qty: true,
       contact: { select: { id: true, name: true, company: true, dailyOrder: true } },

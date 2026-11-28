@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Printer, ChevronDown, ChevronUp } from "lucide-react";
+import { Download, Printer, ChevronDown, ChevronUp, X, Plus } from "lucide-react";
 import { formatMonthLabel } from "@/lib/sales-month";
 import { AllocBadge, type ItemAlloc } from "@/components/alloc-badge";
 
@@ -99,6 +99,32 @@ function NumCell({ value, onSave }: { value: number; onSave: (v: number) => void
   );
 }
 
+/** 商品の下：定期のお客さんの枠を置く */
+function SlotAdder({ contacts, onAdd }: { contacts: { id: string; label: string }[]; onAdd: (contactId: string) => void }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="m-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline print:hidden">
+        <Plus className="size-3.5" /> 定期のお客さんの枠
+      </button>
+    );
+  }
+  return (
+    <div className="m-2 flex items-center gap-2 print:hidden">
+      <select
+        autoFocus
+        defaultValue=""
+        onChange={(e) => { if (e.target.value) { onAdd(e.target.value); setOpen(false); } }}
+        className="border rounded-md px-2 py-1 text-xs max-w-[260px]"
+      >
+        <option value="">お客さんを選ぶ…</option>
+        {contacts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+      </select>
+      <button onClick={() => setOpen(false)} className="text-xs text-gray-400 hover:text-gray-600">やめる</button>
+    </div>
+  );
+}
+
 export default function OrdersByProductPage() {
   const [month, setMonth] = useState(currentMonth());
   const [data, setData] = useState<Resp | null>(null);
@@ -106,6 +132,8 @@ export default function OrdersByProductPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [hideEmpty, setHideEmpty] = useState(true);
   const restored = useRef(false);
+  const [contacts, setContacts] = useState<{ id: string; label: string }[]>([]);
+  const [slotErr, setSlotErr] = useState<string | null>(null);
 
   // localStorage 復元
   useEffect(() => {
@@ -124,6 +152,27 @@ export default function OrdersByProductPage() {
   }, [month]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch("/api/contacts").then((r) => (r.ok ? r.json() : [])).then((cs: { id: string; name: string; company: string | null }[]) => {
+      setContacts(cs.map((c) => ({ id: c.id, label: c.company || c.name })));
+    }).catch(() => {});
+  }, []);
+
+  // 定期のお客さんの枠（顧客×商品）を置く・外す
+  const changeSlot = useCallback(async (method: "POST" | "DELETE", contactId: string, productId: string) => {
+    setSlotErr(null);
+    const res = await fetch("/api/orders/standing", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId, productId }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      setSlotErr(j?.error || "保存できませんでした");
+      return;
+    }
+    load();
+  }, [load]);
 
   function persistCollapsed(next: Set<string>) {
     try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next])); } catch {}
@@ -256,6 +305,8 @@ export default function OrdersByProductPage() {
         </label>
       </div>
 
+      {slotErr && <p className="text-sm text-red-600 print:hidden">{slotErr}</p>}
+
       {visibleGroups.length === 0 ? (
         <Card className="bg-white shadow-sm py-12 text-center text-gray-400">
           <p>{hideEmpty ? "受注のある商品がありません" : "商品がありません"}</p>
@@ -365,7 +416,7 @@ export default function OrdersByProductPage() {
                                 {r.company && <span className="text-[10px] text-gray-400 ml-1">{r.company}</span>}
                                 {r.contactId && standingOf.has(r.contactId) && (
                                   <span className="ml-1 whitespace-nowrap rounded bg-indigo-50 text-indigo-600 text-[10px] px-1 py-px print:hidden" title="毎月の想定">
-                                    定期 {standingOf.get(r.contactId)!.qty}/月
+                                    定期
                                   </span>
                                 )}
                               </td>
@@ -398,7 +449,7 @@ export default function OrdersByProductPage() {
                       {/* 伺うスタイルのお客さん（毎日の注文）：お客さんごとに1行 */}
                       {g.dailyRows.map((d) => {
                         const st = d.standing;
-                        const weekShort = st ? st.weekOrdered < st.qty : false;
+                        const weekShort = st ? (st.qty > 0 ? st.weekOrdered < st.qty : st.weekOrdered === 0) : false;
                         return (
                           <tr key={`daily-${d.contactId}`} className="bg-indigo-50/30">
                             <td className="px-2 py-1.5 border-r text-indigo-600 text-[10px]">毎日</td>
@@ -406,13 +457,13 @@ export default function OrdersByProductPage() {
                               <Link href={`/contacts/${d.contactId}`} className="text-blue-600 hover:underline">{d.contactName}</Link>
                               {d.company && d.company !== d.contactName && <span className="text-[10px] text-gray-400 ml-1">{d.company}</span>}
                               <div className="text-[10px] text-gray-500 mt-0.5">
+                                今週 <span className={weekShort ? "text-amber-600 font-medium" : "text-green-700 font-medium"}>{st?.weekOrdered ?? 0}</span>
+                                {st && st.qty > 0 && <>／予想 {st.qty}/週</>}
+                                <span className="text-gray-400"> ・ {monthNum}月 {d.monthQty}（{d.orderDays}日分）</span>
                                 {st ? (
-                                  <>
-                                    今週 <span className={weekShort ? "text-amber-600 font-medium" : "text-green-700 font-medium"}>{st.weekOrdered}</span>／想定 {st.qty}/週
-                                    <span className="text-gray-400"> ・ {monthNum}月 {d.monthQty}（{d.orderDays}日分）</span>
-                                  </>
+                                  <button onClick={() => changeSlot("DELETE", d.contactId, g.productId)} className="ml-1 text-gray-300 hover:text-red-500 align-middle print:hidden" title="定期の枠を外す"><X className="size-3 inline" /></button>
                                 ) : (
-                                  <span className="text-gray-400">{monthNum}月 {d.monthQty}（{d.orderDays}日分）・想定なし</span>
+                                  <button onClick={() => changeSlot("POST", d.contactId, g.productId)} className="ml-1 text-indigo-500 hover:underline print:hidden">定期の枠にする</button>
                                 )}
                               </div>
                             </td>
@@ -434,9 +485,10 @@ export default function OrdersByProductPage() {
                           <td className="px-2 py-1.5 border-r text-[10px]">—</td>
                           <td className="px-2 py-1.5 border-r">
                             <Link href={`/contacts/${s.contactId}`} className="text-blue-600/70 hover:underline">{s.label}</Link>
-                            <span className="ml-1 whitespace-nowrap rounded bg-indigo-50 text-indigo-600 text-[10px] px-1 py-px">定期 {s.qty}/月</span>
+                            <span className="ml-1 whitespace-nowrap rounded bg-indigo-50 text-indigo-600 text-[10px] px-1 py-px">定期</span>
+                            <button onClick={() => changeSlot("DELETE", s.contactId, g.productId)} className="ml-1 text-gray-300 hover:text-red-500 align-middle print:hidden" title="定期の枠を外す"><X className="size-3 inline" /></button>
                           </td>
-                          <td colSpan={colCount - 2} className="px-2 py-1.5 text-[11px] italic">{monthNum}月はまだ発注なし（想定 {s.monthQty.toLocaleString()}個）</td>
+                          <td colSpan={colCount - 2} className="px-2 py-1.5 text-[11px] italic">{monthNum}月はまだ発注なし{s.monthQty > 0 && `（予想 ${s.monthQty.toLocaleString()}個）`}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -487,6 +539,10 @@ export default function OrdersByProductPage() {
                       </tfoot>
                     )}
                   </table>
+                  <SlotAdder
+                    contacts={contacts.filter((c) => !standingOf.has(c.id))}
+                    onAdd={(cid) => changeSlot("POST", cid, g.productId)}
+                  />
                 </div>
               )}
             </Card>
@@ -496,7 +552,7 @@ export default function OrdersByProductPage() {
 
       <p className="text-xs text-gray-400 print:hidden">
         ※ 月別対応（{months.map((m) => formatMonthLabel(m)).join("・")}）と週別（{formatMonthLabel(month)}の平日週）は青・橙のセルに直接入力→自動保存。出荷済・出荷日は出荷実績から自動表示。灰色行=出荷完了。
-        「定期」は顧客ページの「定期の注文（想定）」に入っているお客さん。発注で来るお客さんはその月まだ発注が無くても欄を出し、毎日伺うお客さんは1行にまとめて今週の注文と想定（週あたり）を並べます。
+        「定期」は各商品の下の「＋定期のお客さんの枠」で置いたお客さん。発注で来るお客さんはその月まだ発注が無くても欄を出し、毎日伺うお客さんは1行にまとめて今週・今月の注文を並べます。
         未出荷の分には、発送予定日（なければ注文日）が早い受注から順に、今の在庫→製造中の分を割り当てた目安を出しています（在庫で出せる／製造待ち／未手配）。
       </p>
     </div>
